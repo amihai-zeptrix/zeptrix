@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A practical guide to S3 lifecycle costs and how to reduce AWS storage spend without losing access to important data.">
+  <link rel="canonical" href="https://zeptrix.io/s3-lifecycle-costs">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://zeptrix.io/s3-lifecycle-costs">
+  <meta property="og:title" content="S3 Lifecycle Costs | Zeptrix">
+  <meta property="og:description" content="Practical guidance for reducing S3 storage costs with lifecycle policies.">
+  <title>S3 Lifecycle Costs and AWS Storage Spend | Zeptrix</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "S3 Lifecycle Costs",
+    "mainEntityOfPage": "https://zeptrix.io/s3-lifecycle-costs",
+    "author": { "@type": "Organization", "name": "Zeptrix" },
+    "publisher": { "@id": "https://zeptrix.io/#organization" }
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header is-elevated">
+    <a class="brand" href="/" aria-label="Zeptrix home">
+      <span class="brand-mark" aria-hidden="true">Z</span>
+      <span>Zeptrix</span>
+    </a>
+    <nav class="nav" aria-label="Primary navigation">
+      <a href="/#platform">Platform</a>
+      <a href="/insights">Insights</a>
+      <a href="/#contact">Contact</a>
+    </nav>
+    <a class="header-cta" href="/#contact">Start free analysis</a>
+  </header>
+
+  <main class="content-page seo-page">
+    <section class="page-hero">
+      <p class="eyebrow">Insights</p>
+      <h1>S3 lifecycle costs</h1>
+      <p class="hero-copy">S3 often looks cheap until storage grows, old objects stay in hot tiers, and lifecycle rules lag behind real usage.</p>
+      <div class="hero-actions">
+        <a class="button primary" href="/#contact">Start saving NOW</a>
+        <a class="button secondary dark-ghost" href="/insights">Back to insights</a>
+      </div>
+    </section>
+
+    <section class="insight-grid">
+      <article class="insight-card">
+        <h2>What to check</h2>
+        <p>Storage class mix, object age, versioning growth, multipart upload leftovers, and whether archived data is still sitting in expensive tiers.</p>
+      </article>
+      <article class="insight-card">
+        <h2>Why it matters</h2>
+        <p>At scale, small per-GB inefficiencies turn into real monthly spend. Lifecycle policy drift is one of the easiest places to lose control.</p>
+      </article>
+      <article class="insight-card">
+        <h2>What good looks like</h2>
+        <p>Cold data moves down tiers automatically, retention is intentional, and access patterns match the storage class it lives in.</p>
+      </article>
+    </section>
+
+    <section class="content-band">
+      <div class="section-copy">
+        <p class="eyebrow">Practical moves</p>
+        <h2>Where S3 spend usually gets better first</h2>
+        <p>Look at old logs, duplicated backups, infrequently accessed content, and data that no longer needs to remain in a high-cost tier.</p>
+      </div>
+      <div class="mini-list">
+        <span>Move cold objects to cheaper tiers</span>
+        <span>Trim old versions and backups</span>
+        <span>Review lifecycle rules monthly</span>
+        <span>Watch transfer and retrieval costs</span>
+        <span>Track cost by bucket owner</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

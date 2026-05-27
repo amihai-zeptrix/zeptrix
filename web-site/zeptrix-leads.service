@@ -1,0 +1,19 @@
+[Unit]
+Description=Zeptrix lead registration API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=AWS_REGION=us-east-1
+Environment=LEAD_TO_EMAIL=amihai@zeptrix.io
+Environment=LEAD_FROM_EMAIL=amihai@zeptrix.io
+Environment=LEADS_FILE=/var/lib/zeptrix-leads/leads.jsonl
+ExecStart=/usr/bin/python3 /opt/zeptrix/lead_server.py
+Restart=always
+RestartSec=3
+User=zeptrix
+Group=zeptrix
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A practical guide to RDS rightsizing and how to reduce database spend without risking application stability.">
+  <link rel="canonical" href="https://zeptrix.io/rds-rightsizing-guide">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://zeptrix.io/rds-rightsizing-guide">
+  <meta property="og:title" content="RDS Rightsizing Guide | Zeptrix">
+  <meta property="og:description" content="How to reduce RDS spend without hurting stability or performance.">
+  <title>RDS Rightsizing Guide for AWS Cost Reduction | Zeptrix</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "RDS Rightsizing Guide",
+    "mainEntityOfPage": "https://zeptrix.io/rds-rightsizing-guide",
+    "author": { "@type": "Organization", "name": "Zeptrix" },
+    "publisher": { "@id": "https://zeptrix.io/#organization" }
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header is-elevated">
+    <a class="brand" href="/" aria-label="Zeptrix home">
+      <span class="brand-mark" aria-hidden="true">Z</span>
+      <span>Zeptrix</span>
+    </a>
+    <nav class="nav" aria-label="Primary navigation">
+      <a href="/#platform">Platform</a>
+      <a href="/insights">Insights</a>
+      <a href="/#contact">Contact</a>
+    </nav>
+    <a class="header-cta" href="/#contact">Start free analysis</a>
+  </header>
+
+  <main class="content-page seo-page">
+    <section class="page-hero">
+      <p class="eyebrow">Insights</p>
+      <h1>RDS rightsizing guide</h1>
+      <p class="hero-copy">Database spend often grows quietly. The right rightsizing review looks at real CPU, memory, IOPS, replicas, and failover behavior before making changes.</p>
+      <div class="hero-actions">
+        <a class="button primary" href="/#contact">Start saving NOW</a>
+        <a class="button secondary dark-ghost" href="/insights">Back to insights</a>
+      </div>
+    </section>
+
+    <section class="insight-grid">
+      <article class="insight-card">
+        <h2>Usage first</h2>
+        <p>Start with actual load patterns, not just instance class names. The wrong change can raise cost while creating risk.</p>
+      </article>
+      <article class="insight-card">
+        <h2>Replica awareness</h2>
+        <p>Read replicas, Multi-AZ behavior, and failover expectations affect what “right-sized” really means.</p>
+      </article>
+      <article class="insight-card">
+        <h2>Practical outcome</h2>
+        <p>The goal is a smaller bill and a stable system, not a faster migration to a cheaper problem.</p>
+      </article>
+    </section>
+
+    <section class="content-band">
+      <div class="section-copy">
+        <p class="eyebrow">Review checklist</p>
+        <h2>What to review before changing RDS</h2>
+        <p>Peak utilization, buffer cache behavior, storage growth, replica requirements, and whether the workload is over-provisioned for its real traffic.</p>
+      </div>
+      <div class="mini-list">
+        <span>CPU and memory headroom</span>
+        <span>IOPS and storage type</span>
+        <span>Replica and failover needs</span>
+        <span>Peak versus average usage</span>
+        <span>Cost per environment</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
