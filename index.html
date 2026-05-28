@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Zeptrix is an AI-powered AWS cost reduction SaaS for mid-size companies that need measurable savings in days, not quarters.">
+  <link rel="canonical" href="https://zeptrix.io/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://zeptrix.io/">
+  <meta property="og:title" content="Zeptrix | AI AWS Cost Reduction">
+  <meta property="og:description" content="AI-powered AWS cost reduction for mid-size companies that need measurable savings in days, not quarters.">
+  <meta name="twitter:card" content="summary_large_image">
+  <title>Zeptrix | AI AWS Cost Reduction</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://zeptrix.io/#organization",
+        "name": "Zeptrix",
+        "url": "https://zeptrix.io/",
+        "logo": "https://zeptrix.io/favicon.svg"
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://zeptrix.io/#website",
+        "url": "https://zeptrix.io/",
+        "name": "Zeptrix",
+        "publisher": { "@id": "https://zeptrix.io/#organization" }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://zeptrix.io/#app",
+        "name": "Zeptrix",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "url": "https://zeptrix.io/",
+        "description": "AI-powered AWS cost reduction SaaS for mid-size companies.",
+        "publisher": { "@id": "https://zeptrix.io/#organization" }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header" data-elevate>
+    <a class="brand" href="#top" aria-label="Zeptrix home">
+      <span class="brand-mark" aria-hidden="true">Z</span>
+      <span>Zeptrix</span>
+    </a>
+    <nav class="nav" aria-label="Primary navigation">
+      <a href="#platform">Platform</a>
+      <a href="#outcomes">Outcomes</a>
+      <a href="#proof">Proof</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <a class="header-cta" href="#contact">Start free analysis</a>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <canvas id="signalCanvas" class="hero-canvas" aria-hidden="true"></canvas>
+      <div class="hero-shade" aria-hidden="true"></div>
+      <div class="hero-content">
+        <p class="eyebrow">AI FinOps for teams that run real AWS workloads</p>
+        <h1 id="hero-title">Zeptrix</h1>
+        <p class="hero-copy">Find waste, rank savings, and ship safe AWS cost reductions in days. Zeptrix connects usage, architecture, and business context so finance and engineering can act on the same truth.</p>
+        <div class="hero-actions" aria-label="Primary calls to action">
+          <a class="button primary" href="#contact">Start saving NOW</a>
+          <a class="button secondary" href="#platform">See the platform</a>
+        </div>
+      </div>
+      <aside class="hero-panel" aria-label="Live AWS cost intelligence preview">
+        <div class="panel-topline">
+          <span>Opportunity map</span>
+          <strong>$428K</strong>
+        </div>
+        <div class="metric-grid">
+          <div>
+            <span>Days to signal</span>
+            <strong>3</strong>
+          </div>
+          <div>
+            <span>Safe actions</span>
+            <strong>147</strong>
+          </div>
+          <div>
+            <span>Risk flags</span>
+            <strong>12</strong>
+          </div>
+        </div>
+        <div class="chart" aria-hidden="true">
+          <span style="height: 36%"></span>
+          <span style="height: 54%"></span>
+          <span style="height: 42%"></span>
+          <span style="height: 72%"></span>
+          <span style="height: 61%"></span>
+          <span style="height: 88%"></span>
+          <span style="height: 48%"></span>
+        </div>
+        <div class="recommendations">
+          <p><b>EC2:</b> Move bursty APIs to mixed-instance autoscaling.</p>
+          <p><b>RDS:</b> Downshift idle replicas after traffic proof.</p>
+          <p><b>S3:</b> Reclass cold data with lifecycle guardrails.</p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="signal-band" aria-label="Fast value metrics">
+      <div>
+        <strong>7-18%</strong>
+        <span>typical first-pass AWS savings target</span>
+      </div>
+      <div>
+        <strong>72h</strong>
+        <span>to first ranked opportunity list</span>
+      </div>
+      <div>
+        <strong>0</strong>
+        <span>agent installs required for initial readout</span>
+      </div>
+    </section>
+
+    <section id="platform" class="section platform">
+      <div class="section-copy">
+        <p class="eyebrow">Platform</p>
+        <h2>AI that understands cost, architecture, and delivery risk.</h2>
+        <p>Zeptrix ingests AWS billing, usage, CloudWatch, tags, and deployment patterns. The platform turns that noisy data into ranked changes your teams can validate quickly.</p>
+      </div>
+      <div class="architecture-diagram" aria-label="Zeptrix architecture diagram with AssumeRole access into customer AWS services">
+        <svg class="diagram-lines" viewBox="0 0 960 560" aria-hidden="true">
+          <defs>
+            <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L0,6 L9,3 z"></path>
+            </marker>
+          </defs>
+          <path class="line soft" d="M470 73 H150 V128"></path>
+          <path class="line soft" d="M490 73 H810 V128"></path>
+          <path class="line" d="M252 242 H372"></path>
+          <path class="line" d="M372 242 H500"></path>
+          <path class="line" d="M500 242 H622"></path>
+          <path class="line dashed" d="M374 286 C440 348 486 372 622 372"></path>
+          <path class="line dashed" d="M374 286 C428 418 495 454 622 454"></path>
+          <path class="line soft" d="M252 386 H374"></path>
+          <path class="line soft" d="M252 446 H374"></path>
+          <path class="line soft" d="M742 222 H832"></path>
+          <path class="line soft" d="M742 302 H832"></path>
+          <path class="line soft" d="M742 382 H832"></path>
+          <path class="line soft" d="M742 462 H832"></path>
+        </svg>
+        <div class="diagram-users" aria-hidden="true">
+          <span></span><span></span><span></span>
+          <strong>Users</strong>
+        </div>
+        <div class="architecture-frame zeptrix-frame">
+          <div class="frame-title">
+            <span>Zeptrix.io</span>
+            <strong>AI SaaS control plane</strong>
+          </div>
+          <div class="architecture-zone zeptrix-zone">
+            <article class="arch-node analyzer">
+              <i aria-hidden="true"></i>
+              <h3>Analyzer</h3>
+              <p>Detects savings, explains risk, and ranks actions.</p>
+            </article>
+            <article class="arch-node connector">
+              <i aria-hidden="true"></i>
+              <h3>Connector</h3>
+              <p>Read-only AWS collection and normalization.</p>
+            </article>
+            <article class="arch-node evidence">
+              <i aria-hidden="true"></i>
+              <h3>Evidence Store</h3>
+              <p>Billing, telemetry, tags, and change history.</p>
+            </article>
+            <article class="arch-node recommendations">
+              <i aria-hidden="true"></i>
+              <h3>Recommendations</h3>
+              <p>Tickets, IaC notes, savings proof, and rollout plan.</p>
+            </article>
+          </div>
+        </div>
+        <div class="assume-role-link">
+          <span>AssumeRole</span>
+          <small>External ID + least privilege</small>
+        </div>
+        <div class="architecture-frame customer-frame">
+          <div class="frame-title">
+            <span>Customer AWS account</span>
+            <strong>Read-only data plane</strong>
+          </div>
+          <div class="architecture-zone customer-zone">
+            <span class="aws-badge">AWS</span>
+            <article class="arch-node aws-service s3">
+              <i aria-hidden="true"></i>
+              <h3>S3</h3>
+            </article>
+            <article class="arch-node aws-service rds">
+              <i aria-hidden="true"></i>
+              <h3>RDS</h3>
+            </article>
+            <article class="arch-node aws-service lambda">
+              <i aria-hidden="true"></i>
+              <h3>Lambda</h3>
+            </article>
+            <article class="arch-node aws-service spark">
+              <i aria-hidden="true"></i>
+              <h3>Spark</h3>
+            </article>
+            <article class="arch-node aws-service aurora">
+              <i aria-hidden="true"></i>
+              <h3>AWS Aurora</h3>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="outcomes" class="section outcomes">
+      <div class="outcome-board">
+        <div class="board-header">
+          <span>Prioritized actions</span>
+          <strong>Confidence weighted</strong>
+        </div>
+        <div class="action-row high">
+          <span>RDS rightsizing</span>
+          <b>$91K</b>
+          <em>Low risk</em>
+        </div>
+        <div class="action-row medium">
+          <span>NAT gateway redesign</span>
+          <b>$63K</b>
+          <em>Needs review</em>
+        </div>
+        <div class="action-row high">
+          <span>Spot-ready workers</span>
+          <b>$52K</b>
+          <em>Low risk</em>
+        </div>
+        <div class="action-row low">
+          <span>Commitment coverage</span>
+          <b>$44K</b>
+          <em>Finance approval</em>
+        </div>
+      </div>
+      <div class="section-copy">
+        <p class="eyebrow">Outcomes</p>
+        <h2>Designed for companies that don't want to pause engineering.</h2>
+        <p>Most cost tools hand you dashboards. Zeptrix hands you a sequenced operating plan: what to change first, who owns it, what can break, and how savings will be measured after deployment.</p>
+      </div>
+    </section>
+
+    <section id="proof" class="section proof">
+      <div class="section-copy compact">
+        <p class="eyebrow">First week</p>
+        <h2>Visible value before the next AWS bill closes.</h2>
+      </div>
+      <div class="timeline">
+        <article>
+          <span>Day 1</span>
+          <h3>Connect</h3>
+          <p>Read-only AWS access, billing export discovery, tag quality scan, and spend baseline.</p>
+        </article>
+        <article>
+          <span>Day 2-3</span>
+          <h3>Prioritize</h3>
+          <p>AI ranks savings by impact, risk, owner, and rollout complexity.</p>
+        </article>
+        <article>
+          <span>Day 4-5</span>
+          <h3>Act</h3>
+          <p>Teams receive reviewed actions with expected savings and rollback notes.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="insight-band" aria-labelledby="insight-pages">
+      <div class="section-copy compact">
+        <p class="eyebrow">SEO pages</p>
+        <h2 id="insight-pages">Search-focused pages for AWS cost reduction terms</h2>
+        <p>These pages give Google clear, focused entry points for the topics people actually search for.</p>
+      </div>
+      <div class="insight-grid seo-link-grid">
+        <a class="insight-card page-link-card" href="/insights">
+          <h3>Insights Hub</h3>
+          <p>Long-form guidance and supporting notes for AWS cost reduction and FinOps.</p>
+        </a>
+        <a class="insight-card page-link-card" href="/aws-finops">
+          <h3>AWS FinOps</h3>
+          <p>How Zeptrix helps finance and engineering work from the same cost model.</p>
+        </a>
+        <a class="insight-card page-link-card" href="/aws-cost-optimization">
+          <h3>AWS Cost Optimization</h3>
+          <p>Cost optimization patterns for modern AWS stacks, from compute to data.</p>
+        </a>
+        <a class="insight-card page-link-card" href="/reduce-aws-spend">
+          <h3>Reduce AWS Spend</h3>
+          <p>Practical ways to cut AWS spend without slowing down delivery teams.</p>
+        </a>
+      </div>
+    </section>
+
+    <section id="contact" class="contact">
+      <div class="contact-copy">
+        <p class="eyebrow">Start</p>
+        <h2>Start saving NOW.</h2>
+        <p>Register for 14 days FREE deep analysis recommendations. Zeptrix will identify the fastest AWS savings path for your environment.</p>
+      </div>
+      <form class="lead-form" id="leadForm">
+        <div class="form-grid">
+          <label>
+            <span>Name <b aria-hidden="true">*</b></span>
+            <input name="name" type="text" autocomplete="name" required>
+          </label>
+          <label>
+            <span>Email <b aria-hidden="true">*</b></span>
+            <input name="email" type="email" autocomplete="email" required>
+          </label>
+          <label>
+            <span>Company</span>
+            <input name="company" type="text" autocomplete="organization">
+          </label>
+          <label>
+            <span>Phone</span>
+            <input name="phone" type="text" autocomplete="tel">
+          </label>
+        </div>
+        <fieldset>
+          <legend>AWS components in scope</legend>
+          <details class="multi-select" data-multi-select>
+            <summary class="multi-select-trigger">
+              <span data-multi-select-label>Select AWS components</span>
+              <span class="multi-select-caret" aria-hidden="true"></span>
+            </summary>
+            <div class="multi-select-panel" id="componentsMenu" role="group" aria-label="AWS components">
+              <label><input type="checkbox" name="components" value="S3"><span>S3</span></label>
+              <label><input type="checkbox" name="components" value="EC2"><span>EC2</span></label>
+              <label><input type="checkbox" name="components" value="RDS"><span>RDS</span></label>
+              <label><input type="checkbox" name="components" value="Aurora"><span>AWS Aurora</span></label>
+              <label><input type="checkbox" name="components" value="Lambda"><span>Lambda</span></label>
+              <label><input type="checkbox" name="components" value="ECS"><span>ECS</span></label>
+              <label><input type="checkbox" name="components" value="EKS"><span>EKS</span></label>
+              <label><input type="checkbox" name="components" value="Fargate"><span>Fargate</span></label>
+              <label><input type="checkbox" name="components" value="Redis / ElastiCache"><span>Redis / ElastiCache</span></label>
+              <label><input type="checkbox" name="components" value="SQS"><span>SQS</span></label>
+              <label><input type="checkbox" name="components" value="SNS"><span>SNS</span></label>
+              <label><input type="checkbox" name="components" value="DynamoDB"><span>DynamoDB</span></label>
+              <label><input type="checkbox" name="components" value="CloudFront"><span>CloudFront</span></label>
+              <label><input type="checkbox" name="components" value="Load Balancers"><span>Load Balancers</span></label>
+              <label><input type="checkbox" name="components" value="NAT Gateway"><span>NAT Gateway</span></label>
+              <label><input type="checkbox" name="components" value="EBS"><span>EBS</span></label>
+              <label><input type="checkbox" name="components" value="ECR"><span>ECR</span></label>
+              <label><input type="checkbox" name="components" value="Route 53"><span>Route 53</span></label>
+              <label><input type="checkbox" name="components" value="CloudWatch"><span>CloudWatch</span></label>
+              <label><input type="checkbox" name="components" value="Athena"><span>Athena</span></label>
+              <label><input type="checkbox" name="components" value="Glue"><span>Glue</span></label>
+              <label><input type="checkbox" name="components" value="Redshift"><span>Redshift</span></label>
+              <label><input type="checkbox" name="components" value="OpenSearch"><span>OpenSearch</span></label>
+              <label><input type="checkbox" name="components" value="Kinesis"><span>Kinesis</span></label>
+              <label><input type="checkbox" name="components" value="EMR / Spark"><span>EMR / Spark</span></label>
+              <label><input type="checkbox" name="components" value="API Gateway"><span>API Gateway</span></label>
+            </div>
+          </details>
+        </fieldset>
+        <label>
+          <span>Number of AWS accounts</span>
+          <input name="awsAccounts" type="number" min="1" step="1" inputmode="numeric">
+        </label>
+        <button class="button primary dark" type="submit">Register for free analysis</button>
+        <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

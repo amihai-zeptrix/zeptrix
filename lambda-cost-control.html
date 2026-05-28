@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A practical guide to Lambda cost control, covering invocation patterns, memory sizing, and event-driven cost leaks.">
+  <link rel="canonical" href="https://zeptrix.io/lambda-cost-control">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://zeptrix.io/lambda-cost-control">
+  <meta property="og:title" content="Lambda Cost Control | Zeptrix">
+  <meta property="og:description" content="How to control Lambda cost without losing the benefits of serverless.">
+  <title>Lambda Cost Control for AWS Spend Reduction | Zeptrix</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Lambda Cost Control",
+    "mainEntityOfPage": "https://zeptrix.io/lambda-cost-control",
+    "author": { "@type": "Organization", "name": "Zeptrix" },
+    "publisher": { "@id": "https://zeptrix.io/#organization" }
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header is-elevated">
+    <a class="brand" href="/" aria-label="Zeptrix home">
+      <span class="brand-mark" aria-hidden="true">Z</span>
+      <span>Zeptrix</span>
+    </a>
+    <nav class="nav" aria-label="Primary navigation">
+      <a href="/#platform">Platform</a>
+      <a href="/insights">Insights</a>
+      <a href="/#contact">Contact</a>
+    </nav>
+    <a class="header-cta" href="/#contact">Start free analysis</a>
+  </header>
+
+  <main class="content-page seo-page">
+    <section class="page-hero">
+      <p class="eyebrow">Insights</p>
+      <h1>Lambda cost control</h1>
+      <p class="hero-copy">Serverless is efficient when the functions are sized and invoked well. Cost problems usually show up in retries, noisy triggers, and over-provisioned memory.</p>
+      <div class="hero-actions">
+        <a class="button primary" href="/#contact">Start saving NOW</a>
+        <a class="button secondary dark-ghost" href="/insights">Back to insights</a>
+      </div>
+    </section>
+
+    <section class="insight-grid">
+      <article class="insight-card">
+        <h2>Invocation patterns</h2>
+        <p>Look at event bursts, retries, and duplicate work. Small spikes can become expensive at scale.</p>
+      </article>
+      <article class="insight-card">
+        <h2>Memory sizing</h2>
+        <p>Lambda memory affects both performance and cost. Under-sizing can be slower and cost more overall.</p>
+      </article>
+      <article class="insight-card">
+        <h2>Downstream cost</h2>
+        <p>Functions often trigger extra spend in SQS, API Gateway, data stores, and logs. The full path matters.</p>
+      </article>
+    </section>
+
+    <section class="content-band">
+      <div class="section-copy">
+        <p class="eyebrow">Control points</p>
+        <h2>Where Lambda cost usually creeps in</h2>
+        <p>Watch for duplicated triggers, noisy retries, oversized payload work, log volume, and functions that do too much per invocation.</p>
+      </div>
+      <div class="mini-list">
+        <span>Reduce unnecessary invocations</span>
+        <span>Right-size memory and timeout</span>
+        <span>Cut retry amplification</span>
+        <span>Review event fan-out</span>
+        <span>Track related service spend</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
