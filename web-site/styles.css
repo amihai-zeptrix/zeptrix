@@ -948,7 +948,7 @@ h1 {
 #codex-process {
   background:
     linear-gradient(90deg, rgba(7, 17, 14, 0.96) 0%, rgba(7, 17, 14, 0.82) 42%, rgba(7, 17, 14, 0.58) 100%),
-    url("assets/ai-managed-websites-bg.png") center / cover no-repeat;
+    url("/assets/ai-managed-websites-bg.png") center / cover no-repeat;
 }
 
 #codex-process::after {
