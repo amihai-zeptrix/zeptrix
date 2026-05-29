@@ -35,10 +35,10 @@ fetch "/" "$tmp_dir/home.html"
 assert_contains "$tmp_dir/home.html" "<title>Zeptrix | AI AWS Cost Reduction</title>"
 assert_contains "$tmp_dir/home.html" 'href="/styles.css"'
 
-fetch "/fast-site" "$tmp_dir/fast-site.html"
-assert_contains "$tmp_dir/fast-site.html" '<link rel="canonical" href="https://zeptrix.io/fast-site">'
-assert_contains "$tmp_dir/fast-site.html" "<title>Fully Managed Modern Websites | Zeptrix</title>"
-assert_contains "$tmp_dir/fast-site.html" 'href="/styles.css"'
+fetch "/siteops" "$tmp_dir/siteops.html"
+assert_contains "$tmp_dir/siteops.html" '<link rel="canonical" href="https://zeptrix.io/siteops">'
+assert_contains "$tmp_dir/siteops.html" "<title>Zeptrix SiteOps | Managed Website Team</title>"
+assert_contains "$tmp_dir/siteops.html" 'href="/styles.css"'
 
 fetch "/mbh/" "$tmp_dir/mbh.html"
 assert_contains "$tmp_dir/mbh.html" '<html lang="he" dir="rtl">'
@@ -50,8 +50,14 @@ curl -fsSI --max-time 20 "$base_url/mbh/styles.css" | grep -Fiq "content-type: t
 curl -fsSI --max-time 20 "$base_url/mbh/script.js" | grep -Fiq "content-type: application/javascript"
 
 old_location="$(curl -fsSI --max-time 20 "$base_url/wordpress-to-modern-websites/" | awk 'tolower($1) == "location:" {print $2}' | tr -d '\r')"
-if [[ "$old_location" != "$base_url/fast-site" ]]; then
-  echo "Expected old managed-site URL to redirect to $base_url/fast-site, got: $old_location" >&2
+if [[ "$old_location" != "$base_url/siteops" ]]; then
+  echo "Expected old managed-site URL to redirect to $base_url/siteops, got: $old_location" >&2
+  exit 1
+fi
+
+fast_site_location="$(curl -fsSI --max-time 20 "$base_url/fast-site" | awk 'tolower($1) == "location:" {print $2}' | tr -d '\r')"
+if [[ "$fast_site_location" != "$base_url/siteops" ]]; then
+  echo "Expected /fast-site to redirect to $base_url/siteops, got: $fast_site_location" >&2
   exit 1
 fi
 

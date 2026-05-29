@@ -26,7 +26,7 @@ assert_not_exists() {
 }
 
 assert_file index.html
-assert_file fast-site.html
+assert_file siteops.html
 assert_file styles.css
 assert_file app.js
 assert_file nginx-zeptrix.conf
@@ -44,10 +44,10 @@ assert_contains index.html "<title>Zeptrix | AI AWS Cost Reduction</title>"
 assert_contains index.html 'href="/styles.css"'
 assert_contains index.html 'src="/app.js"'
 
-assert_contains fast-site.html '<link rel="canonical" href="https://zeptrix.io/fast-site">'
-assert_contains fast-site.html "<title>Fully Managed Modern Websites | Zeptrix</title>"
-assert_contains fast-site.html 'href="/styles.css"'
-assert_contains fast-site.html 'src="/app.js"'
+assert_contains siteops.html '<link rel="canonical" href="https://zeptrix.io/siteops">'
+assert_contains siteops.html "<title>Zeptrix SiteOps | Managed Website Team</title>"
+assert_contains siteops.html 'href="/styles.css"'
+assert_contains siteops.html 'src="/app.js"'
 
 assert_contains mbh/index.html '<html lang="he" dir="rtl">'
 assert_contains mbh/index.html "<title>מיכל בן חיון</title>"
@@ -60,7 +60,8 @@ assert_contains nginx-zeptrix.conf "return 301 /mbh/;"
 assert_contains nginx-zeptrix.conf "location ^~ /mbh/"
 assert_contains nginx-zeptrix.conf "try_files \$uri \$uri/ /mbh/index.html;"
 assert_contains nginx-zeptrix.conf "location = /wordpress-to-modern-websites"
-assert_contains nginx-zeptrix.conf "return 301 /fast-site;"
+assert_contains nginx-zeptrix.conf "location = /fast-site"
+assert_contains nginx-zeptrix.conf "return 301 /siteops;"
 
 if rg -n 'href="styles\.css"|src="app\.js"|url\("assets/' --glob '*.html' --glob '*.css' . \
   | rg -v '^./mbh/'; then

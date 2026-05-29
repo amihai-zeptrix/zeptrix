@@ -25,7 +25,7 @@ Because `/mbh/` no longer existed, nginx served `/index.html`, the Zeptrix home 
 The deployed static bundle must include:
 
 - `/index.html` for the Zeptrix home page
-- `/fast-site.html` for `https://zeptrix.io/fast-site`
+- `/siteops.html` for `https://zeptrix.io/siteops`
 - `/mbh/index.html` for `https://zeptrix.io/mbh/`
 - `/mbh/styles.css`
 - `/mbh/script.js`
@@ -50,15 +50,23 @@ location ^~ /mbh/ {
 
 This prevents `/mbh/` from falling through to the Zeptrix home page.
 
-The old managed-site URL should redirect to the new URL:
+The old managed-site URLs should redirect to the new URL:
 
 ```nginx
+location = /fast-site {
+    return 301 /siteops;
+}
+
+location = /fast-site/ {
+    return 301 /siteops;
+}
+
 location = /wordpress-to-modern-websites {
-    return 301 /fast-site;
+    return 301 /siteops;
 }
 
 location = /wordpress-to-modern-websites/ {
-    return 301 /fast-site;
+    return 301 /siteops;
 }
 ```
 
@@ -87,8 +95,9 @@ Run the production route test after every deploy:
 The test verifies:
 
 - `/` serves the Zeptrix home page.
-- `/fast-site` serves the managed website page.
-- `/wordpress-to-modern-websites/` redirects to `/fast-site`.
+- `/siteops` serves the managed website page.
+- `/fast-site` redirects to `/siteops`.
+- `/wordpress-to-modern-websites/` redirects to `/siteops`.
 - `/mbh/` serves Michal's Hebrew page, not the Zeptrix home page.
 - `/mbh/styles.css` is reachable as CSS.
 - `/mbh/script.js` is reachable as JavaScript.
