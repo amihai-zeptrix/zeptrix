@@ -1,8 +1,10 @@
 const header = document.querySelector("[data-elevate]");
 const canvas = document.querySelector("#signalCanvas");
-const context = canvas.getContext("2d");
+const context = canvas?.getContext("2d");
 const leadForm = document.querySelector("#leadForm");
 const formStatus = document.querySelector("#formStatus");
+const websiteRequestForm = document.querySelector("#websiteRequestForm");
+const websiteFormStatus = document.querySelector("#websiteFormStatus");
 const multiSelect = document.querySelector("[data-multi-select]");
 const multiSelectLabel = multiSelect?.querySelector("[data-multi-select-label]");
 const multiSelectInputs = multiSelect ? Array.from(multiSelect.querySelectorAll("input[type='checkbox']")) : [];
@@ -12,6 +14,8 @@ function setHeaderState() {
 }
 
 function resizeCanvas() {
+  if (!canvas || !context) return;
+
   const ratio = window.devicePixelRatio || 1;
   canvas.width = Math.floor(canvas.offsetWidth * ratio);
   canvas.height = Math.floor(canvas.offsetHeight * ratio);
@@ -19,6 +23,8 @@ function resizeCanvas() {
 }
 
 function drawSignal(time) {
+  if (!canvas || !context) return;
+
   const width = canvas.offsetWidth;
   const height = canvas.offsetHeight;
 
@@ -131,15 +137,17 @@ function updateMultiSelectLabel() {
   multiSelectLabel.innerHTML = `<span class="multi-select-summary">${selected.length} components selected</span> <span class="multi-select-count">Review list</span>`;
 }
 
-if ("roundRect" in context) {
+if (canvas && context && "roundRect" in context) {
   resizeCanvas();
   requestAnimationFrame(drawSignal);
-} else {
+} else if (canvas) {
   canvas.style.display = "none";
 }
 
-setHeaderState();
-window.addEventListener("scroll", setHeaderState, { passive: true });
+if (header) {
+  setHeaderState();
+  window.addEventListener("scroll", setHeaderState, { passive: true });
+}
 window.addEventListener("resize", resizeCanvas);
 
 multiSelectInputs.forEach((input) => {
@@ -184,6 +192,52 @@ leadForm?.addEventListener("submit", async (event) => {
   } catch (error) {
     formStatus.classList.add("error");
     formStatus.textContent = "Could not submit right now. Email hello@zeptrix.io and we will handle it manually.";
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+
+websiteRequestForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const submitButton = websiteRequestForm.querySelector("button[type='submit']");
+  const formData = new FormData(websiteRequestForm);
+  const payload = {
+    leadType: "websiteRequest",
+    name: String(formData.get("name") || "").trim(),
+    email: String(formData.get("email") || "").trim(),
+    company: String(formData.get("company") || "").trim(),
+    phone: String(formData.get("phone") || "").trim(),
+    currentSite: String(formData.get("currentSite") || "").trim(),
+    requestType: String(formData.get("requestType") || "").trim(),
+    timeline: String(formData.get("timeline") || "").trim(),
+    budget: String(formData.get("budget") || "").trim(),
+    firstRequest: String(formData.get("firstRequest") || "").trim(),
+    freeMigration: formData.get("freeMigration") === "true",
+  };
+
+  websiteFormStatus.className = "form-status";
+  websiteFormStatus.textContent = "Sending your website request...";
+  submitButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+
+    if (!response.ok || result.status !== "ok") {
+      throw new Error(result.message || "Request failed.");
+    }
+
+    websiteRequestForm.reset();
+    websiteFormStatus.classList.add("success");
+    websiteFormStatus.textContent = "Request sent. We received the details and will reply with the fastest practical path.";
+  } catch (error) {
+    websiteFormStatus.classList.add("error");
+    websiteFormStatus.textContent = "Could not submit right now. Email amihai@zeptrix.io and we will handle it manually.";
   } finally {
     submitButton.disabled = false;
   }

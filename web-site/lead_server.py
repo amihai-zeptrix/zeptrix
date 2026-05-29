@@ -39,11 +39,18 @@ def clean_text(value, limit=180):
 
 
 def validate(payload):
+    lead_type = clean_text(payload.get("leadType"), 60) or "awsAnalysis"
     name = clean_text(payload.get("name"))
     email = clean_text(payload.get("email")).lower()
     company = clean_text(payload.get("company"))
     phone = clean_text(payload.get("phone"), 80)
     components = payload.get("components") or []
+    current_site = clean_text(payload.get("currentSite"), 260)
+    request_type = clean_text(payload.get("requestType"), 120)
+    timeline = clean_text(payload.get("timeline"), 120)
+    budget = clean_text(payload.get("budget"), 120)
+    first_request = clean_text(payload.get("firstRequest"), 4000)
+    free_migration = bool(payload.get("freeMigration"))
 
     aws_accounts = None
     raw_aws_accounts = payload.get("awsAccounts")
@@ -64,12 +71,19 @@ def validate(payload):
 
     record = {
         "submittedAt": datetime.now(timezone.utc).isoformat(),
+        "leadType": lead_type,
         "name": name,
         "email": email,
         "company": company,
         "phone": phone,
         "awsAccounts": aws_accounts,
         "components": [clean_text(item, 80) for item in components if clean_text(item, 80)],
+        "currentSite": current_site,
+        "requestType": request_type,
+        "timeline": timeline,
+        "budget": budget,
+        "firstRequest": first_request,
+        "freeMigration": free_migration,
     }
     return record, None
 
@@ -84,12 +98,36 @@ def send_email(record):
     if boto3 is None:
         return False, "boto3 is not installed"
 
-    subject = f"New Zeptrix free analysis registration: {record['name']}"
+    is_website_request = record.get("leadType") == "websiteRequest"
+    subject = (
+        f"New Zeptrix website request: {record['name']}"
+        if is_website_request
+        else f"New Zeptrix free analysis registration: {record['name']}"
+    )
     components = ", ".join(record["components"]) if record["components"] else "Not selected"
     company = record["company"] or "Not provided"
     phone = record["phone"] or "Not provided"
     aws_accounts = record["awsAccounts"] if record["awsAccounts"] is not None else "Not provided"
-    body = f"""New Zeptrix registration
+    if is_website_request:
+        body = f"""New Zeptrix website request
+
+Name: {record['name']}
+Email: {record['email']}
+Company: {company}
+Phone: {phone}
+Current site: {record.get('currentSite') or 'Not provided'}
+Request type: {record.get('requestType') or 'Not provided'}
+Timeline: {record.get('timeline') or 'Not provided'}
+Budget: {record.get('budget') or 'Not provided'}
+Free migration interest: {'Yes' if record.get('freeMigration') else 'No'}
+
+First request:
+{record.get('firstRequest') or 'Not provided'}
+
+Submitted at: {record['submittedAt']}
+"""
+    else:
+        body = f"""New Zeptrix registration
 
 Name: {record['name']}
 Email: {record['email']}
