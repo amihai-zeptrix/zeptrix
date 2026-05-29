@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+hook_dir="$(cd "$(dirname "$0")" && pwd)"
+cd "$hook_dir/.."
+
+./scripts/test.sh
