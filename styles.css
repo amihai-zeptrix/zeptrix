@@ -392,12 +392,12 @@ h1 {
 }
 
 .wp-modern-body {
-  background: #f6f3ea;
+  background: #f5f7f9;
 }
 
 .wp-modern-page {
   overflow: hidden;
-  background: #f6f3ea;
+  background: #f5f7f9;
 }
 
 .wp-hero {
@@ -410,9 +410,10 @@ h1 {
   padding: 132px clamp(20px, 4vw, 56px) 124px;
   overflow: hidden;
   background:
-    radial-gradient(circle at 84% 26%, rgba(25, 199, 162, 0.16), transparent 28%),
-    linear-gradient(90deg, rgba(7, 17, 14, 0.98), rgba(7, 17, 14, 0.9)),
-    var(--night);
+    radial-gradient(circle at 82% 24%, rgba(56, 161, 219, 0.24), transparent 28%),
+    radial-gradient(circle at 18% 76%, rgba(240, 185, 77, 0.13), transparent 26%),
+    linear-gradient(90deg, rgba(7, 17, 14, 0.98), rgba(10, 39, 55, 0.94)),
+    #071923;
   color: var(--white);
 }
 
@@ -429,6 +430,37 @@ h1 {
   line-height: 1.04;
 }
 
+.wp-brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  margin-bottom: 20px;
+  padding: 8px 14px 8px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(14px);
+}
+
+.wp-brand-lockup img {
+  display: block;
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.wp-brand-lockup span {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .wp-hero-copy p:not(.eyebrow) {
   max-width: 690px;
   margin-bottom: 28px;
@@ -438,12 +470,42 @@ h1 {
   font-weight: 600;
 }
 
+.wp-limited-offer {
+  display: grid;
+  gap: 6px;
+  max-width: 700px;
+  margin: 0 0 26px;
+  padding: 18px 20px;
+  border: 1px solid rgba(240, 185, 77, 0.46);
+  border-radius: var(--radius);
+  background: rgba(240, 185, 77, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.wp-limited-offer strong {
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.wp-limited-offer span {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: clamp(18px, 1.5vw, 22px);
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .wp-hero .button.primary,
 .wp-cta .button.primary {
   min-height: 58px;
   padding: 0 24px;
   line-height: 1.2;
   text-align: center;
+  background: #38a1db;
+  color: #071923;
 }
 
 .wp-migrate-button {
@@ -475,7 +537,7 @@ h1 {
   height: 34px;
   border: 2px solid rgba(255, 255, 255, 0.86);
   border-radius: 50%;
-  color: var(--white);
+  color: #ffffff;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 20px;
   font-weight: 700;
@@ -504,7 +566,7 @@ h1 {
   right: clamp(34px, 4vw, 72px);
   bottom: 52px;
   width: min(680px, 42vw);
-  opacity: 0.62;
+  opacity: 0.7;
   pointer-events: none;
 }
 
@@ -515,7 +577,7 @@ h1 {
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius);
-  background: #fffaf0;
+  background: #ffffff;
   box-shadow: 0 34px 90px rgba(0, 0, 0, 0.3);
 }
 
@@ -586,9 +648,17 @@ h1 {
 }
 
 .site-nav b {
-  width: 72px;
-  height: 16px;
-  background: rgba(17, 24, 21, 0.28);
+  width: max-content;
+  min-width: 82px;
+  height: 22px;
+  padding: 4px 9px;
+  background: #21759b;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .site-nav i {
@@ -650,26 +720,26 @@ h1 {
 
 .clinic-shot {
   background:
-    linear-gradient(180deg, rgba(7, 17, 14, 0.05), rgba(7, 17, 14, 0.7)),
-    radial-gradient(circle at 76% 28%, #dfeee9 0 13%, transparent 14%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.2) 0 18%, transparent 18% 100%),
-    linear-gradient(135deg, #78c9b4, #f7f5ee 48%, #163d34);
+    linear-gradient(180deg, rgba(7, 17, 14, 0.05), rgba(7, 17, 14, 0.68)),
+    radial-gradient(circle at 76% 28%, rgba(255, 255, 255, 0.64) 0 13%, transparent 14%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.12) 0 2px, transparent 2px 24px),
+    linear-gradient(135deg, #38a1db, #21759b 52%, #071923);
 }
 
 .consulting-shot {
   background:
     linear-gradient(180deg, rgba(7, 17, 14, 0.02), rgba(7, 17, 14, 0.68)),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.2) 0 34%, transparent 34%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0 34%, transparent 34%),
     repeating-linear-gradient(0deg, transparent 0 18px, rgba(255, 255, 255, 0.16) 18px 19px),
-    linear-gradient(135deg, #f0b94d, #ee745f 48%, #111815);
+    linear-gradient(135deg, #f0b94d, #38a1db 48%, #071923);
 }
 
 .saas-shot {
   background:
     linear-gradient(180deg, rgba(7, 17, 14, 0.04), rgba(7, 17, 14, 0.72)),
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 42px),
-    radial-gradient(circle at 72% 30%, rgba(240, 185, 77, 0.7) 0 10%, transparent 11%),
-    linear-gradient(135deg, #19c7a2, #163d34 55%, #07110e);
+    radial-gradient(circle at 72% 30%, rgba(240, 185, 77, 0.74) 0 10%, transparent 11%),
+    linear-gradient(135deg, #19c7a2, #21759b 55%, #071923);
 }
 
 .site-feature-row {
@@ -760,8 +830,8 @@ h1 {
 }
 
 .new-stack {
-  border-color: rgba(25, 199, 162, 0.36);
-  background: rgba(25, 199, 162, 0.1);
+  border-color: rgba(56, 161, 219, 0.46);
+  background: rgba(56, 161, 219, 0.12);
   transform: translateY(-34px);
 }
 
@@ -785,7 +855,7 @@ h1 {
   min-height: 276px;
   padding: 18px;
   border-radius: var(--radius);
-  background: #fffaf0;
+  background: #ffffff;
   color: var(--ink);
   box-shadow: inset 0 0 0 1px rgba(17, 24, 21, 0.1);
 }
@@ -801,11 +871,11 @@ h1 {
 .screen-bar {
   width: 42%;
   height: 20px;
-  background: var(--coral);
+  background: #d63638;
 }
 
 .new-stack .screen-bar {
-  background: var(--teal);
+  background: #38a1db;
 }
 
 .screen-line.mid {
@@ -827,7 +897,7 @@ h1 {
   display: grid;
   min-height: 42px;
   place-items: center;
-  border: 1px solid rgba(238, 116, 95, 0.25);
+  border: 1px solid rgba(214, 54, 56, 0.25);
   border-radius: 8px;
   background: rgba(238, 116, 95, 0.1);
   color: #8d2b21;
@@ -843,11 +913,11 @@ h1 {
   width: 142px;
   height: 142px;
   margin: 6px 0;
-  border: 13px solid rgba(25, 199, 162, 0.18);
-  border-top-color: var(--teal);
-  border-right-color: var(--teal);
+  border: 13px solid rgba(56, 161, 219, 0.18);
+  border-top-color: #38a1db;
+  border-right-color: #38a1db;
   border-radius: 50%;
-  background: rgba(25, 199, 162, 0.08);
+  background: rgba(56, 161, 219, 0.08);
 }
 
 .performance-gauge b {
@@ -896,7 +966,7 @@ h1 {
   overflow: hidden;
   border: 1px solid rgba(17, 24, 21, 0.12);
   border-radius: var(--radius);
-  background: #fffaf0;
+  background: #ffffff;
   box-shadow: 0 24px 70px rgba(17, 24, 21, 0.12);
 }
 
@@ -912,7 +982,7 @@ h1 {
 .wp-proof-strip strong {
   display: block;
   margin-bottom: 6px;
-  color: var(--forest);
+  color: #21759b;
   font-size: clamp(34px, 4vw, 58px);
   line-height: 1;
 }
@@ -948,7 +1018,7 @@ h1 {
 #codex-process {
   background:
     linear-gradient(90deg, rgba(7, 17, 14, 0.96) 0%, rgba(7, 17, 14, 0.82) 42%, rgba(7, 17, 14, 0.58) 100%),
-    url("assets/ai-managed-websites-bg.png") center / cover no-repeat;
+    url("/assets/ai-managed-websites-bg.png") center / cover no-repeat;
 }
 
 #codex-process::after {
@@ -1107,8 +1177,9 @@ h1 {
   overflow: hidden;
   color: var(--ink);
   background:
-    radial-gradient(circle at 12% 18%, rgba(240, 185, 77, 0.18), transparent 28%),
-    linear-gradient(180deg, #f4e6c8 0%, #efe0ba 100%);
+    radial-gradient(circle at 12% 18%, rgba(56, 161, 219, 0.16), transparent 28%),
+    radial-gradient(circle at 86% 64%, rgba(240, 185, 77, 0.18), transparent 26%),
+    linear-gradient(180deg, #eef5f9 0%, #e7f0f5 100%);
 }
 
 #managed-service::after {
@@ -1149,7 +1220,7 @@ h1 {
 }
 
 #managed-service .eyebrow {
-  color: var(--forest);
+  color: #21759b;
 }
 
 .website-form {
@@ -2261,7 +2332,7 @@ h1 {
   }
 
   .wp-modern-page {
-    background: #f6f3ea;
+    background: #f5f7f9;
   }
 
   .wp-hero {
@@ -2464,6 +2535,14 @@ h1 {
   .wp-hero h1 {
     font-size: clamp(34px, 9.2vw, 48px);
     line-height: 1.02;
+  }
+
+  .wp-brand-lockup {
+    max-width: 100%;
+  }
+
+  .wp-brand-lockup span {
+    font-size: 11px;
   }
 
   .wp-hero-copy p:not(.eyebrow) {

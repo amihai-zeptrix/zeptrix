@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zeptrix CRM Follow-up Email Template</title>
+    <style>
+      :root {
+        --ink: #142033;
+        --muted: #657084;
+        --blue: #3676e9;
+        --line: #e5eaf1;
+        --soft: #f5f8fc;
+        --navy: #101d31;
+        --mint: #20a878;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: #eef3f9;
+        font: 15px/1.6 Inter, Arial, Helvetica, sans-serif;
+      }
+
+      .page {
+        width: min(1120px, calc(100% - 32px));
+        margin: 28px auto;
+        display: grid;
+        grid-template-columns: minmax(0, 720px) minmax(300px, 1fr);
+        gap: 22px;
+        align-items: start;
+      }
+
+      .preview,
+      .notes {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 18px 45px rgba(38, 65, 103, .12);
+        overflow: hidden;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+        background: #fbfcff;
+      }
+
+      .toolbar strong {
+        font-size: 14px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border: 1px solid #c7d9fa;
+        border-radius: 999px;
+        color: var(--blue);
+        background: #eef5ff;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .email-frame {
+        padding: 28px 18px 34px;
+        background: #f4f7fb;
+      }
+
+      .email {
+        width: min(640px, 100%);
+        margin: 0 auto;
+        border-collapse: collapse;
+        background: #fff;
+      }
+
+      .email td {
+        padding: 0;
+      }
+
+      .email a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .header {
+        padding: 26px 30px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink);
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .mark {
+        display: inline-grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 9px;
+        color: #fff;
+        background: linear-gradient(135deg, #55a3ff, #7961e7);
+        font-weight: 800;
+      }
+
+      .hero {
+        padding: 34px 30px 20px;
+      }
+
+      .eyebrow {
+        color: var(--blue);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 10px 0 14px;
+        font: 800 32px/1.13 Inter, Arial, Helvetica, sans-serif;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0 0 16px;
+        color: var(--muted);
+      }
+
+      .body-copy {
+        padding: 0 30px 10px;
+      }
+
+      .cta-row {
+        padding: 10px 30px 28px;
+      }
+
+      .button {
+        display: inline-block;
+        padding: 13px 18px;
+        border-radius: 7px;
+        color: #fff !important;
+        background: var(--blue);
+        font-weight: 800;
+      }
+
+      .summary {
+        margin: 0 30px 28px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .summary-row {
+        display: grid;
+        grid-template-columns: 118px 1fr;
+        gap: 14px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .summary-row:last-child {
+        border-bottom: 0;
+      }
+
+      .summary-row b {
+        color: var(--ink);
+      }
+
+      .summary-row span {
+        color: var(--muted);
+      }
+
+      .value-strip {
+        padding: 24px 30px;
+        color: #fff;
+        background: var(--navy);
+      }
+
+      .value-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .value-grid div {
+        min-height: 92px;
+        padding: 14px;
+        border: 1px solid rgba(255, 255, 255, .14);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, .06);
+      }
+
+      .value-grid strong {
+        display: block;
+        margin-bottom: 5px;
+        color: #fff;
+        font-size: 15px;
+      }
+
+      .value-grid span {
+        color: #c2d5ee;
+        font-size: 13px;
+      }
+
+      .next {
+        padding: 28px 30px 18px;
+      }
+
+      .next h2 {
+        margin: 0 0 9px;
+        font-size: 21px;
+        line-height: 1.2;
+      }
+
+      .steps {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .steps li {
+        display: flex;
+        gap: 10px;
+        margin: 12px 0;
+        color: var(--muted);
+      }
+
+      .check {
+        flex: 0 0 auto;
+        display: inline-grid;
+        width: 22px;
+        height: 22px;
+        place-items: center;
+        border-radius: 50%;
+        color: #fff;
+        background: var(--mint);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .signature {
+        padding: 8px 30px 30px;
+      }
+
+      .footer {
+        padding: 18px 30px;
+        border-top: 1px solid var(--line);
+        color: #8791a2;
+        background: #fbfcff;
+        font-size: 12px;
+      }
+
+      .notes {
+        padding: 20px;
+      }
+
+      .notes h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+
+      .field {
+        margin-bottom: 16px;
+      }
+
+      .field label {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .field div,
+      pre {
+        margin: 0;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--soft);
+        color: var(--ink);
+        white-space: pre-wrap;
+        font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      @media (max-width: 900px) {
+        .page { grid-template-columns: 1fr; }
+      }
+
+      @media (max-width: 560px) {
+        .page {
+          width: 100%;
+          margin: 0;
+        }
+
+        .preview,
+        .notes {
+          border-radius: 0;
+        }
+
+        .header,
+        .hero,
+        .body-copy,
+        .cta-row,
+        .value-strip,
+        .next,
+        .signature,
+        .footer {
+          padding-left: 20px;
+          padding-right: 20px;
+        }
+
+        h1 {
+          font-size: 27px;
+        }
+
+        .summary {
+          margin-left: 20px;
+          margin-right: 20px;
+        }
+
+        .summary-row,
+        .value-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="preview" aria-label="Email visual preview">
+        <div class="toolbar">
+          <strong>CRM follow-up email preview</strong>
+          <span class="pill">HTML template</span>
+        </div>
+        <div class="email-frame">
+          <table class="email" role="presentation" aria-label="Follow-up email">
+            <tr>
+              <td class="header">
+                <div class="brand"><span class="mark">Z</span><span>Zeptrix CRM</span></div>
+              </td>
+            </tr>
+            <tr>
+              <td class="hero">
+                <div class="eyebrow">Follow-up from our conversation</div>
+                <h1>Here is the CRM workspace we discussed.</h1>
+                <p>Hi {{first_name}},</p>
+                <p>Thanks again for taking the time to talk through how your team manages pipeline, follow-ups, and forecast confidence. I pulled together the most relevant Zeptrix CRM flow based on what you described.</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="body-copy">
+                <p>The short version: Zeptrix CRM is built to keep every opportunity tied to a clear next action, without forcing your team into a heavy enterprise rollout.</p>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div class="summary">
+                  <div class="summary-row">
+                    <b>Your goal</b>
+                    <span>Make active opportunities easier to prioritize and stop follow-ups from slipping.</span>
+                  </div>
+                  <div class="summary-row">
+                    <b>Best fit</b>
+                    <span>Pipeline view, activity reminders, communication timeline, configurable fields, and stage confidence.</span>
+                  </div>
+                  <div class="summary-row">
+                    <b>Next step</b>
+                    <span>A focused 20-minute walkthrough using one of your real sales workflows.</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="cta-row">
+                <a class="button" href="https://zeptrix.io/crm/">Open the CRM workspace</a>
+              </td>
+            </tr>
+            <tr>
+              <td class="value-strip">
+                <div class="value-grid">
+                  <div>
+                    <strong>Follow-up discipline</strong>
+                    <span>Tasks, owners, due dates, and overdue visibility stay attached to the deal.</span>
+                  </div>
+                  <div>
+                    <strong>Cleaner context</strong>
+                    <span>Email and activity history help the next seller act without rebuilding the story.</span>
+                  </div>
+                  <div>
+                    <strong>Forecast clarity</strong>
+                    <span>Editable stage confidence and closing-soon indicators make the forecast easier to defend.</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="next">
+                <h2>Suggested next steps</h2>
+                <ul class="steps">
+                  <li><span class="check">1</span><span>Open the workspace and review the pipeline, saved views, and activity panel.</span></li>
+                  <li><span class="check">2</span><span>Send one sample workflow or CSV structure so we can map your fields cleanly.</span></li>
+                  <li><span class="check">3</span><span>Book a short session to tune stages, confidence, columns, and follow-up rules.</span></li>
+                </ul>
+              </td>
+            </tr>
+            <tr>
+              <td class="signature">
+                <p>Would {{suggested_time}} work for a quick walkthrough?</p>
+                <p>Best,<br>{{sender_name}}<br>Zeptrix</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="footer">
+                Zeptrix CRM keeps pipeline clarity, follow-up discipline, communication context, data quality, and forecasting in one focused workspace.
+              </td>
+            </tr>
+          </table>
+        </div>
+      </section>
+
+      <aside class="notes" aria-label="Email copy">
+        <h2>Reusable Copy</h2>
+        <div class="field">
+          <label>Subject</label>
+          <div>Following up with the Zeptrix CRM workspace</div>
+        </div>
+        <div class="field">
+          <label>Preheader</label>
+          <div>A focused sales workspace for pipeline clarity, follow-ups, and forecast confidence.</div>
+        </div>
+        <div class="field">
+          <label>Personalization Tokens</label>
+          <div>{{first_name}}, {{sender_name}}, {{suggested_time}}</div>
+        </div>
+        <div class="field">
+          <label>Plain Text Version</label>
+          <pre>Hi {{first_name}},
+
+Thanks again for taking the time to talk through how your team manages pipeline, follow-ups, and forecast confidence.
+
+The short version: Zeptrix CRM is built to keep every opportunity tied to a clear next action, without forcing your team into a heavy enterprise rollout.
+
+Based on our conversation, the best-fit areas are:
+- Pipeline visibility and saved views
+- Follow-up tasks with owners, due dates, and overdue visibility
+- Communication history attached to each opportunity
+- Configurable fields and stage confidence for cleaner forecasting
+
+You can open the workspace here:
+https://zeptrix.io/crm/
+
+Would {{suggested_time}} work for a quick walkthrough using one of your real sales workflows?
+
+Best,
+{{sender_name}}
+Zeptrix</pre>
+        </div>
+      </aside>
+    </main>
+  </body>
+</html>

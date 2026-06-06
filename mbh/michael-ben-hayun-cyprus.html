@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>מיכל בן חיון</title>
+  <meta name="description" content="מיכל בן חיון — מומחית נדל״ן בקפריסין. ליווי אישי למשקיעים ישראלים ברכישת נכסים מניבים ויוקרתיים, מאיתור הנכס ועד מסירת המפתח." />
+  <meta name="theme-color" content="#0a1622" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="מיכל בן חיון" />
+  <meta property="og:description" content="ליווי אישי למשקיעים ישראלים ברכישת נדל״ן מניב ויוקרתי בקפריסין." />
+  <meta property="og:type" content="website" />
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230a1622'/%3E%3Ctext x='50' y='68' font-family='Georgia,serif' font-size='52' fill='%23c9a86a' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+/* =========================================================
+   מיכל בן חיון — נדל״ן בקפריסין
+   Design system: dark navy + brass gold, Mediterranean luxury
+   ========================================================= */
+
+:root {
+  --navy-900: #0a1622;
+  --navy-800: #0f2030;
+  --navy-700: #16304a;
+  --navy-600: #1f4060;
+  --ink: #15202b;
+
+  --gold: #c9a86a;
+  --gold-soft: #d8bd86;
+  --gold-deep: #ab8a4d;
+
+  --teal: #2a7f8a;
+  --cream: #f7f3ec;
+  --cream-2: #efe8dc;
+  --paper: #ffffff;
+
+  --text: #1d2733;
+  --text-soft: #51606e;
+  --text-invert: #eef2f6;
+  --text-invert-soft: #aebccb;
+
+  --line: #e4ddd0;
+  --shadow-sm: 0 4px 16px rgba(10, 22, 34, .08);
+  --shadow-md: 0 16px 40px rgba(10, 22, 34, .12);
+  --shadow-lg: 0 30px 70px rgba(10, 22, 34, .22);
+
+  --radius: 16px;
+  --radius-lg: 26px;
+  --maxw: 1180px;
+
+  --serif: "Frank Ruhl Libre", "Times New Roman", serif;
+  --sans: "Heebo", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+
+  --ease: cubic-bezier(.22, .61, .36, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 90px; }
+
+body {
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--cream);
+  line-height: 1.7;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+h1, h2, h3 { font-family: var(--serif); line-height: 1.18; font-weight: 700; color: var(--ink); }
+
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+
+.container { width: 100%; max-width: var(--maxw); margin-inline: auto; padding-inline: 24px; }
+
+.section { padding: clamp(64px, 9vw, 120px) 0; }
+.section-alt { background: var(--cream-2); }
+
+.section-eyebrow {
+  font-size: .82rem; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--gold-deep); font-weight: 700; margin-bottom: 14px;
+}
+.section-head { max-width: 720px; margin-bottom: 54px; }
+.section-head h2 { font-size: clamp(1.8rem, 3.6vw, 2.8rem); }
+.section-note { margin-top: 14px; font-size: .9rem; color: var(--text-soft); }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 15px 30px; border-radius: 999px; font-weight: 600; font-size: 1rem;
+  cursor: pointer; border: 1.5px solid transparent; transition: all .35s var(--ease);
+  font-family: var(--sans); white-space: nowrap;
+}
+.btn-gold { background: var(--gold); color: var(--navy-900); box-shadow: 0 10px 26px rgba(201,168,106,.4); }
+.btn-gold:hover { background: var(--gold-soft); transform: translateY(-3px); box-shadow: 0 16px 34px rgba(201,168,106,.5); }
+.btn-ghost { background: rgba(255,255,255,.08); color: #fff; border-color: rgba(255,255,255,.5); backdrop-filter: blur(4px); }
+.btn-ghost:hover { background: rgba(255,255,255,.16); transform: translateY(-3px); }
+.btn-dark { background: var(--navy-900); color: #fff; }
+.btn-dark:hover { background: var(--navy-700); transform: translateY(-3px); }
+.btn-block { width: 100%; }
+
+/* ---------- Header ---------- */
+.site-header {
+  position: fixed; inset-block-start: 0; inset-inline: 0; z-index: 100;
+  transition: all .4s var(--ease);
+  background: linear-gradient(to bottom, rgba(10,22,34,.55), rgba(10,22,34,0));
+}
+.site-header.scrolled {
+  background: rgba(10,22,34,.96); backdrop-filter: blur(10px);
+  box-shadow: 0 8px 30px rgba(0,0,0,.25);
+}
+.header-inner { display: flex; align-items: center; justify-content: space-between; height: 78px; }
+
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark-link { display: inline-flex; border-radius: 50%; cursor: pointer; }
+.brand-mark { transition: transform .3s var(--ease), box-shadow .3s var(--ease); }
+.brand-mark-link:hover .brand-mark { transform: scale(1.06); box-shadow: 0 0 0 2px var(--gold-soft), 0 6px 16px rgba(0,0,0,.4); }
+.brand-mark-link:focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 3px; }
+.brand-mark {
+  width: 46px; height: 46px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; position: relative; overflow: hidden;
+  background: linear-gradient(135deg, var(--gold), var(--gold-deep));
+  color: var(--navy-900); font-family: var(--serif); font-weight: 900; font-size: 1.5rem;
+  box-shadow: 0 0 0 2px rgba(201,168,106,.55), 0 4px 12px rgba(0,0,0,.3);
+}
+.brand-mark img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 20%; border-radius: inherit; }
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.brand-text strong { color: #fff; font-size: 1.12rem; font-weight: 700; }
+.brand-text small { color: var(--gold-soft); font-size: .72rem; letter-spacing: .04em; }
+
+.nav { display: flex; align-items: center; gap: 6px; }
+.nav a {
+  color: var(--text-invert); padding: 9px 14px; border-radius: 999px;
+  font-size: .96rem; font-weight: 500; transition: all .25s var(--ease); position: relative;
+}
+.nav a:not(.nav-cta):hover { color: #fff; background: rgba(255,255,255,.1); }
+.nav-cta { background: var(--gold); color: var(--navy-900) !important; font-weight: 700; margin-inline-start: 8px; }
+.nav-cta:hover { background: var(--gold-soft); }
+
+.nav-toggle { display: none; flex-direction: column; gap: 5px; background: none; border: 0; cursor: pointer; padding: 8px; }
+.nav-toggle span { width: 26px; height: 2px; background: #fff; border-radius: 2px; transition: all .3s var(--ease); }
+.nav-toggle.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.nav-toggle.open span:nth-child(2) { opacity: 0; }
+.nav-toggle.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* ---------- Hero ---------- */
+.hero { position: relative; min-height: 100vh; display: flex; align-items: center; color: #fff; overflow: hidden; }
+.hero-bg {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(1200px 700px at 80% -10%, rgba(42,127,138,.55), transparent 60%),
+    radial-gradient(900px 600px at 10% 110%, rgba(201,168,106,.32), transparent 60%),
+    linear-gradient(135deg, #0a1622 0%, #0f2438 45%, #143047 100%);
+}
+/* subtle "skyline / waves" decorative layer */
+.hero-bg::after {
+  content: ""; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+  background-size: 64px 64px; mask-image: radial-gradient(circle at 50% 40%, #000, transparent 75%);
+  opacity: .5;
+}
+/* real photo layer — sits above the gradient fallback; if it fails to load the colorful gradient shows through */
+.hero-photo {
+  position: absolute; inset: 0; z-index: 1;
+  background-image:
+    linear-gradient(105deg, rgba(8,18,28,.92) 0%, rgba(10,22,34,.72) 42%, rgba(10,22,34,.35) 100%),
+    url("https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1920&q=80&auto=format&fit=crop");
+  background-size: cover; background-position: center;
+}
+.hero-overlay { position: absolute; inset-block-end: 0; inset-inline: 0; height: 40%; z-index: 1;
+  background: linear-gradient(to top, rgba(10,22,34,.9), transparent); }
+.hero-inner { position: relative; z-index: 2; padding-block: 120px; max-width: 820px; }
+.eyebrow { color: var(--gold-soft); letter-spacing: .14em; text-transform: uppercase; font-size: .82rem; font-weight: 700; margin-bottom: 22px; }
+.hero h1 { color: #fff; font-size: clamp(2.4rem, 6vw, 4.4rem); font-weight: 900; letter-spacing: -.01em; }
+.hero h1 .accent { color: var(--gold); }
+.hero-sub { margin-top: 24px; font-size: clamp(1.05rem, 2vw, 1.28rem); color: var(--text-invert-soft); max-width: 640px; }
+.hero-actions { margin-top: 38px; display: flex; gap: 16px; flex-wrap: wrap; }
+.hero-badges { list-style: none; display: flex; gap: 26px; flex-wrap: wrap; margin-top: 46px; }
+.hero-badges li { font-size: .95rem; color: var(--text-invert-soft); }
+
+.scroll-cue { position: absolute; inset-block-end: 28px; inset-inline-start: 50%; transform: translateX(50%); z-index: 3; }
+.scroll-cue span { display: block; width: 26px; height: 42px; border: 2px solid rgba(255,255,255,.5); border-radius: 14px; position: relative; }
+.scroll-cue span::after { content: ""; position: absolute; inset-block-start: 7px; inset-inline-start: 50%; transform: translateX(-50%);
+  width: 4px; height: 8px; background: #fff; border-radius: 2px; animation: scrolldot 1.6s infinite; }
+@keyframes scrolldot { 0% { opacity: 0; transform: translate(-50%, 0); } 40% { opacity: 1; } 80% { opacity: 0; transform: translate(-50%, 14px); } }
+
+/* ---------- Stats ---------- */
+.stats { background: var(--navy-900); color: #fff; padding: 54px 0; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; text-align: center; }
+.stat { padding: 10px; }
+.stat-num, .stat-suffix { font-family: var(--serif); font-size: clamp(2.2rem, 4vw, 3.1rem); font-weight: 900; color: var(--gold); }
+.stat p { margin-top: 6px; color: var(--text-invert-soft); font-size: .98rem; }
+.stat + .stat { border-inline-start: 1px solid rgba(255,255,255,.08); }
+
+/* ---------- About ---------- */
+.about-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 64px; align-items: center; }
+.about-media { position: relative; }
+.about-photo {
+  aspect-ratio: 4/5; border-radius: var(--radius-lg); position: relative; overflow: hidden;
+  background:
+    radial-gradient(120% 120% at 30% 20%, rgba(201,168,106,.3), transparent 55%),
+    linear-gradient(160deg, var(--navy-700), var(--navy-900));
+  box-shadow: var(--shadow-lg); display: grid; place-items: center;
+  border: 1px solid rgba(255,255,255,.06);
+}
+.about-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 25%; border-radius: inherit; }
+.about-photo::after {
+  content: ""; position: absolute; inset: 16px; border: 1px solid rgba(201,168,106,.55); border-radius: calc(var(--radius-lg) - 10px); z-index: 2;
+}
+.photo-tag, .proj-tag {
+  font-size: .85rem; letter-spacing: .12em; color: rgba(255,255,255,.55);
+  text-transform: uppercase; font-weight: 600;
+}
+.about-badge {
+  position: absolute; inset-block-end: -22px; inset-inline-start: -22px;
+  background: var(--gold); color: var(--navy-900); padding: 18px 24px; border-radius: 16px;
+  box-shadow: var(--shadow-md); display: flex; flex-direction: column; line-height: 1.3;
+}
+.about-badge strong { font-size: 1.05rem; }
+.about-badge span { font-size: .82rem; opacity: .8; }
+.about-text h2 { font-size: clamp(1.8rem, 3.4vw, 2.6rem); margin: 10px 0 20px; }
+.about-text p { color: var(--text-soft); margin-bottom: 16px; font-size: 1.05rem; }
+.about-list { list-style: none; margin: 22px 0 30px; display: grid; gap: 12px; }
+.about-list li { position: relative; padding-inline-start: 30px; color: var(--text); }
+.about-list li::before {
+  content: "✓"; position: absolute; inset-inline-start: 0; inset-block-start: 1px;
+  width: 22px; height: 22px; background: rgba(201,168,106,.18); color: var(--gold-deep);
+  border-radius: 50%; display: grid; place-items: center; font-size: .8rem; font-weight: 700;
+}
+
+/* ---------- Cards (Why) ---------- */
+.cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.card {
+  background: var(--paper); border-radius: var(--radius); padding: 34px 28px;
+  box-shadow: var(--shadow-sm); border: 1px solid var(--line); transition: all .4s var(--ease);
+}
+.card:hover { transform: translateY(-8px); box-shadow: var(--shadow-md); border-color: var(--gold); }
+.card-icon { font-size: 2rem; width: 60px; height: 60px; border-radius: 16px; display: grid; place-items: center;
+  background: linear-gradient(150deg, var(--cream), var(--cream-2)); margin-bottom: 18px; }
+.card h3 { font-size: 1.3rem; margin-bottom: 10px; }
+.card p { color: var(--text-soft); }
+
+/* ---------- Services ---------- */
+.services-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--paper); }
+.service { padding: 38px 30px; border-inline-end: 1px solid var(--line); border-block-end: 1px solid var(--line); transition: background .3s var(--ease); position: relative; }
+.service:hover { background: var(--cream); }
+.service-num { font-family: var(--serif); font-size: 1.1rem; color: var(--gold-deep); font-weight: 700; }
+.service h3 { font-size: 1.25rem; margin: 12px 0 8px; }
+.service p { color: var(--text-soft); }
+
+/* ---------- Projects ---------- */
+.filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 36px; }
+.filter { padding: 9px 22px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--paper);
+  cursor: pointer; font-family: var(--sans); font-size: .95rem; font-weight: 500; color: var(--text-soft); transition: all .3s var(--ease); }
+.filter:hover { border-color: var(--gold); color: var(--text); }
+.filter.active { background: var(--navy-900); color: #fff; border-color: var(--navy-900); }
+
+.projects-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.project {
+  background: var(--paper); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm);
+  border: 1px solid var(--line); transition: all .45s var(--ease); display: flex; flex-direction: column;
+}
+.project:hover { transform: translateY(-8px); box-shadow: var(--shadow-lg); }
+.project.hide { display: none; }
+.project-img { aspect-ratio: 3/2; position: relative; display: grid; place-items: center; overflow: hidden; }
+.project-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;
+  transition: transform .6s var(--ease); }
+.project:hover .project-img img { transform: scale(1.06); }
+.project-img::after { content: ""; position: absolute; inset: 0; z-index: 2;
+  background: linear-gradient(to top, rgba(10,22,34,.45), transparent 55%); }
+.project-status {
+  position: absolute; inset-block-start: 14px; inset-inline-start: 14px; z-index: 3;
+  background: rgba(255,255,255,.92); color: var(--navy-900); font-size: .75rem; font-weight: 700;
+  padding: 5px 12px; border-radius: 999px; letter-spacing: .03em;
+}
+.project-body { padding: 22px 22px 26px; display: flex; flex-direction: column; flex: 1; }
+.project-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.project-city { font-size: .85rem; color: var(--gold-deep); font-weight: 700; letter-spacing: .04em; }
+.project-price { font-weight: 700; color: var(--navy-900); font-size: .95rem; }
+.project h3 { font-size: 1.3rem; margin-bottom: 8px; }
+.project-body p { color: var(--text-soft); font-size: .98rem; }
+.project-meta { list-style: none; display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; font-size: .88rem; color: var(--text-soft); }
+.project-link { margin-block-start: auto; color: var(--gold-deep); font-weight: 700; transition: gap .3s; }
+.project-link:hover { color: var(--navy-900); }
+
+/* gradient placeholders for project imagery */
+.grad-1 { background: linear-gradient(140deg, #1f4060, #2a7f8a); }
+.grad-2 { background: linear-gradient(140deg, #2a7f8a, #4a8f7a); }
+.grad-3 { background: linear-gradient(140deg, #16304a, #b08a4d); }
+.grad-4 { background: linear-gradient(140deg, #1f6f78, #c9a86a); }
+.grad-5 { background: linear-gradient(140deg, #0f2438, #1f4060); }
+.grad-6 { background: linear-gradient(140deg, #3a6f5a, #2a7f8a); }
+
+/* ---------- Process ---------- */
+.steps { list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(5, 1fr); gap: 22px; }
+.step { position: relative; padding-block-start: 22px; }
+.step::before { content: ""; position: absolute; inset-block-start: 30px; inset-inline-start: 0; width: 100%; height: 2px;
+  background: repeating-linear-gradient(90deg, var(--gold) 0 8px, transparent 8px 16px); opacity: .4; }
+.step:last-child::before { display: none; }
+.step-num { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--navy-900); color: var(--gold); font-family: var(--serif); font-size: 1.6rem; font-weight: 900;
+  position: relative; z-index: 1; box-shadow: 0 0 0 6px var(--cream); }
+.step h3 { font-size: 1.2rem; margin: 18px 0 8px; }
+.step p { color: var(--text-soft); font-size: .96rem; }
+
+/* ---------- Testimonials ---------- */
+.quotes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
+.quote { background: var(--paper); border-radius: var(--radius); padding: 34px 30px; box-shadow: var(--shadow-sm); border: 1px solid var(--line); }
+.stars { color: var(--gold); letter-spacing: 3px; margin-bottom: 14px; }
+.quote blockquote { font-family: var(--serif); font-size: 1.12rem; line-height: 1.6; color: var(--ink); }
+.quote figcaption { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
+.q-avatar { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--gold), var(--gold-deep)); color: var(--navy-900); font-weight: 700; font-size: 1.2rem; flex: none; }
+.quote figcaption strong { display: block; font-size: .98rem; }
+.quote figcaption small { color: var(--text-soft); }
+
+/* ---------- CTA banner ---------- */
+.cta-banner { background: linear-gradient(135deg, var(--navy-900), var(--navy-700)); color: #fff; position: relative; overflow: hidden; }
+.cta-banner::before { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(600px 300px at 85% 50%, rgba(201,168,106,.25), transparent 60%); }
+.cta-inner { position: relative; text-align: center; padding: clamp(56px, 8vw, 96px) 0; max-width: 680px; margin-inline: auto; }
+.cta-inner h2 { color: #fff; font-size: clamp(1.7rem, 3.4vw, 2.6rem); margin-bottom: 14px; }
+.cta-inner p { color: var(--text-invert-soft); margin-bottom: 30px; font-size: 1.1rem; }
+
+/* ---------- Contact ---------- */
+.contact-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 60px; align-items: start; }
+.contact-info h2 { font-size: clamp(1.8rem, 3.4vw, 2.6rem); margin: 10px 0 16px; }
+.contact-info > p { color: var(--text-soft); margin-bottom: 26px; }
+.contact-list { list-style: none; display: grid; gap: 16px; }
+.contact-list li { display: flex; align-items: center; gap: 14px; font-size: 1.05rem; }
+.ci-ic { width: 44px; height: 44px; border-radius: 12px; background: var(--paper); border: 1px solid var(--line);
+  display: grid; place-items: center; font-size: 1.2rem; flex: none; box-shadow: var(--shadow-sm); }
+.contact-list a:hover { color: var(--gold-deep); }
+
+.contact-form { background: var(--paper); border-radius: var(--radius-lg); padding: 36px; box-shadow: var(--shadow-md); border: 1px solid var(--line); }
+.field { margin-bottom: 18px; display: flex; flex-direction: column; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.field label { font-size: .9rem; font-weight: 600; margin-bottom: 7px; color: var(--text); }
+.field input, .field select, .field textarea {
+  font-family: var(--sans); font-size: 1rem; padding: 13px 15px; border: 1.5px solid var(--line);
+  border-radius: 12px; background: var(--cream); color: var(--text); transition: all .25s var(--ease); resize: vertical;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: var(--gold); background: #fff; box-shadow: 0 0 0 4px rgba(201,168,106,.15);
+}
+.field input.invalid, .field select.invalid { border-color: #d9534f; background: #fdf2f2; }
+.form-status { margin-top: 14px; font-size: .95rem; text-align: center; font-weight: 600; min-height: 1.2em; }
+.form-status.ok { color: #2a7f4f; }
+.form-status.err { color: #d9534f; }
+
+/* ---------- Footer ---------- */
+.site-footer { background: var(--navy-900); color: var(--text-invert-soft); padding: 50px 0 30px; }
+.footer-inner { display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center; }
+.footer-brand { display: flex; align-items: center; gap: 12px; }
+.footer-brand strong { color: #fff; display: block; }
+.footer-brand small { font-size: .78rem; color: var(--gold-soft); }
+.footer-nav { display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; }
+.footer-nav a:hover { color: var(--gold-soft); }
+.footer-social { display: flex; gap: 12px; justify-content: center; }
+.social-link { display: inline-flex; align-items: center; gap: 10px; padding: 10px 22px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.18); color: var(--text-invert); font-weight: 600; transition: all .3s var(--ease); }
+.social-link svg { flex: none; }
+.social-link:hover { background: #1877f2; border-color: #1877f2; color: #fff; transform: translateY(-2px); box-shadow: 0 10px 24px rgba(24,119,242,.45); }
+.footer-legal { font-size: .82rem; opacity: .7; border-block-start: 1px solid rgba(255,255,255,.08); padding-block-start: 22px; width: 100%; }
+
+/* ---------- WhatsApp float ---------- */
+.wa-float { position: fixed; inset-block-end: 24px; inset-inline-start: 24px; z-index: 90;
+  width: 58px; height: 58px; border-radius: 50%; background: #25d366; color: #fff;
+  display: grid; place-items: center; box-shadow: 0 10px 28px rgba(37,211,102,.5); transition: transform .3s var(--ease); }
+.wa-float:hover { transform: scale(1.1); }
+
+/* ---------- Reveal animation ---------- */
+.reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s var(--ease), transform .8s var(--ease); }
+.reveal.in { opacity: 1; transform: none; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 980px) {
+  .about-grid, .contact-grid { grid-template-columns: 1fr; gap: 44px; }
+  .about-media { max-width: 420px; margin-inline: auto; }
+  .cards-grid, .services-grid, .projects-grid, .quotes-grid { grid-template-columns: repeat(2, 1fr); }
+  .steps { grid-template-columns: repeat(2, 1fr); }
+  .step::before { display: none; }
+}
+
+@media (max-width: 720px) {
+  .nav {
+    position: fixed; inset-block-start: 78px; inset-inline: 0; flex-direction: column; align-items: stretch;
+    background: rgba(10,22,34,.98); backdrop-filter: blur(10px); padding: 16px 20px 26px; gap: 6px;
+    transform: translateY(-120%); transition: transform .4s var(--ease); box-shadow: 0 20px 40px rgba(0,0,0,.4);
+  }
+  .nav.open { transform: translateY(0); }
+  .nav a { padding: 13px 16px; }
+  .nav-cta { margin: 8px 0 0; text-align: center; }
+  .nav-toggle { display: flex; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 28px 16px; }
+  .stat + .stat { border-inline-start: 0; }
+  .cards-grid, .services-grid, .projects-grid, .quotes-grid, .steps { grid-template-columns: 1fr; }
+  .field-row { grid-template-columns: 1fr; }
+  .hero-badges { gap: 14px 22px; }
+  .about-badge { inset-inline-start: 50%; transform: translateX(50%); inset-block-end: -26px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+  html { scroll-behavior: auto; }
+  .scroll-cue span::after { animation: none; }
+}
+
+  </style>
+</head>
+<body>
+
+  <!-- ===== Header ===== -->
+  <header class="site-header" id="header">
+    <div class="container header-inner">
+      <div class="brand">
+        <a href="#about" class="brand-mark-link" aria-label="מעבר לקטע אודות">
+          <span class="brand-mark"><img src="assets/profile.jpg" alt="מיכל בן חיון" loading="lazy" /></span>
+        </a>
+        <a href="#home" class="brand-text" aria-label="מיכל בן חיון - דף הבית">
+          <strong>מיכל בן חיון</strong>
+          <small>נדל״ן והשקעות בקפריסין</small>
+        </a>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="ניווט ראשי">
+        <a href="#about">אודות</a>
+        <a href="#why">למה קפריסין</a>
+        <a href="#services">שירותים</a>
+        <a href="#projects">פרויקטים</a>
+        <a href="#process">התהליך</a>
+        <a href="#testimonials">המלצות</a>
+        <a href="#contact" class="nav-cta">לשיחת ייעוץ</a>
+      </nav>
+
+      <button class="nav-toggle" id="navToggle" aria-label="פתיחת תפריט" aria-expanded="false" aria-controls="nav">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== Hero ===== -->
+  <section class="hero" id="home">
+    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="hero-photo" aria-hidden="true"></div>
+    <div class="hero-overlay" aria-hidden="true"></div>
+    <div class="container hero-inner">
+      <p class="eyebrow reveal">השקעות נדל״ן בקפריסין · ליווי אישי 360°</p>
+      <h1 class="reveal">הבית השני שלכם — <br /><span class="accent">וההשקעה החכמה הבאה.</span></h1>
+      <p class="hero-sub reveal">
+        מיכל בן חיון מלווה משקיעים ומשפחות מישראל ברכישת נדל״ן מניב ויוקרתי בקפריסין —
+        מאיתור הנכס המדויק, דרך הליווי המשפטי והפיננסי, ועד מסירת המפתח וניהול הנכס.
+      </p>
+      <div class="hero-actions reveal">
+        <a href="#contact" class="btn btn-gold">קביעת שיחת ייעוץ</a>
+        <a href="#projects" class="btn btn-ghost">צפייה בפרויקטים</a>
+      </div>
+      <ul class="hero-badges reveal">
+        <li>🇨🇾 שעה טיסה מישראל</li>
+        <li>🏛️ נדל״ן באיחוד האירופי</li>
+        <li>📈 תשואות שכירות אטרקטיביות</li>
+      </ul>
+    </div>
+    <a href="#stats" class="scroll-cue" aria-label="גלילה למטה"><span></span></a>
+  </section>
+
+  <!-- ===== Stats ===== -->
+  <section class="stats" id="stats">
+    <div class="container stats-grid">
+      <div class="stat reveal"><span class="stat-num" data-count="12">0</span><span class="stat-suffix">+</span><p>שנות ניסיון בשוק</p></div>
+      <div class="stat reveal"><span class="stat-num" data-count="350">0</span><span class="stat-suffix">+</span><p>עסקאות מלוות</p></div>
+      <div class="stat reveal"><span class="stat-num" data-count="5">0</span><span class="stat-suffix"></span><p>ערים מרכזיות בקפריסין</p></div>
+      <div class="stat reveal"><span class="stat-num" data-count="98">0</span><span class="stat-suffix">%</span><p>לקוחות ממליצים</p></div>
+    </div>
+  </section>
+
+  <!-- ===== About ===== -->
+  <section class="about section" id="about">
+    <div class="container about-grid">
+      <div class="about-media reveal">
+        <div class="about-photo">
+          <img src="assets/portrait.jpg" alt="מיכל בן חיון — מומחית נדל״ן בקפריסין" loading="lazy" />
+        </div>
+        <div class="about-badge">
+          <strong>רישיון תיווך</strong>
+          <span>ישראל · קפריסין</span>
+        </div>
+      </div>
+      <div class="about-text reveal">
+        <p class="section-eyebrow">מי אני</p>
+        <h2>מומחית נדל״ן שמדברת בשפה שלכם — ומכירה את קפריסין מבפנים.</h2>
+        <p>
+          אני מיכל בן חיון, מומחית להשקעות נדל״ן בקפריסין. בעשור האחרון ליוויתי מאות
+          משקיעים ומשפחות מישראל בדרכם לרכישת נכס בחו״ל — בשקיפות מלאה, בלי תיווך כפול ובלי הפתעות.
+        </p>
+        <p>
+          אני חיה את השוק הקפריסאי, מכירה את היזמים המובילים, את האזורים המתפתחים ואת ההבדל
+          בין נכס שנראה טוב לבין נכס שבאמת מניב. הליווי שלי הוא אישי, צמוד ובעברית — מהשיחה
+          הראשונה ועד שאתם מקבלים את המפתח.
+        </p>
+        <ul class="about-list">
+          <li>ליווי בעברית ובאנגלית</li>
+          <li>קשרים ישירים עם היזמים — ללא גורם ביניים</li>
+          <li>שקיפות מלאה בעמלות ובמחירים</li>
+          <li>מענה אישי גם אחרי סגירת העסקה</li>
+        </ul>
+        <a href="#contact" class="btn btn-dark">בואו נכיר</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Why Cyprus ===== -->
+  <section class="why section section-alt" id="why">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="section-eyebrow">למה קפריסין</p>
+        <h2>היעד שמשלב איכות חיים ים-תיכונית עם השקעה אירופית יציבה.</h2>
+      </div>
+      <div class="cards-grid">
+        <article class="card reveal">
+          <div class="card-icon">📈</div>
+          <h3>תשואה אטרקטיבית</h3>
+          <p>ביקוש גובר לשכירות ארוכת טווח ולנופש, עם תשואות שכירות שמתחרות בערי אירופה הגדולות.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon">🇪🇺</div>
+          <h3>נכס באיחוד האירופי</h3>
+          <p>בעלות על נדל״ן במדינה אירופית, עם נתיבים לתושבות ולמעמד יציב למשפחה ולעסק.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon">🧾</div>
+          <h3>סביבת מיסוי נוחה</h3>
+          <p>אחד ממשטרי המס הידידותיים באירופה למשקיעים, עם אמנת מס בין ישראל לקפריסין.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon">✈️</div>
+          <h3>קרבה לישראל</h3>
+          <p>כשעת טיסה בלבד. אפשר לבקר את הנכס בסוף שבוע ולנהל אותו בלי לוותר על השליטה.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon">🏗️</div>
+          <h3>שוק צומח ויציב</h3>
+          <p>פרויקטים חדשים, פיתוח תשתיות והגירה חיובית — שמייצרים עליית ערך לאורך זמן.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-icon">🌊</div>
+          <h3>איכות חיים</h3>
+          <p>ים, שמש 320 ימים בשנה, ביטחון אישי גבוה וקהילה ישראלית מבוססת ותומכת.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Services ===== -->
+  <section class="services section" id="services">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="section-eyebrow">שירותים</p>
+        <h2>ליווי מלא, מקצה לקצה — שתדעו בדיוק מה קורה בכל שלב.</h2>
+      </div>
+      <div class="services-grid">
+        <article class="service reveal"><span class="service-num">01</span><h3>ייעוץ והגדרת אסטרטגיה</h3><p>מיפוי מטרות, תקציב ופרופיל סיכון, והתאמת מסלול השקעה אישי — מגורים, נופש או תשואה.</p></article>
+        <article class="service reveal"><span class="service-num">02</span><h3>איתור והתאמת נכסים</h3><p>בחירת נכסים ופרויקטים מתוך מאגר ישיר של יזמים, כולל ניתוח תשואה והשוואת אזורים.</p></article>
+        <article class="service reveal"><span class="service-num">03</span><h3>ליווי משפטי וחוזי</h3><p>עבודה מול עורכי דין מקומיים מנוסים, בדיקת טאבו, רישוי וחוזה — בעברית וללא הפתעות.</p></article>
+        <article class="service reveal"><span class="service-num">04</span><h3>מימון ומשכנתאות</h3><p>חיבור לגורמי מימון מקומיים והתאמת פתרון הון עצמי ומשכנתא לתנאי הרכישה.</p></article>
+        <article class="service reveal"><span class="service-num">05</span><h3>ניהול נכס והשכרה</h3><p>איתור שוכרים, ניהול שוטף, אחזקה וגבייה — שהנכס יעבוד גם כשאתם בישראל.</p></article>
+        <article class="service reveal"><span class="service-num">06</span><h3>ליווי לאחר הרכישה</h3><p>מענה אישי מתמשך, חידוש חוזים, שדרוגים ואסטרטגיית מכירה עתידית כשתחליטו לממש.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Featured Projects ===== -->
+  <section class="projects section section-alt" id="projects">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="section-eyebrow">פרויקטים נבחרים</p>
+        <h2>מבחר פרויקטים מובילים — דוגמה למה שמחכה לכם בקפריסין.</h2>
+        <p class="section-note">* התמונות והנתונים הם להמחשה בלבד וישמשו כתבניות (Placeholder) לפרויקטים האמיתיים.</p>
+      </div>
+
+      <div class="filters reveal" id="filters" role="tablist" aria-label="סינון פרויקטים לפי עיר">
+        <button class="filter active" data-filter="all">הכל</button>
+        <button class="filter" data-filter="limassol">לימסול</button>
+        <button class="filter" data-filter="paphos">פאפוס</button>
+        <button class="filter" data-filter="larnaca">לרנקה</button>
+        <button class="filter" data-filter="ayianapa">איה נאפה</button>
+      </div>
+
+      <div class="projects-grid" id="projectsGrid">
+        <!-- Cards injected from data; static fallback below also styled -->
+        <article class="project reveal" data-city="limassol">
+          <div class="project-img grad-1"><img src="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&q=78&auto=format&fit=crop" alt="Marina Heights Residences — לימסול" loading="lazy" onerror="this.remove()" /><span class="project-status">בבנייה</span></div>
+          <div class="project-body">
+            <div class="project-top"><span class="project-city">לימסול</span><span class="project-price">החל מ-€350,000</span></div>
+            <h3>Marina Heights Residences</h3>
+            <p>מגדל מגורים יוקרתי במרחק הליכה מהמרינה, עם נוף פתוח לים.</p>
+            <ul class="project-meta"><li>🛏️ 1-3 חד׳</li><li>📐 65-140 מ״ר</li><li>🏊 בריכה וכושר</li></ul>
+            <a href="#contact" class="project-link">לפרטים מלאים ←</a>
+          </div>
+        </article>
+
+        <article class="project reveal" data-city="paphos">
+          <div class="project-img grad-2"><img src="https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=78&auto=format&fit=crop" alt="Coral Bay Villas — פאפוס" loading="lazy" onerror="this.remove()" /><span class="project-status">למכירה</span></div>
+          <div class="project-body">
+            <div class="project-top"><span class="project-city">פאפוס</span><span class="project-price">החל מ-€280,000</span></div>
+            <h3>Coral Bay Villas</h3>
+            <p>וילות פרטיות עם בריכה וגינה, בקרבה לחופים ולשדה התעופה.</p>
+            <ul class="project-meta"><li>🛏️ 3-4 חד׳</li><li>📐 150-220 מ״ר</li><li>🌳 גינה פרטית</li></ul>
+            <a href="#contact" class="project-link">לפרטים מלאים ←</a>
+          </div>
+        </article>
+
+        <article class="project reveal" data-city="larnaca">
+          <div class="project-img grad-3"><img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&q=78&auto=format&fit=crop" alt="Sunset Park Apartments — לרנקה" loading="lazy" onerror="this.remove()" /><span class="project-status">חדש</span></div>
+          <div class="project-body">
+            <div class="project-top"><span class="project-city">לרנקה</span><span class="project-price">החל מ-€195,000</span></div>
+            <h3>Sunset Park Apartments</h3>
+            <p>דירות משקיע מודרניות עם תשואת שכירות גבוהה, ליד הטיילת.</p>
+            <ul class="project-meta"><li>🛏️ סטודיו-2 חד׳</li><li>📐 45-95 מ״ר</li><li>📈 תשואה ~6%</li></ul>
+            <a href="#contact" class="project-link">לפרטים מלאים ←</a>
+          </div>
+        </article>
+
+        <article class="project reveal" data-city="ayianapa">
+          <div class="project-img grad-4"><img src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=78&auto=format&fit=crop" alt="Blue Lagoon Suites — איה נאפה" loading="lazy" onerror="this.remove()" /><span class="project-status">למכירה</span></div>
+          <div class="project-body">
+            <div class="project-top"><span class="project-city">איה נאפה</span><span class="project-price">החל מ-€240,000</span></div>
+            <h3>Blue Lagoon Suites</h3>
+            <p>סוויטות נופש מניבות באזור התיירות החם ביותר בקפריסין.</p>
+            <ul class="project-meta"><li>🛏️ 1-2 חד׳</li><li>📐 55-110 מ״ר</li><li>🏖️ קרבה לחוף</li></ul>
+            <a href="#contact" class="project-link">לפרטים מלאים ←</a>
+          </div>
+        </article>
+
+        <article class="project reveal" data-city="limassol">
+          <div class="project-img grad-5"><img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=78&auto=format&fit=crop" alt="The Olive Collection — לימסול" loading="lazy" onerror="this.remove()" /><span class="project-status">בבנייה</span></div>
+          <div class="project-body">
+            <div class="project-top"><span class="project-city">לימסול</span><span class="project-price">החל מ-€620,000</span></div>
+            <h3>The Olive Collection</h3>
+            <p>פרויקט בוטיק יוקרתי בלב העיר, עם עיצוב פנים ברמת מלון.</p>
+            <ul class="project-meta"><li>🛏️ 2-4 חד׳</li><li>📐 110-200 מ״ר</li><li>🛎️ שירותי קונסיירז׳</li></ul>
+            <a href="#contact" class="project-link">לפרטים מלאים ←</a>
+          </div>
+        </article>
+
+        <article class="project reveal" data-city="paphos">
+          <div class="project-img grad-6"><img src="https://images.unsplash.com/photo-1523217582562-09d0def993a6?w=800&q=78&auto=format&fit=crop" alt="Hillside Green — פאפוס" loading="lazy" onerror="this.remove()" /><span class="project-status">חדש</span></div>
+          <div class="project-body">
+            <div class="project-top"><span class="project-city">פאפוס</span><span class="project-price">החל מ-€210,000</span></div>
+            <h3>Hillside Green</h3>
+            <p>קהילת מגורים ירוקה עם נוף להרים, מתאימה למגורים ולנופש.</p>
+            <ul class="project-meta"><li>🛏️ 2-3 חד׳</li><li>📐 80-130 מ״ר</li><li>♻️ בנייה ירוקה</li></ul>
+            <a href="#contact" class="project-link">לפרטים מלאים ←</a>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Process ===== -->
+  <section class="process section" id="process">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="section-eyebrow">התהליך</p>
+        <h2>חמישה צעדים ברורים — מהחלום הראשון ועד המפתח ביד.</h2>
+      </div>
+      <ol class="steps">
+        <li class="step reveal"><span class="step-num">1</span><h3>שיחת היכרות</h3><p>מבינים מה אתם מחפשים, מה התקציב ומה המטרה — מגורים, נופש או השקעה.</p></li>
+        <li class="step reveal"><span class="step-num">2</span><h3>התאמת נכסים</h3><p>מקבלים מבחר נכסים מסוננים מראש, עם ניתוח תשואה והשוואת אזורים.</p></li>
+        <li class="step reveal"><span class="step-num">3</span><h3>סיור וצפייה</h3><p>טסים לקפריסין לסיור מאורגן, או צופים בנכסים בסיור וירטואלי מלא.</p></li>
+        <li class="step reveal"><span class="step-num">4</span><h3>רכישה וליווי משפטי</h3><p>חתימה בליווי עורך דין, סידור מימון, והעברת בעלות — בשקיפות מלאה.</p></li>
+        <li class="step reveal"><span class="step-num">5</span><h3>מסירה וניהול</h3><p>מקבלים את המפתח, ואם תרצו — אנחנו ממשיכים לנהל ולהשכיר עבורכם.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ===== Testimonials ===== -->
+  <section class="testimonials section section-alt" id="testimonials">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="section-eyebrow">המלצות</p>
+        <h2>מה הלקוחות שלי מספרים.</h2>
+      </div>
+      <div class="quotes-grid">
+        <figure class="quote reveal">
+          <div class="stars">★★★★★</div>
+          <blockquote>״רכשנו דירה בלימסול בלי לדעת מאיפה מתחילים. מיכל לקחה אותנו יד ביד, הסבירה כל שלב והכל היה בעברית. תשואה מצוינת והכי חשוב — שקט נפשי.״</blockquote>
+          <figcaption><span class="q-avatar">ד</span><span><strong>דנה ל׳</strong><small>משקיעה, תל אביב</small></span></figcaption>
+        </figure>
+        <figure class="quote reveal">
+          <div class="stars">★★★★★</div>
+          <blockquote>״הליווי המשפטי והשקיפות עשו את ההבדל. הרגשנו שמישהו באמת שומר על האינטרסים שלנו, ולא רק סוגר עסקה.״</blockquote>
+          <figcaption><span class="q-avatar">א</span><span><strong>אבי ורונית ר׳</strong><small>זוג, הרצליה</small></span></figcaption>
+        </figure>
+        <figure class="quote reveal">
+          <div class="stars">★★★★★</div>
+          <blockquote>״קניתי נכס להשקעה בלרנקה, והיום הוא מושכר ומנוהל במלואו. אני מקבל דוח חודשי ולא צריך לדאוג לכלום.״</blockquote>
+          <figcaption><span class="q-avatar">י</span><span><strong>יוסי ק׳</strong><small>משקיע, חיפה</small></span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CTA banner ===== -->
+  <section class="cta-banner">
+    <div class="container cta-inner reveal">
+      <h2>מוכנים לבדוק אם קפריסין מתאימה לכם?</h2>
+      <p>שיחת ייעוץ ראשונה ללא עלות וללא התחייבות — נבין יחד מה האפשרויות שלכם.</p>
+      <a href="#contact" class="btn btn-gold">בואו נדבר</a>
+    </div>
+  </section>
+
+  <!-- ===== Contact ===== -->
+  <section class="contact section" id="contact">
+    <div class="container contact-grid">
+      <div class="contact-info reveal">
+        <p class="section-eyebrow">צור קשר</p>
+        <h2>נשמח ללוות גם אתכם.</h2>
+        <p>השאירו פרטים ואחזור אליכם בהקדם, או דברו איתי ישירות בכל אחת מהדרכים הבאות:</p>
+        <ul class="contact-list">
+          <li><span class="ci-ic">📞</span><a href="tel:+972523141458">052-314-1458</a></li>
+          <li><span class="ci-ic">✉️</span><a href="mailto:info@michal-cyprus.com">info@michal-cyprus.com</a></li>
+          <li><span class="ci-ic">💬</span><a href="https://wa.me/972523141458?text=היי,%20הגעתי%20דרך%20האתר%20ואשמח%20לקבל%20פרטים%20על%20נדלן%20בקפריסין" target="_blank" rel="noopener">וואטסאפ — שליחת הודעה</a></li>
+          <li><span class="ci-ic">📘</span><a href="https://www.facebook.com/Michalnadlancyprus/" target="_blank" rel="noopener">עמוד הפייסבוק</a></li>
+          <li><span class="ci-ic">📍</span><span>הרצליה, ישראל · לימסול, קפריסין</span></li>
+        </ul>
+      </div>
+
+      <form class="contact-form reveal" id="contactForm" novalidate>
+        <div class="field">
+          <label for="name">שם מלא</label>
+          <input type="text" id="name" name="name" required placeholder="ישראל ישראלי" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="phone">טלפון</label>
+            <input type="tel" id="phone" name="phone" required placeholder="050-0000000" />
+          </div>
+          <div class="field">
+            <label for="email">אימייל</label>
+            <input type="email" id="email" name="email" placeholder="you@email.com" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="interest">תחום עניין</label>
+          <select id="interest" name="interest">
+            <option value="">בחרו אפשרות…</option>
+            <option>השקעה / נכס מניב</option>
+            <option>דירת נופש</option>
+            <option>מגורים / רילוקיישן</option>
+            <option>ייעוץ כללי</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="message">הודעה</label>
+          <textarea id="message" name="message" rows="4" placeholder="כמה מילים על מה שאתם מחפשים…"></textarea>
+        </div>
+        <button type="submit" class="btn btn-gold btn-block">שליחת פנייה</button>
+        <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===== Footer ===== -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <span class="brand-mark" aria-hidden="true"><img src="assets/profile.jpg" alt="" loading="lazy" /></span>
+        <div>
+          <strong>מיכל בן חיון</strong>
+          <small>נדל״ן והשקעות בקפריסין</small>
+        </div>
+      </div>
+      <nav class="footer-nav" aria-label="ניווט תחתון">
+        <a href="#about">אודות</a>
+        <a href="#why">למה קפריסין</a>
+        <a href="#services">שירותים</a>
+        <a href="#projects">פרויקטים</a>
+        <a href="#contact">צור קשר</a>
+      </nav>
+      <div class="footer-social">
+        <a href="https://www.facebook.com/Michalnadlancyprus/" target="_blank" rel="noopener" class="social-link" aria-label="עמוד הפייסבוק של מיכל בן חיון">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          <span>עקבו בפייסבוק</span>
+        </a>
+      </div>
+      <p class="footer-legal">© <span id="year">2026</span> מיכל בן חיון · כל הזכויות שמורות · האתר נבנה כהדגמה והתוכן להמחשה בלבד.</p>
+    </div>
+  </footer>
+
+  <a href="https://wa.me/972523141458?text=היי,%20הגעתי%20דרך%20האתר%20ואשמח%20לקבל%20פרטים%20על%20נדלן%20בקפריסין" class="wa-float" target="_blank" rel="noopener" aria-label="צ׳אט בוואטסאפ">
+    <svg viewBox="0 0 32 32" width="28" height="28" fill="currentColor" aria-hidden="true"><path d="M16 .5C7.4.5.5 7.4.5 16c0 2.8.8 5.5 2.1 7.9L.2 31.8l8.2-2.1c2.3 1.3 4.9 1.9 7.6 1.9 8.6 0 15.5-6.9 15.5-15.5S24.6.5 16 .5zm0 28.2c-2.4 0-4.7-.6-6.7-1.9l-.5-.3-4.9 1.3 1.3-4.8-.3-.5c-1.4-2.1-2.1-4.6-2.1-7.1C2.8 8.7 8.7 2.8 16 2.8S29.2 8.7 29.2 16 23.3 28.7 16 28.7zm7.2-9.5c-.4-.2-2.3-1.1-2.7-1.3-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.2 1.5-.2.2-.4.3-.8.1-.4-.2-1.7-.6-3.2-2-1.2-1-2-2.4-2.2-2.8-.2-.4 0-.6.2-.8.2-.2.4-.4.6-.7.2-.2.3-.4.4-.7.1-.3.1-.5 0-.7-.1-.2-.9-2.1-1.2-2.9-.3-.8-.6-.7-.9-.7h-.7c-.2 0-.7.1-1 .5-.3.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.9c.2.3 2.6 4 6.3 5.6.9.4 1.6.6 2.1.8.9.3 1.7.2 2.3.1.7-.1 2.3-.9 2.6-1.8.3-.9.3-1.6.2-1.8-.1-.2-.3-.3-.7-.5z"/></svg>
+  </a>
+  <script>
+/* מיכל בן חיון — interactions */
+(function () {
+  "use strict";
+
+  /* ---- Sticky header ---- */
+  const header = document.getElementById("header");
+  const onScroll = () => header.classList.toggle("scrolled", window.scrollY > 40);
+  onScroll();
+  window.addEventListener("scroll", onScroll, { passive: true });
+
+  /* ---- Mobile nav ---- */
+  const toggle = document.getElementById("navToggle");
+  const nav = document.getElementById("nav");
+  const closeNav = () => { nav.classList.remove("open"); toggle.classList.remove("open"); toggle.setAttribute("aria-expanded", "false"); };
+  toggle.addEventListener("click", () => {
+    const open = nav.classList.toggle("open");
+    toggle.classList.toggle("open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+  });
+  nav.querySelectorAll("a").forEach((a) => a.addEventListener("click", closeNav));
+
+  /* ---- Profile picture → center the About portrait frame in view ---- */
+  const brandMarkLink = document.querySelector(".brand-mark-link");
+  if (brandMarkLink) {
+    brandMarkLink.addEventListener("click", (e) => {
+      const frame = document.querySelector("#about .about-photo");
+      if (frame) {
+        e.preventDefault();
+        frame.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+  }
+
+  /* ---- Scroll reveal ---- */
+  const reveals = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12 });
+    reveals.forEach((el, i) => { el.style.transitionDelay = (i % 4) * 80 + "ms"; io.observe(el); });
+  } else {
+    reveals.forEach((el) => el.classList.add("in"));
+  }
+
+  /* ---- Animated counters ---- */
+  const counters = document.querySelectorAll(".stat-num");
+  const runCount = (el) => {
+    const target = +el.dataset.count;
+    const dur = 1400, start = performance.now();
+    const tick = (now) => {
+      const p = Math.min((now - start) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(target * eased);
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+  if ("IntersectionObserver" in window) {
+    const co = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { runCount(e.target); co.unobserve(e.target); } });
+    }, { threshold: 0.6 });
+    counters.forEach((c) => co.observe(c));
+  } else {
+    counters.forEach((c) => (c.textContent = c.dataset.count));
+  }
+
+  /* ---- Project filtering ---- */
+  const filters = document.querySelectorAll(".filter");
+  const projects = document.querySelectorAll(".project");
+  filters.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      filters.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const f = btn.dataset.filter;
+      projects.forEach((p) => {
+        const show = f === "all" || p.dataset.city === f;
+        p.classList.toggle("hide", !show);
+      });
+    });
+  });
+
+  /* ---- Contact form (front-end demo validation) ---- */
+  const form = document.getElementById("contactForm");
+  const status = document.getElementById("formStatus");
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    status.className = "form-status";
+    const name = form.name, phone = form.phone, email = form.email;
+    let ok = true;
+
+    [name, phone].forEach((f) => {
+      const bad = !f.value.trim();
+      f.classList.toggle("invalid", bad);
+      if (bad) ok = false;
+    });
+    const emailBad = email.value.trim() && !emailRe.test(email.value.trim());
+    email.classList.toggle("invalid", emailBad);
+    if (emailBad) ok = false;
+
+    if (!ok) {
+      status.textContent = "נא למלא שם וטלפון תקינים.";
+      status.classList.add("err");
+      return;
+    }
+
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = "שולח…";
+    setTimeout(() => {
+      form.reset();
+      btn.disabled = false; btn.textContent = "שליחת פנייה";
+      status.textContent = "תודה! הפנייה התקבלה — אחזור אליכם בהקדם. 🌊";
+      status.classList.add("ok");
+    }, 900);
+  });
+
+  /* ---- Footer year ---- */
+  const yr = document.getElementById("year");
+  if (yr) yr.textContent = new Date().getFullYear();
+})();
+
+  </script>
+</body>
+</html>

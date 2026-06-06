@@ -100,7 +100,7 @@ def send_email(record):
 
     is_website_request = record.get("leadType") == "websiteRequest"
     subject = (
-        f"New Zeptrix website request: {record['name']}"
+        f"New Zeptrix WordPress request: {record['name']}"
         if is_website_request
         else f"New Zeptrix free analysis registration: {record['name']}"
     )
@@ -109,7 +109,7 @@ def send_email(record):
     phone = record["phone"] or "Not provided"
     aws_accounts = record["awsAccounts"] if record["awsAccounts"] is not None else "Not provided"
     if is_website_request:
-        body = f"""New Zeptrix website request
+        body = f"""New Zeptrix WordPress request
 
 Name: {record['name']}
 Email: {record['email']}
@@ -119,7 +119,7 @@ Current site: {record.get('currentSite') or 'Not provided'}
 Request type: {record.get('requestType') or 'Not provided'}
 Timeline: {record.get('timeline') or 'Not provided'}
 Budget: {record.get('budget') or 'Not provided'}
-Free migration interest: {'Yes' if record.get('freeMigration') else 'No'}
+Free WordPress health check interest: {'Yes' if record.get('freeMigration') else 'No'}
 
 First request:
 {record.get('firstRequest') or 'Not provided'}

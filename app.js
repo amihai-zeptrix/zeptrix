@@ -217,7 +217,7 @@ websiteRequestForm?.addEventListener("submit", async (event) => {
   };
 
   websiteFormStatus.className = "form-status";
-  websiteFormStatus.textContent = "Sending your website request...";
+  websiteFormStatus.textContent = "Sending your WordPress request...";
   submitButton.disabled = true;
 
   try {

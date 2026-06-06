@@ -29,6 +29,7 @@ assert_file index.html
 assert_file siteops.html
 assert_file styles.css
 assert_file app.js
+assert_file assets/wordpress-logotype-wmark.png
 assert_file nginx-zeptrix.conf
 assert_file scripts/verify-routes.sh
 
@@ -38,6 +39,12 @@ assert_file mbh/script.js
 assert_file mbh/assets/profile.jpg
 assert_file mbh/assets/portrait.jpg
 
+assert_file your-new-crm/index.html
+assert_file your-new-crm/styles.css
+assert_file your-new-crm/app.js
+assert_file your-new-crm/favicon.svg
+assert_file your-new-crm.html
+
 assert_not_exists wordpress-to-modern-websites.html
 
 assert_contains index.html "<title>Zeptrix | AI AWS Cost Reduction</title>"
@@ -45,7 +52,7 @@ assert_contains index.html 'href="/styles.css"'
 assert_contains index.html 'src="/app.js"'
 
 assert_contains siteops.html '<link rel="canonical" href="https://zeptrix.io/siteops">'
-assert_contains siteops.html "<title>Zeptrix SiteOps | Managed Website Team</title>"
+assert_contains siteops.html "<title>Zeptrix SiteOps | Managed WordPress Care</title>"
 assert_contains siteops.html 'href="/styles.css"'
 assert_contains siteops.html 'src="/app.js"'
 
@@ -54,6 +61,12 @@ assert_contains mbh/index.html "<title>מיכל בן חיון</title>"
 assert_contains mbh/index.html 'href="styles.css"'
 assert_contains mbh/index.html 'src="script.js"'
 assert_contains mbh/index.html "052-314-1458"
+
+assert_contains your-new-crm/index.html "<title>Zeptrix CRM | Sales Pipeline</title>"
+assert_contains your-new-crm/index.html 'href="./styles.css"'
+assert_contains your-new-crm/index.html 'src="./app.js"'
+assert_contains your-new-crm.html "<title>Zeptrix CRM | A Sales Workspace That Drives Action</title>"
+assert_contains your-new-crm.html 'href="/your-new-crm/"'
 
 assert_contains nginx-zeptrix.conf "location = /mbh"
 assert_contains nginx-zeptrix.conf "return 301 /mbh/;"

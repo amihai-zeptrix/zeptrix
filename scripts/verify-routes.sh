@@ -37,8 +37,9 @@ assert_contains "$tmp_dir/home.html" 'href="/styles.css"'
 
 fetch "/siteops" "$tmp_dir/siteops.html"
 assert_contains "$tmp_dir/siteops.html" '<link rel="canonical" href="https://zeptrix.io/siteops">'
-assert_contains "$tmp_dir/siteops.html" "<title>Zeptrix SiteOps | Managed Website Team</title>"
+assert_contains "$tmp_dir/siteops.html" "<title>Zeptrix SiteOps | Managed WordPress Care</title>"
 assert_contains "$tmp_dir/siteops.html" 'href="/styles.css"'
+assert_contains "$tmp_dir/siteops.html" "Join this month, evaluate for free"
 
 fetch "/mbh/" "$tmp_dir/mbh.html"
 assert_contains "$tmp_dir/mbh.html" '<html lang="he" dir="rtl">'
@@ -48,10 +49,22 @@ assert_not_contains "$tmp_dir/mbh.html" "<title>Zeptrix | AI AWS Cost Reduction<
 
 fetch "/crm/" "$tmp_dir/crm.html"
 assert_contains "$tmp_dir/crm.html" "<title>Zeptrix CRM</title>"
-assert_contains "$tmp_dir/crm.html" "Sign in to continue"
+assert_contains "$tmp_dir/crm.html" '<div id="root"></div>'
+
+fetch "/your-new-crm/" "$tmp_dir/your-new-crm.html"
+assert_contains "$tmp_dir/your-new-crm.html" "<title>Zeptrix CRM | Sales Pipeline</title>"
+assert_contains "$tmp_dir/your-new-crm.html" '<div id="app"></div>'
+assert_contains "$tmp_dir/your-new-crm.html" 'href="./styles.css"'
+assert_contains "$tmp_dir/your-new-crm.html" 'src="./app.js"'
+
+fetch "/your-new-crm.html" "$tmp_dir/your-new-crm-promo.html"
+assert_contains "$tmp_dir/your-new-crm-promo.html" "<title>Zeptrix CRM | A Sales Workspace That Drives Action</title>"
+assert_contains "$tmp_dir/your-new-crm-promo.html" 'href="/your-new-crm/"'
 
 curl -fsSI --max-time 20 "$base_url/mbh/styles.css" | grep -Fiq "content-type: text/css"
 curl -fsSI --max-time 20 "$base_url/mbh/script.js" | grep -Fiq "content-type: application/javascript"
+curl -fsSI --max-time 20 "$base_url/your-new-crm/styles.css" | grep -Fiq "content-type: text/css"
+curl -fsSI --max-time 20 "$base_url/your-new-crm/app.js" | grep -Fiq "content-type: application/javascript"
 
 old_location="$(curl -fsSI --max-time 20 "$base_url/wordpress-to-modern-websites/" | awk 'tolower($1) == "location:" {print $2}' | tr -d '\r')"
 if [[ "$old_location" != "$base_url/siteops" ]]; then

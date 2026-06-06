@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zeptrix SiteOps Follow-up Email Template</title>
+    <style>
+      :root {
+        --ink: #182131;
+        --muted: #5c6678;
+        --blue: #315bd6;
+        --cyan: #58bdb2;
+        --line: #dce5f2;
+        --soft: #f5f7fa;
+        --navy: #161d2e;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: #edf2f8;
+        font: 18px/1.65 Inter, Arial, Helvetica, sans-serif;
+      }
+
+      .page {
+        width: min(1120px, calc(100% - 32px));
+        margin: 26px auto;
+        display: grid;
+        grid-template-columns: minmax(0, 760px) minmax(310px, 1fr);
+        gap: 22px;
+        align-items: start;
+      }
+
+      .preview,
+      .copy-panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 20px 52px rgba(29, 48, 80, .13);
+        overflow: hidden;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+        background: #fbfcff;
+      }
+
+      .toolbar strong { font-size: 14px; }
+
+      .pill {
+        padding: 5px 10px;
+        border: 1px solid #c7d6fb;
+        border-radius: 999px;
+        color: var(--blue);
+        background: #eef3ff;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .email-frame {
+        padding: 0;
+        background: #fff;
+      }
+
+      .email {
+        width: 100%;
+        margin: 0;
+        border-collapse: collapse;
+        background: #fff;
+      }
+
+      .email td { padding: 0; }
+
+      .hero {
+        padding: 48px 50px 52px;
+        color: #fff;
+        background:
+          linear-gradient(124deg, rgba(22, 29, 46, .98) 0%, rgba(47, 81, 196, .98) 55%, rgba(88, 189, 178, .98) 100%);
+      }
+
+      .brand {
+        margin-bottom: 24px;
+        color: rgba(255, 255, 255, .86);
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 650px;
+        margin: 0 0 22px;
+        color: #fff;
+        font: 800 36px/1.16 Inter, Arial, Helvetica, sans-serif;
+        letter-spacing: 0;
+      }
+
+      .hero p {
+        max-width: 610px;
+        margin: 0;
+        color: rgba(255, 255, 255, .92);
+        font-size: 18px;
+      }
+
+      .body {
+        padding: 42px 50px 22px;
+      }
+
+      p {
+        margin: 0 0 22px;
+        color: var(--ink);
+      }
+
+      b { font-weight: 800; }
+
+      .notice {
+        margin: 26px 0 34px;
+        padding: 24px 26px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--soft);
+      }
+
+      .notice-label {
+        margin: 0 0 14px;
+        color: var(--blue);
+        font-size: 14px;
+        font-weight: 900;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+      }
+
+      .notice p {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .ideas {
+        margin: 0 0 34px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .idea {
+        display: grid;
+        grid-template-columns: 44px 1fr;
+        gap: 16px;
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .idea:last-child { border-bottom: 0; }
+
+      .num {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 50%;
+        color: #fff;
+        background: var(--blue);
+        font-weight: 900;
+      }
+
+      .idea strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 17px;
+      }
+
+      .idea span {
+        display: block;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .cta-row {
+        padding: 0 50px 46px;
+      }
+
+      .button {
+        display: inline-block;
+        padding: 17px 26px;
+        border-radius: 999px;
+        color: #fff !important;
+        background: var(--navy);
+        font-size: 18px;
+        font-weight: 900;
+        text-decoration: none;
+      }
+
+      .signature {
+        padding: 0 50px 44px;
+      }
+
+      .footer {
+        padding: 20px 50px;
+        border-top: 1px solid var(--line);
+        color: #7c8798;
+        background: #fbfcff;
+        font-size: 13px;
+      }
+
+      .email td.hero {
+        padding: 48px 50px 52px;
+      }
+
+      .email td.body {
+        padding: 42px 50px 22px;
+      }
+
+      .email td.cta-row {
+        padding: 0 50px 46px;
+      }
+
+      .email td.signature {
+        padding: 0 50px 44px;
+      }
+
+      .email td.footer {
+        padding: 20px 50px;
+      }
+
+      .copy-panel {
+        padding: 20px;
+      }
+
+      .copy-panel h2 {
+        margin: 0 0 14px;
+        font-size: 19px;
+        line-height: 1.25;
+      }
+
+      .field {
+        margin-bottom: 16px;
+      }
+
+      .field label {
+        display: block;
+        margin-bottom: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .field div,
+      pre {
+        margin: 0;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--soft);
+        color: var(--ink);
+        white-space: pre-wrap;
+        font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      @media (max-width: 920px) {
+        .page { grid-template-columns: 1fr; }
+      }
+
+      @media (max-width: 600px) {
+        .page {
+          width: 100%;
+          margin: 0;
+        }
+
+        .preview,
+        .copy-panel {
+          border-radius: 0;
+        }
+
+        .hero,
+        .body,
+        .cta-row,
+        .signature,
+        .footer {
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+
+        h1 { font-size: 29px; }
+        .idea { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="preview" aria-label="SiteOps follow-up email visual preview">
+        <div class="toolbar">
+          <strong>SiteOps follow-up email preview</strong>
+          <span class="pill">Website development</span>
+        </div>
+        <div class="email-frame">
+          <table class="email" role="presentation" aria-label="SiteOps follow-up email">
+            <tr>
+              <td class="hero">
+                <div class="brand">Zeptrix SiteOps</div>
+                <h1>A small website improvement idea for {{company_name}}</h1>
+                <p>I looked at {{website_url}} and noticed {{what_i_noticed}}.</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="body">
+                <p>Hi {{company_name}} team,</p>
+                <p>I run <b>Zeptrix SiteOps</b>, a managed website team for businesses that need changes, fixes, new pages, SEO basics, deployment, and maintenance handled without chasing developers.</p>
+
+                <div class="notice">
+                  <div class="notice-label">What I noticed</div>
+                  <p>{{company_name}} presents {{positive_observation}}, but the site could likely convert more high-intent visitors by making {{improvement_area}} easier to scan.</p>
+                </div>
+
+                <p>If useful, I can send 2-3 concrete improvement ideas for {{company_name}}'s site. For example:</p>
+
+                <div class="ideas">
+                  <div class="idea">
+                    <span class="num">1</span>
+                    <div>
+                      <strong>{{idea_1_title}}</strong>
+                      <span>{{idea_1_description}}</span>
+                    </div>
+                  </div>
+                  <div class="idea">
+                    <span class="num">2</span>
+                    <div>
+                      <strong>{{idea_2_title}}</strong>
+                      <span>{{idea_2_description}}</span>
+                    </div>
+                  </div>
+                  <div class="idea">
+                    <span class="num">3</span>
+                    <div>
+                      <strong>{{idea_3_title}}</strong>
+                      <span>{{idea_3_description}}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p>No big pitch. I can simply send a short marked-up note with practical fixes your team can use.</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="cta-row">
+                <a class="button" href="https://zeptrix.io/siteops">See how SiteOps helps</a>
+              </td>
+            </tr>
+            <tr>
+              <td class="signature">
+                <p>Best,<br>{{sender_name}}<br>Zeptrix SiteOps</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="footer">
+                Zeptrix SiteOps handles website changes, fixes, launches, SEO basics, deployment, and maintenance for businesses that want their site to keep moving.
+              </td>
+            </tr>
+          </table>
+        </div>
+      </section>
+
+      <aside class="copy-panel" aria-label="Reusable email copy">
+        <h2>Reusable Copy</h2>
+        <div class="field">
+          <label>Subject</label>
+          <div>A small website improvement idea for {{company_name}}</div>
+        </div>
+        <div class="field">
+          <label>Preheader</label>
+          <div>A quick SiteOps note with a few practical website improvements.</div>
+        </div>
+        <div class="field">
+          <label>Personalization Tokens</label>
+          <div>{{company_name}}, {{website_url}}, {{what_i_noticed}}, {{positive_observation}}, {{improvement_area}}, {{idea_1_title}}, {{idea_1_description}}, {{idea_2_title}}, {{idea_2_description}}, {{idea_3_title}}, {{idea_3_description}}, {{sender_name}}</div>
+        </div>
+        <div class="field">
+          <label>Example Values</label>
+          <div>Shift Digital:
+{{company_name}} = Shift Digital
+{{website_url}} = https://shift.digital/
+{{what_i_noticed}} = a Winchester agency handling bespoke web design, application development, ecommerce and campaigns
+
+Abigail Reay Design:
+{{company_name}} = Abigail Reay Design
+{{website_url}} = https://www.abigailreay.com/
+{{what_i_noticed}} = a London interior architecture studio for high-value residential renovation and refurbishment projects</div>
+        </div>
+        <div class="field">
+          <label>Plain Text Version</label>
+          <pre>Hi {{company_name}} team,
+
+I run Zeptrix SiteOps, a managed website team for businesses that need changes, fixes, new pages, SEO basics, deployment, and maintenance handled without chasing developers.
+
+I looked at {{website_url}} and noticed {{what_i_noticed}}.
+
+What I noticed:
+{{company_name}} presents {{positive_observation}}, but the site could likely convert more high-intent visitors by making {{improvement_area}} easier to scan.
+
+If useful, I can send 2-3 concrete improvement ideas for {{company_name}}'s site. For example:
+
+1. {{idea_1_title}}
+{{idea_1_description}}
+
+2. {{idea_2_title}}
+{{idea_2_description}}
+
+3. {{idea_3_title}}
+{{idea_3_description}}
+
+No big pitch. I can simply send a short marked-up note with practical fixes your team can use.
+
+Best,
+{{sender_name}}
+Zeptrix SiteOps
+
+https://zeptrix.io/siteops</pre>
+        </div>
+      </aside>
+    </main>
+  </body>
+</html>
