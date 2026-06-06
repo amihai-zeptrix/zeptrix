@@ -52,7 +52,7 @@ assert_contains index.html 'href="/styles.css"'
 assert_contains index.html 'src="/app.js"'
 
 assert_contains siteops.html '<link rel="canonical" href="https://zeptrix.io/siteops">'
-assert_contains siteops.html "<title>Zeptrix SiteOps | Managed WordPress Care</title>"
+assert_contains siteops.html "<title>Zeptrix SiteOps | Modern Website Hosting and WordPress Care</title>"
 assert_contains siteops.html 'href="/styles.css"'
 assert_contains siteops.html 'src="/app.js"'
 
