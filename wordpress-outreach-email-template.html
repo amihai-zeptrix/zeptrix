@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zeptrix WordPress Care Outreach Template</title>
+    <style>
+      :root {
+        --ink: #182131;
+        --muted: #5c6678;
+        --blue: #21759b;
+        --bright: #38a1db;
+        --gold: #f0b94d;
+        --line: #dce5f2;
+        --soft: #f5f8fb;
+        --navy: #111c2e;
+        --teal: #58bdb2;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: #edf2f8;
+        font: 18px/1.65 Inter, Arial, Helvetica, sans-serif;
+      }
+
+      .page {
+        width: min(1180px, calc(100% - 32px));
+        margin: 26px auto;
+        display: grid;
+        grid-template-columns: minmax(0, 780px) minmax(320px, 1fr);
+        gap: 22px;
+        align-items: start;
+      }
+
+      .preview,
+      .copy-panel {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 20px 52px rgba(29, 48, 80, .13);
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+        background: #fbfcff;
+      }
+
+      .toolbar strong { font-size: 14px; }
+
+      .pill {
+        padding: 5px 10px;
+        border: 1px solid #c7d6fb;
+        border-radius: 999px;
+        color: var(--blue);
+        background: #eef6fb;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .email {
+        width: 100%;
+        margin: 0;
+        border-collapse: collapse;
+        background: #fff;
+      }
+
+      .email td { padding: 0; }
+
+      .hero {
+        padding: 46px 50px 44px;
+        color: #fff;
+        background:
+          linear-gradient(124deg, rgba(17, 28, 46, .98) 0%, rgba(33, 117, 155, .98) 58%, rgba(88, 189, 178, .98) 100%);
+      }
+
+      .brand-row {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        margin-bottom: 26px;
+      }
+
+      .wp-mark {
+        display: grid;
+        width: 42px;
+        height: 42px;
+        place-items: center;
+        border: 2px solid rgba(255, 255, 255, .9);
+        border-radius: 50%;
+        color: #fff;
+        font: 800 24px Georgia, "Times New Roman", serif;
+      }
+
+      .brand {
+        color: rgba(255, 255, 255, .9);
+        font-size: 15px;
+        font-weight: 900;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 690px;
+        margin: 0 0 20px;
+        color: #fff;
+        font: 800 38px/1.14 Inter, Arial, Helvetica, sans-serif;
+        letter-spacing: 0;
+      }
+
+      .hero p {
+        max-width: 630px;
+        margin: 0;
+        color: rgba(255, 255, 255, .92);
+        font-size: 18px;
+      }
+
+      .body {
+        padding: 42px 50px 22px;
+      }
+
+      p {
+        margin: 0 0 22px;
+        color: var(--ink);
+      }
+
+      b { font-weight: 800; }
+
+      a {
+        color: #315bd6;
+        text-decoration: none;
+      }
+
+      .notice,
+      .offer {
+        margin: 26px 0 32px;
+        padding: 24px 26px;
+        border-radius: 7px;
+      }
+
+      .notice {
+        border: 1px solid var(--line);
+        background: var(--soft);
+      }
+
+      .offer {
+        border: 1px solid rgba(240, 185, 77, .46);
+        background: #fff8e8;
+      }
+
+      .notice-label {
+        margin: 0 0 14px;
+        color: var(--blue);
+        font-size: 14px;
+        font-weight: 900;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+      }
+
+      .offer .notice-label {
+        color: #9a680b;
+      }
+
+      .notice p,
+      .offer p {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .ideas {
+        margin: 0 0 34px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .idea {
+        display: grid;
+        grid-template-columns: 44px 1fr;
+        gap: 16px;
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .idea:last-child { border-bottom: 0; }
+
+      .num {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 50%;
+        color: #fff;
+        background: var(--blue);
+        font-weight: 900;
+      }
+
+      .idea strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 17px;
+      }
+
+      .idea span {
+        display: block;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .cta-row {
+        padding: 0 50px 46px;
+      }
+
+      .button {
+        display: inline-block;
+        padding: 17px 26px;
+        border-radius: 999px;
+        color: #fff !important;
+        background: var(--navy);
+        font-size: 18px;
+        font-weight: 900;
+        text-decoration: none;
+      }
+
+      .signature {
+        padding: 0 50px 44px;
+      }
+
+      .footer {
+        padding: 20px 50px;
+        border-top: 1px solid var(--line);
+        color: #7c8798;
+        background: #fbfcff;
+        font-size: 13px;
+      }
+
+      .email td.hero { padding: 46px 50px 44px; }
+      .email td.body { padding: 42px 50px 22px; }
+      .email td.cta-row { padding: 0 50px 46px; }
+      .email td.signature { padding: 0 50px 44px; }
+      .email td.footer { padding: 20px 50px; }
+
+      .copy-panel {
+        padding: 20px;
+      }
+
+      .copy-panel h2 {
+        margin: 0 0 14px;
+        font-size: 19px;
+        line-height: 1.25;
+      }
+
+      .field {
+        margin-bottom: 16px;
+      }
+
+      .field label {
+        display: block;
+        margin-bottom: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .field div,
+      pre {
+        margin: 0;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--soft);
+        color: var(--ink);
+        white-space: pre-wrap;
+        font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      @media (max-width: 960px) {
+        .page { grid-template-columns: 1fr; }
+      }
+
+      @media (max-width: 620px) {
+        .page {
+          width: 100%;
+          margin: 0;
+        }
+
+        .preview,
+        .copy-panel {
+          border-radius: 0;
+        }
+
+        .hero,
+        .body,
+        .cta-row,
+        .signature,
+        .footer {
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+
+        h1 { font-size: 29px; }
+        .idea { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="preview" aria-label="WordPress care outreach email visual preview">
+        <div class="toolbar">
+          <strong>WordPress care outreach preview</strong>
+          <span class="pill">SMB WordPress</span>
+        </div>
+        <div class="email-frame">
+          <table class="email" role="presentation" aria-label="Zeptrix WordPress outreach email">
+            <tr>
+              <td class="hero">
+                <div class="brand-row">
+                  <span class="wp-mark">W</span>
+                  <div class="brand">Zeptrix SiteOps</div>
+                </div>
+                <h1>A quick WordPress care idea for {{company_name}}</h1>
+                <p>I noticed {{company_name}} is running WordPress at {{website_url}} and wanted to share a practical way to keep it healthier without adding more work to your team.</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="body">
+                <p>Hi {{company_name}} team,</p>
+                <p>I help small businesses keep WordPress sites updated, backed up, faster, and easier to change without chasing developers or logging into wp-admin every week. Care plans start at just $19/month after a free evaluation.</p>
+
+                <div class="notice">
+                  <div class="notice-label">What I noticed</div>
+                  <p>{{wordpress_signal}}. That usually means the site depends on plugins, theme updates, forms, caching, and backups that need regular care.</p>
+                </div>
+
+                <div class="offer">
+                  <div class="notice-label">Limited offer</div>
+                  <p>Join this month, evaluate for free, and start with only <b>$19 from next month</b>.</p>
+                </div>
+
+                <p>If useful, I can send a short WordPress health note for {{company_name}}. I would keep it practical:</p>
+
+                <div class="ideas">
+                  <div class="idea">
+                    <span class="num">1</span>
+                    <div>
+                      <strong>Update risk</strong>
+                      <span>Which plugins, forms, or theme pieces should be checked before someone clicks update.</span>
+                    </div>
+                  </div>
+                  <div class="idea">
+                    <span class="num">2</span>
+                    <div>
+                      <strong>Speed and conversion</strong>
+                      <span>Where image weight, caching, layout shifts, or slow first-screen content may cost leads.</span>
+                    </div>
+                  </div>
+                  <div class="idea">
+                    <span class="num">3</span>
+                    <div>
+                      <strong>Simple monthly care</strong>
+                      <span>Backups, uptime, security basics, SEO details, and small page edits handled without a project each time.</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p>No long sales process. Reply with one WordPress issue you want off your plate, and I’ll suggest the first sensible fix.</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="cta-row">
+                <a class="button" href="https://zeptrix.io/siteops">See $19/month WordPress care</a>
+              </td>
+            </tr>
+            <tr>
+              <td class="signature">
+                <p>Best,<br>Amihai<br>Zeptrix SiteOps</p>
+              </td>
+            </tr>
+            <tr>
+              <td class="footer">
+                Zeptrix SiteOps handles WordPress updates, fixes, backups, speed cleanup, SEO basics, content changes, and ongoing care for small businesses. Plans start at $19/month after the free evaluation.
+              </td>
+            </tr>
+          </table>
+        </div>
+      </section>
+
+      <aside class="copy-panel" aria-label="Reusable email copy">
+        <h2>Reusable Copy</h2>
+        <div class="field">
+          <label>Subject</label>
+          <div>A quick WordPress care idea for {{company_name}} starting at $19/month</div>
+        </div>
+        <div class="field">
+          <label>Alternative Subjects</label>
+          <div>Keeping {{company_name}}'s WordPress site healthy at $19/month
+WordPress updates and fixes for {{company_name}}
+Quick WordPress health check for {{company_name}} at $19/month</div>
+        </div>
+        <div class="field">
+          <label>Preheader</label>
+          <div>A practical note about updates, backups, speed, forms, and monthly WordPress care starting at $19/month.</div>
+        </div>
+        <div class="field">
+          <label>Personalization Tokens</label>
+          <div>{{company_name}}, {{website_url}}, {{wordpress_signal}}</div>
+        </div>
+        <div class="field">
+          <label>Example Values</label>
+          <div>{{company_name}} = Boston IT
+{{website_url}} = https://www.bostonit.com/
+{{wordpress_signal}} = I saw WordPress assets loading from the site, including wp-content paths</div>
+        </div>
+        <div class="field">
+          <label>Plain Text Version</label>
+          <pre>Hi {{company_name}} team,
+
+I noticed {{company_name}} is running WordPress at {{website_url}}.
+
+I help small businesses keep WordPress sites updated, backed up, faster, and easier to change without chasing developers or logging into wp-admin every week.
+
+What I noticed:
+{{wordpress_signal}}. That usually means the site depends on plugins, theme updates, forms, caching, and backups that need regular care.
+
+Limited offer:
+Join this month, evaluate for free, and start with only $19 from next month.
+
+If useful, I can send a short WordPress health note for {{company_name}}. I would keep it practical:
+
+1. Update risk
+Which plugins, forms, or theme pieces should be checked before someone clicks update.
+
+2. Speed and conversion
+Where image weight, caching, layout shifts, or slow first-screen content may cost leads.
+
+3. Simple monthly care
+Backups, uptime, security basics, SEO details, and small page edits handled without a project each time.
+
+No long sales process. Reply with one WordPress issue you want off your plate, and I’ll suggest the first sensible fix.
+
+Best,
+Amihai
+Zeptrix SiteOps
+
+https://zeptrix.io/siteops
+
+Plans start at $19/month after the free evaluation.</pre>
+        </div>
+      </aside>
+    </main>
+  </body>
+</html>
