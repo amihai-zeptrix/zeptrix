@@ -47,9 +47,9 @@ assert_contains "$tmp_dir/mbh.html" "052-314-1458"
 assert_contains "$tmp_dir/mbh.html" 'href="styles.css"'
 assert_not_contains "$tmp_dir/mbh.html" "<title>Zeptrix | AI AWS Cost Reduction</title>"
 
-fetch "/crm/" "$tmp_dir/crm.html"
-assert_contains "$tmp_dir/crm.html" "<title>Zeptrix CRM</title>"
-assert_contains "$tmp_dir/crm.html" '<div id="root"></div>'
+fetch "/internal-crm/" "$tmp_dir/internal-crm.html"
+assert_contains "$tmp_dir/internal-crm.html" "<title>Zeptrix CRM</title>"
+assert_contains "$tmp_dir/internal-crm.html" '<div id="root"></div>'
 
 fetch "/your-new-crm/" "$tmp_dir/your-new-crm.html"
 assert_contains "$tmp_dir/your-new-crm.html" "<title>Zeptrix CRM | Sales Pipeline</title>"

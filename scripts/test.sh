@@ -75,8 +75,8 @@ assert_contains nginx-zeptrix.conf "try_files \$uri \$uri/ /mbh/index.html;"
 assert_contains nginx-zeptrix.conf "location = /wordpress-to-modern-websites"
 assert_contains nginx-zeptrix.conf "location = /fast-site"
 assert_contains nginx-zeptrix.conf "return 301 /siteops;"
-assert_contains nginx-zeptrix.conf "location = /crm"
-assert_contains nginx-zeptrix.conf "location ^~ /crm/"
+assert_contains nginx-zeptrix.conf "location = /internal-crm"
+assert_contains nginx-zeptrix.conf "location ^~ /internal-crm/"
 assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8008;"
 
 if rg -n 'href="styles\.css"|src="app\.js"|url\("assets/' --glob '*.html' --glob '*.css' . \

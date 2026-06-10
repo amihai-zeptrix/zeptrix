@@ -174,6 +174,7 @@ function renderSidebar() {
       ${sideLink("contacts", "♙", "Contacts", uniqueBy("email").length)}
       ${sideLink("accounts", "▣", "Accounts", uniqueBy("account").length)}
       ${sideLink("activities", "✓", "Activities", openTasks().length)}
+      ${sideLink("tickets", "▤", "Tickets", openTasks().length)}
       ${sideLink("inbox", "✉", "Inbox", state.communications.length)}
       ${sideLink("reports", "◴", "Reports")}
       ${sideLink("data-quality", "◇", "Data quality", duplicateGroups().length)}
@@ -207,6 +208,7 @@ function renderSection() {
   if (state.section === "contacts") return renderContacts();
   if (state.section === "accounts") return renderAccounts();
   if (state.section === "activities") return renderActivities();
+  if (state.section === "tickets") return renderTickets();
   if (state.section === "inbox") return renderInbox();
   if (state.section === "reports") return `${renderPageHeader("Reports", "Monitor pipeline health and sales performance.")}${renderDashboard()}`;
   if (state.section === "data-quality") return renderDataQuality();
@@ -297,6 +299,41 @@ function renderActivities() {
     <section class="activity-card">
       ${tasks.length ? tasks.map(renderTaskRow).join("") : `<p class="empty-state">No activities yet.</p>`}
     </section>`;
+}
+
+function renderTickets() {
+  const columns = [
+    ["Overdue", (task) => !task.completed && task.due < today()],
+    ["Due today", (task) => !task.completed && task.due === today()],
+    ["Upcoming", (task) => !task.completed && task.due > today()],
+    ["Resolved", (task) => task.completed],
+  ];
+  return `${renderPageHeader("Ticket management", "Triage customer work, support requests, and follow-up blockers by urgency.")}
+    <div class="section-toolbar"><strong>${openTasks().length} open tickets</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-task">＋ New ticket</button></div>
+    <section class="ticket-board">
+      ${columns.map(([label, predicate]) => {
+        const items = state.tasks.filter(predicate);
+        return `<div class="ticket-column">
+          <header class="ticket-column-head"><h3>${label}</h3><span>${items.length}</span></header>
+          ${items.map(renderTicketCard).join("") || `<p class="ticket-empty">No tickets</p>`}
+        </div>`;
+      }).join("")}
+    </section>`;
+}
+
+function renderTicketCard(task) {
+  const deal = state.deals.find((item) => item.id === task.dealId);
+  const [label, klass] = taskStatus(task);
+  return `<article class="ticket-card">
+    <div class="ticket-card-head"><strong>T-${String(task.id).padStart(4, "0")}</strong><span class="priority ${klass}">${label}</span></div>
+    <button class="ticket-title" data-open-deal="${task.dealId}">${escapeHtml(task.title)}</button>
+    <p>${escapeHtml(deal?.account || "Unlinked account")} · ${escapeHtml(task.owner)}</p>
+    <div class="ticket-card-foot"><span>${escapeHtml(task.type)}</span><span>${formatDate(task.due)}</span></div>
+    <div class="ticket-card-actions">
+      <button class="button small" data-action="toggle-task" data-id="${task.id}">${task.completed ? "Reopen" : "Resolve"}</button>
+      <button class="button small" data-action="edit-ticket" data-id="${task.id}">Edit</button>
+    </div>
+  </article>`;
 }
 
 function renderInbox() {
@@ -632,6 +669,7 @@ document.addEventListener("click", (event) => {
     const { action, group, id, dealId: taskDealId, email } = actionElement.dataset;
     if (action === "add-deal") { state.modal = "deal"; state.editing = null; state.newGroup = group || "active"; }
     if (action === "add-task") { state.modal = "task"; state.taskDealId = taskDealId ? Number(taskDealId) : null; state.selected = null; }
+    if (action === "edit-ticket") { state.modal = "task"; state.editingTask = state.tasks.find((task) => task.id === Number(id)); state.selected = null; }
     if (action === "compose-email") { state.modal = "email"; state.emailDealId = taskDealId ? Number(taskDealId) : null; state.selected = null; }
     if (action === "import-csv") state.modal = "import";
     if (action === "add-custom-field") {
@@ -647,7 +685,7 @@ document.addEventListener("click", (event) => {
       state.deals = state.deals.filter((deal) => !removeIds.includes(deal.id));
     }
     if (action === "open-settings") state.modal = "settings";
-    if (action === "close") { state.modal = null; state.selected = null; state.editing = null; state.taskDealId = null; }
+    if (action === "close") { state.modal = null; state.selected = null; state.editing = null; state.editingTask = null; state.taskDealId = null; }
     if (action === "edit-deal") { state.selected = null; state.editing = state.deals.find((deal) => deal.id === Number(id)); state.modal = "deal"; }
     if (action === "toggle-task") {
       state.tasks = state.tasks.map((task) => task.id === Number(id) ? { ...task, completed: !task.completed } : task);
@@ -723,13 +761,18 @@ document.addEventListener("submit", (event) => {
   if (event.target.matches("[data-task-form]")) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));
-    state.tasks = [{
+    const ticket = {
+      ...state.editingTask,
       ...values,
-      id: Math.max(0, ...state.tasks.map((task) => task.id)) + 1,
+      id: state.editingTask?.id || Math.max(0, ...state.tasks.map((task) => task.id)) + 1,
       dealId: Number(values.dealId),
-      completed: false,
-    }, ...state.tasks];
+      completed: state.editingTask?.completed || false,
+    };
+    state.tasks = state.editingTask
+      ? state.tasks.map((task) => task.id === state.editingTask.id ? ticket : task)
+      : [ticket, ...state.tasks];
     state.modal = null;
+    state.editingTask = null;
     state.taskDealId = null;
     saveState();
     render();
