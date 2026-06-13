@@ -28,8 +28,7 @@ const campaignRecurrences = [
   ["one-time", "One-time"],
   ["weekly", "Weekly"],
   ["monthly", "Monthly"],
-  ["semiannual", "Every 6 months"],
-  ["quarterly", "Quarterly"],
+  ["quarterly", "Every 3 months"],
   ["renewal-window", "Renewal window"],
 ];
 const templateTokens = [
@@ -69,9 +68,8 @@ const tenantSeed = [
     ],
     campaigns: [
       { id: 1, name: "Enterprise renewal readiness", audienceType: "tag", audienceValue: "Enterprise", recurrence: "renewal-window", subject: "Planning your next Zeptrix milestone", template: "Hi {{mainContactName}},\n\nAs {{accountName}} approaches the next milestone, {{ownerName}} prepared a short plan around {{dealName}} and the {{dealValue}} relationship.\n\nCan we review it before {{closeDate}}?", status: "Draft", createdAt: "2026-06-12T10:00:00" },
-      { id: 2, name: "Six-month relationship check-in", audienceType: "level", audienceValue: "High", recurrence: "semiannual", subject: "How are things going at {{accountName}}?", template: "Hi {{mainContactName}},\n\nIt has been a while since we reviewed how things are going with {{accountName}}. {{ownerName}} would like to check in on adoption, blockers, and where {{dealName}} can create more value.\n\nWould next week work for a short conversation?", status: "Draft", createdAt: "2026-06-12T10:20:00" },
+      { id: 2, name: "Quarterly customer health check", audienceType: "level", audienceValue: "High", recurrence: "quarterly", subject: "Quarterly health check for {{accountName}}", template: "Hi {{mainContactName}},\n\nEvery three months we like to review customer health, outcomes, risks, and next steps. {{ownerName}} would like to check how things are going with {{accountName}} and where {{dealName}} can create more value.\n\nWould next week work for a short conversation?", status: "Draft", createdAt: "2026-06-12T10:20:00" },
       { id: 3, name: "Expansion discovery pulse", audienceType: "tag", audienceValue: "Expansion", recurrence: "quarterly", subject: "New ideas for {{accountName}}", template: "Hi {{mainContactName}},\n\nBased on {{dealName}}, I see a few opportunities for {{accountName}} to expand usage. I can share a short benchmark and a practical next-step plan.\n\nBest,\n{{ownerName}}", status: "Draft", createdAt: "2026-06-12T10:40:00" },
-      { id: 4, name: "Pilot activation nudge", audienceType: "tag", audienceValue: "Pilot", recurrence: "weekly", subject: "Pilot progress for {{accountName}}", template: "Hi {{mainContactName}},\n\nQuick check on the {{dealName}} pilot. Are there any blockers before {{closeDate}}? {{ownerName}} can help unblock adoption or stakeholder alignment.", status: "Draft", createdAt: "2026-06-12T11:00:00" },
     ],
   },
   {
@@ -99,9 +97,8 @@ const tenantSeed = [
     ],
     campaigns: [
       { id: 1, name: "Expansion stakeholder note", audienceType: "tag", audienceValue: "Expansion", recurrence: "monthly", subject: "Next step for {{accountName}}", template: "Hi {{mainContactName}},\n\nFollowing {{dealName}}, I wanted to share a tailored rollout plan for {{accountName}}.\n\n{{ownerName}} can walk through it this week.", status: "Draft", createdAt: "2026-06-12T11:00:00" },
-      { id: 2, name: "Six-month health check", audienceType: "level", audienceValue: "High", recurrence: "semiannual", subject: "How are things going with Zeptrix at {{accountName}}?", template: "Hi {{mainContactName}},\n\nEvery six months we like to check how things are going, what is working, and where {{accountName}} needs more support. {{ownerName}} can review open priorities around {{dealName}} and next steps.\n\nWould you like to schedule a quick review?", status: "Draft", createdAt: "2026-06-12T11:20:00" },
+      { id: 2, name: "Quarterly customer health check", audienceType: "level", audienceValue: "High", recurrence: "quarterly", subject: "Quarterly health check for {{accountName}}", template: "Hi {{mainContactName}},\n\nEvery three months we like to review customer health, outcomes, risks, and next steps. {{ownerName}} can review how things are going with {{accountName}}, what is working, and where {{dealName}} needs more support.\n\nWould you like to schedule a quick review?", status: "Draft", createdAt: "2026-06-12T11:20:00" },
       { id: 3, name: "Renewal value recap", audienceType: "tag", audienceValue: "Renewal", recurrence: "renewal-window", subject: "Value recap before renewal for {{accountName}}", template: "Hi {{mainContactName}},\n\nAhead of {{closeDate}}, I prepared a short recap of outcomes from {{dealName}} and the next value areas for {{accountName}}.\n\nBest,\n{{ownerName}}", status: "Draft", createdAt: "2026-06-12T11:40:00" },
-      { id: 4, name: "Pilot enablement reminder", audienceType: "tag", audienceValue: "Pilot", recurrence: "weekly", subject: "Keeping {{accountName}} pilot moving", template: "Hi {{mainContactName}},\n\nChecking in on pilot enablement for {{accountName}}. If there are blockers, {{ownerName}} can help align the next action before {{closeDate}}.", status: "Draft", createdAt: "2026-06-12T12:00:00" },
     ],
   },
 ];
@@ -1190,7 +1187,7 @@ function renderInbox() {
   const items = [...currentTenant().communications].sort((a, b) => b.date.localeCompare(a.date));
   return `${renderPageHeader("Inbox", "Keep customer communication attached to every opportunity.")}<div class="section-toolbar"><strong>${items.length} logged interactions</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="compose-email">＋ Log email</button></div><section class="activity-card">${items.map((item) => {
     const deal = currentTenant().deals.find((candidate) => candidate.id === item.dealId);
-    const isOpen = ui.selectedCommunicationId === item.id;
+    const isOpen = String(ui.selectedCommunicationId) === String(item.id);
     return `<div class="communication-row ${isOpen ? "is-open" : ""}"><span class="activity-symbol">${item.type === "Meeting" ? "◴" : "✉"}</span><button class="activity-main" data-open-communication="${item.id}"><span class="list-primary">${escapeHtml(item.subject)}<small>${escapeHtml(deal?.name || "Unlinked")} · ${escapeHtml(deal?.account || "No account")} · ${escapeHtml(item.owner)} · ${escapeHtml(item.tracked)}</small></span></button><span class="muted">${formatTimestamp(item.date)}</span><button class="button small danger" data-action="delete-communication" data-id="${item.id}">Delete</button></div>${isOpen ? renderInboxThread(item, deal) : ""}`;
   }).join("") || `<p class="empty-state">No communication logged yet.</p>`}</section>`;
 }
@@ -1312,7 +1309,7 @@ document.addEventListener("click", async (event) => {
   }
   if (communicationId) {
     ui.section = "inbox";
-    ui.selectedCommunicationId = ui.selectedCommunicationId === Number(communicationId) ? null : Number(communicationId);
+    ui.selectedCommunicationId = String(ui.selectedCommunicationId) === String(communicationId) ? null : communicationId;
     ui.selected = null;
   }
   if (collapse) ui.collapsed = ui.collapsed.includes(collapse) ? ui.collapsed.filter((item) => item !== collapse) : [...ui.collapsed, collapse];
@@ -1469,7 +1466,7 @@ document.addEventListener("click", async (event) => {
     if (action === "delete-communication") {
       const tenant = currentTenant();
       setTenant({ ...tenant, communications: tenant.communications.filter((item) => item.id !== Number(id)) });
-      if (ui.selectedCommunicationId === Number(id)) ui.selectedCommunicationId = null;
+      if (String(ui.selectedCommunicationId) === String(id)) ui.selectedCommunicationId = null;
     }
     if (action === "add-custom-field") {
       const field = prompt("Custom field name");

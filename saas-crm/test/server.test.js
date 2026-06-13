@@ -228,12 +228,12 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
 
   assert.match(app, /const defaultTags =/);
   assert.match(app, /const campaignRecurrences =/);
-  assert.match(app, /Every 6 months/);
+  assert.match(app, /Every 3 months/);
   assert.match(app, /const templateTokens =/);
   assert.match(app, /campaigns:/);
-  assert.match(app, /Six-month relationship check-in|Six-month health check/);
+  assert.match(app, /Quarterly customer health check/);
   assert.match(app, /Expansion discovery pulse|Expansion stakeholder note/);
-  assert.match(app, /Pilot activation nudge|Pilot enablement reminder/);
+  assert.match(app, /Renewal value recap|Enterprise renewal readiness/);
   assert.match(app, /function allAccountTags/);
   assert.match(app, /function campaignRecipients/);
   assert.match(app, /function renderMergedTemplate/);
@@ -265,6 +265,7 @@ test("CRM inbox expands communication rows into correspondence threads", () => {
   assert.match(app, /selectedCommunicationId/);
   assert.match(renderInboxSource, /data-open-communication/);
   assert.match(renderInboxSource, /renderInboxThread\(item, deal\)/);
+  assert.match(renderInboxSource, /String\(ui\.selectedCommunicationId\) === String\(item\.id\)/);
   assert.match(renderInboxSource, /communication-row \$\{isOpen \? "is-open" : ""\}/);
   assert.match(renderInboxThreadSource, /class="inbox-thread-row"/);
   assert.match(renderInboxThreadSource, /class="message-bubble customer"/);
@@ -284,7 +285,7 @@ test("CRM click handling preserves account, inbox, and search interactions", () 
   assert.match(clickHandlerSource, /ui\.accountFocus = account/);
   assert.match(clickHandlerSource, /data-open-communication/);
   assert.match(clickHandlerSource, /ui\.section = "inbox"/);
-  assert.match(clickHandlerSource, /ui\.selectedCommunicationId = ui\.selectedCommunicationId === Number\(communicationId\) \? null : Number\(communicationId\)/);
+  assert.match(clickHandlerSource, /ui\.selectedCommunicationId = String\(ui\.selectedCommunicationId\) === String\(communicationId\) \? null : communicationId/);
   assert.match(clickHandlerSource, /insert-template-token/);
   assert.match(clickHandlerSource, /remove-account-tag/);
   assert.match(inputHandlerSource, /restoreSearchFocus\("\[data-contact-search\]", cursor\)/);
