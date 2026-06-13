@@ -141,6 +141,7 @@ let ui = {
   accountFocus: "",
   selectedContactEmail: "",
   selectedCommunicationId: null,
+  selectedCampaignId: null,
   replyingThread: "",
   correspondenceDrafts: {},
   campaignDraft: {
@@ -956,16 +957,18 @@ function renderCampaigns() {
   const audienceValue = draft.audienceValue || audienceOptions[0] || "";
   const recipients = campaignRecipients(draft.audienceType, audienceValue);
   const previewDeal = recipients[0] || accounts[0];
+  const selectedCampaign = campaigns.find((campaign) => String(campaign.id) === String(ui.selectedCampaignId));
   return `${renderPageHeader("Campaigns", "Segment customers, personalize outreach, and keep every campaign tied to account data.")}
     <section class="campaign-layout">
       <article class="widget">
-        <div class="panel-head"><h3>Existing campaigns</h3><span class="count">${campaigns.length}</span></div>
+        <div class="panel-head"><h3>Existing campaigns</h3><span class="thread-actions"><button class="icon-button small" data-action="new-campaign" data-tooltip="New campaign" aria-label="New campaign">＋</button><span class="count">${campaigns.length}</span></span></div>
         <div class="campaign-list">${campaigns.map((campaign) => {
           const recipients = campaignRecipients(campaign.audienceType, campaign.audienceValue);
-          return `<div class="campaign-card"><strong>${escapeHtml(campaign.name)}</strong><small>${escapeHtml(campaign.status)} · ${escapeHtml(recurrenceLabel(campaign.recurrence))} · ${escapeHtml(campaign.audienceType)}: ${escapeHtml(campaign.audienceValue)} · ${recipients.length} accounts</small><p>${renderMergedTemplate(campaign.subject, recipients[0] || accounts[0])}</p></div>`;
+          const isSelected = String(campaign.id) === String(ui.selectedCampaignId);
+          return `<button class="campaign-card ${isSelected ? "is-selected" : ""}" data-open-campaign="${campaign.id}"><strong>${escapeHtml(campaign.name)}</strong><small>${escapeHtml(campaign.status)} · ${escapeHtml(recurrenceLabel(campaign.recurrence))} · ${escapeHtml(campaign.audienceType)}: ${escapeHtml(campaign.audienceValue)} · ${recipients.length} accounts</small><p>${renderMergedTemplate(campaign.subject, recipients[0] || accounts[0])}</p></button>`;
         }).join("") || `<p class="empty-state compact">No campaigns yet.</p>`}</div>
       </article>
-      <form class="widget campaign-builder" data-campaign-form>
+      ${selectedCampaign ? renderCampaignDetail(selectedCampaign) : `<form class="widget campaign-builder" data-campaign-form>
         <h3>Add campaign</h3>
         <div class="campaign-fields">
           <label class="field"><span>Name</span><input name="name" value="${escapeHtml(draft.name)}" data-campaign-field required /></label>
@@ -979,12 +982,29 @@ function renderCampaigns() {
         <label class="field"><span>Template markup</span><textarea name="template" data-campaign-template data-campaign-field rows="8" required>${escapeHtml(draft.template)}</textarea></label>
         <section class="campaign-preview"><small>Preview for ${escapeHtml(previewDeal?.account || "no account")}</small><h4>${renderMergedTemplate(draft.subject, previewDeal)}</h4><p>${renderMergedTemplate(draft.template, previewDeal)}</p></section>
         <div class="form-actions"><button type="button" class="button" data-action="reset-campaign-draft">Reset</button><span class="toolbar-spacer"></span><button class="button primary">Create campaign</button></div>
-      </form>
+      </form>`}
     </section>`;
 }
 
 function recurrenceLabel(value) {
   return campaignRecurrences.find(([key]) => key === value)?.[1] || "One-time";
+}
+
+function renderCampaignDetail(campaign) {
+  const recipients = campaignRecipients(campaign.audienceType, campaign.audienceValue);
+  const previewDeal = recipients[0] || uniqueBy("account")[0];
+  return `<article class="widget campaign-detail">
+    <div class="panel-head"><div><h3>${escapeHtml(campaign.name)}</h3><p class="subcopy">${escapeHtml(campaign.status)} campaign details</p></div><button class="button small" data-action="new-campaign">New campaign</button></div>
+    <section class="campaign-detail-grid">
+      <span><small>Audience</small><strong>${escapeHtml(campaign.audienceType)}: ${escapeHtml(campaign.audienceValue)}</strong></span>
+      <span><small>Recurrence</small><strong>${escapeHtml(recurrenceLabel(campaign.recurrence))}</strong></span>
+      <span><small>Recipients</small><strong>${recipients.length} accounts</strong></span>
+      <span><small>Created</small><strong>${formatTimestamp(campaign.createdAt)}</strong></span>
+    </section>
+    <div class="recipient-preview"><strong>Selected accounts</strong><span>${recipients.map((deal) => escapeHtml(deal.account)).join(", ") || "No matching accounts"}</span></div>
+    <section class="campaign-preview"><small>Subject preview</small><h4>${renderMergedTemplate(campaign.subject, previewDeal)}</h4><p>${renderMergedTemplate(campaign.template, previewDeal)}</p></section>
+    <label class="field"><span>Template markup</span><textarea readonly rows="8">${escapeHtml(campaign.template)}</textarea></label>
+  </article>`;
 }
 
 function renderAccountDetail(accountDeal, accountCount) {
@@ -1292,15 +1312,17 @@ document.addEventListener("click", async (event) => {
   const account = event.target.closest("[data-open-account]")?.dataset.openAccount;
   const contactEmail = event.target.closest("[data-open-contact]")?.dataset.openContact;
   const communicationId = event.target.closest("[data-open-communication]")?.dataset.openCommunication;
+  const campaignId = event.target.closest("[data-open-campaign]")?.dataset.openCampaign;
   const collapse = event.target.closest("[data-collapse]")?.dataset.collapse;
   const column = event.target.closest("[data-column]")?.dataset.column;
 
-  if (!section && !view && !dealId && !account && !contactEmail && !communicationId && !collapse && !column && !actionElement) return;
+  if (!section && !view && !dealId && !account && !contactEmail && !communicationId && !campaignId && !collapse && !column && !actionElement) return;
 
   if (section) {
     ui.section = section;
     ui.selectedContactEmail = "";
     ui.selectedCommunicationId = null;
+    ui.selectedCampaignId = null;
     ui.selected = null;
     ui.accountFocus = "";
   }
@@ -1320,6 +1342,11 @@ document.addEventListener("click", async (event) => {
   if (communicationId) {
     ui.section = "inbox";
     ui.selectedCommunicationId = String(ui.selectedCommunicationId) === String(communicationId) ? null : communicationId;
+    ui.selected = null;
+  }
+  if (campaignId) {
+    ui.section = "campaigns";
+    ui.selectedCampaignId = campaignId;
     ui.selected = null;
   }
   if (collapse) ui.collapsed = ui.collapsed.includes(collapse) ? ui.collapsed.filter((item) => item !== collapse) : [...ui.collapsed, collapse];
@@ -1377,6 +1404,10 @@ document.addEventListener("click", async (event) => {
     }
     if (action === "reset-campaign-draft") {
       ui.campaignDraft = { name: "", audienceType: "tag", audienceValue: allAccountTags()[0] || "", recurrence: "one-time", subject: "", template: "" };
+    }
+    if (action === "new-campaign") {
+      ui.section = "campaigns";
+      ui.selectedCampaignId = null;
     }
     if (action === "remove-account-tag") {
       const accountName = actionElement.dataset.account;
@@ -1701,6 +1732,7 @@ document.addEventListener("submit", async (event) => {
     };
     setTenant({ ...tenant, campaigns: [campaign, ...campaigns] });
     ui.campaignDraft = { ...ui.campaignDraft, name: "", recurrence: "one-time", subject: "", template: "" };
+    ui.selectedCampaignId = campaign.id;
     render();
     return;
   }

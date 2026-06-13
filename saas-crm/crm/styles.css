@@ -1161,10 +1161,18 @@ h3 { font-size: 14px; }
   gap: 10px;
 }
 .campaign-card {
+  width: 100%;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfe;
+  text-align: left;
+  cursor: pointer;
+}
+.campaign-card:hover,
+.campaign-card.is-selected {
+  border-color: #c8dcff;
+  background: #f6f9ff;
 }
 .campaign-card strong,
 .campaign-card small {
@@ -1245,6 +1253,45 @@ h3 { font-size: 14px; }
 }
 .campaign-preview p {
   color: #334155;
+}
+.campaign-detail {
+  display: grid;
+  gap: 12px;
+}
+.campaign-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.campaign-detail-grid span {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.campaign-detail-grid small,
+.campaign-detail-grid strong {
+  display: block;
+}
+.campaign-detail-grid small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.campaign-detail .field {
+  display: grid;
+  gap: 5px;
+}
+.campaign-detail textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
 }
 
 @media (max-width: 760px) {

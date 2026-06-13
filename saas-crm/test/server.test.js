@@ -225,6 +225,7 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   const sidebarSource = functionSource(app, "renderSidebar", "sideLink");
   const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
   const renderCampaignsSource = functionSource(app, "renderCampaigns", "renderAccountDetail");
+  const renderCampaignDetailSource = functionSource(app, "renderCampaignDetail", "renderAccountDetail");
 
   assert.match(app, /const defaultTags =/);
   assert.match(app, /const campaignRecurrences =/);
@@ -245,6 +246,12 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   assert.match(renderSectionSource, /ui\.section === "campaigns"/);
   assert.match(renderCampaignsSource, /data-campaign-form/);
   assert.match(renderCampaignsSource, /const campaigns = tenant\.campaigns \|\| \[\]/);
+  assert.match(renderCampaignsSource, /data-open-campaign/);
+  assert.match(renderCampaignsSource, /is-selected/);
+  assert.match(renderCampaignsSource, /renderCampaignDetail\(selectedCampaign\)/);
+  assert.match(renderCampaignDetailSource, /campaign-detail/);
+  assert.match(renderCampaignDetailSource, /Selected accounts/);
+  assert.match(renderCampaignDetailSource, /Template markup/);
   assert.match(renderCampaignsSource, /By tag/);
   assert.match(renderCampaignsSource, /By level/);
   assert.match(renderCampaignsSource, /By account name/);
@@ -254,6 +261,8 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   assert.match(renderCampaignsSource, /data-action="insert-template-token"/);
   assert.match(renderCampaignsSource, /data-campaign-template/);
   assert.match(styles, /\.campaign-layout/);
+  assert.match(styles, /\.campaign-card\.is-selected/);
+  assert.match(styles, /\.campaign-detail-grid/);
   assert.match(styles, /\.token-bar/);
   assert.match(styles, /\.account-tag-editor/);
 });
@@ -290,6 +299,9 @@ test("CRM click handling preserves account, inbox, and search interactions", () 
   assert.match(clickHandlerSource, /ui\.selectedCommunicationId = String\(ui\.selectedCommunicationId\) === String\(communicationId\) \? null : communicationId/);
   assert.match(clickHandlerSource, /insert-template-token/);
   assert.match(clickHandlerSource, /remove-account-tag/);
+  assert.match(clickHandlerSource, /data-open-campaign/);
+  assert.match(clickHandlerSource, /ui\.selectedCampaignId = campaignId/);
+  assert.match(clickHandlerSource, /new-campaign/);
   assert.match(inputHandlerSource, /restoreSearchFocus\("\[data-contact-search\]", cursor\)/);
 });
 
