@@ -518,11 +518,11 @@ function renderAdmin() {
 }
 
 function tenantAdminEmail(tenant) {
-  return tenant.users?.find((user) => ["tenant_admin", "platform_admin"].includes(user.role))?.email || tenant.billingEmail;
+  return tenant.users?.find((user) => ["tenant_admin", "platform_admin"].includes(user.role))?.email || "";
 }
 
 function renderTenantRow(tenant) {
-  return `<div class="tenant-row"><span class="account-mark">${initials(tenant.name)}</span><span class="list-primary">${escapeHtml(tenant.name)}<small>${escapeHtml(tenant.slug)} · login: ${escapeHtml(tenantAdminEmail(tenant))} · billing: ${escapeHtml(tenant.billingEmail)}</small></span><span class="status-pill stage-won">${escapeHtml(tenant.status)}</span><strong>${tenant.seats} seats</strong><span>${escapeHtml(tenant.plan)} · ${escapeHtml(tenant.region)}</span>${tenantActions(tenant)}</div>`;
+  return `<div class="tenant-row"><span class="account-mark">${initials(tenant.name)}</span><span class="list-primary">${escapeHtml(tenant.name)}<small>${escapeHtml(tenant.slug)} · login: ${escapeHtml(tenantAdminEmail(tenant) || "none")} · billing: ${escapeHtml(tenant.billingEmail)}</small></span><span class="status-pill stage-won">${escapeHtml(tenant.status)}</span><strong>${tenant.seats} seats</strong><span>${escapeHtml(tenant.plan)} · ${escapeHtml(tenant.region)}</span>${tenantActions(tenant)}</div>`;
 }
 
 function inviteSummary(mail) {
@@ -535,10 +535,11 @@ function inviteSummary(mail) {
 
 function tenantActions(tenant) {
   const isCurrentTenant = tenant.id === session?.tenantId;
+  const hasLogin = !!tenantAdminEmail(tenant);
   return `<span class="row-actions">
     <button class="icon-button small" data-action="edit-tenant" data-id="${tenant.id}" data-tooltip="Edit tenant" title="Edit tenant" aria-label="Edit tenant">✎</button>
     <button class="icon-button small" data-action="open-tenant" data-id="${tenant.id}" data-tooltip="Open workspace" title="Open workspace" aria-label="Open workspace">↗</button>
-    <button class="icon-button small" data-action="reset-tenant-password" data-id="${tenant.id}" data-tooltip="Reset password" title="Reset password" aria-label="Reset password">↺</button>
+    <button class="icon-button small ${hasLogin ? "" : "is-disabled"}" data-action="reset-tenant-password" data-id="${tenant.id}" ${hasLogin ? "" : `data-disabled="true"`} data-tooltip="${hasLogin ? "Reset password" : "No login user"}" title="${hasLogin ? "Reset password" : "No login user"}" aria-label="${hasLogin ? "Reset password" : "No login user"}">↺</button>
     <button class="icon-button small danger ${isCurrentTenant ? "is-disabled" : ""}" data-action="delete-tenant" data-id="${tenant.id}" ${isCurrentTenant ? `data-disabled="true"` : ""} data-tooltip="${isCurrentTenant ? "Current tenant cannot be deleted" : "Delete tenant"}" title="${isCurrentTenant ? "Current tenant cannot be deleted" : "Delete tenant"}" aria-label="${isCurrentTenant ? "Current tenant cannot be deleted" : "Delete tenant"}">×</button>
   </span>`;
 }
@@ -783,7 +784,9 @@ document.addEventListener("click", async (event) => {
     if (action === "reset-tenant-password") {
       const tenant = data.tenants.find((item) => item.id === id);
       const loginEmail = tenant ? tenantAdminEmail(tenant) : "";
-      if (tenant && confirm(`Reset password and send a new invite to ${loginEmail}?`)) {
+      if (actionElement.dataset.disabled === "true") {
+        ui.adminNotice = "This tenant has no login user.";
+      } else if (tenant && confirm(`Reset password and send a new invite to ${loginEmail}?`)) {
         try {
           const result = await resetTenantPasswordViaApi(id);
           data.inviteEmails = [

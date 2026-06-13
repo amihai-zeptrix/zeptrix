@@ -331,22 +331,61 @@ async function initDatabase() {
 
 async function seedDatabase() {
   const existing = await dbQuery(`select count(*)::int as count from tenants`);
-  if (existing.rows[0].count > 0) return;
-  const adminTenant = await insertTenant({ name: "Zeptrix Admin", slug: "admin", plan: "Enterprise", status: "Active", region: "US-East", seats: 8, billingEmail: "billing@zeptrix.io" });
-  const amihaiTenant = await insertTenant({ name: "Amihai Sales", slug: "amihai", plan: "Growth", status: "Active", region: "EU-West", seats: 5, billingEmail: "billing@amihai.example" });
-  await insertUser(adminTenant.id, { name: "Platform Admin", email: "admin@zeptrix.io", password: "Tmp-Admin-7394!", role: "platform_admin", mustChangePassword: true, sso: true });
-  await insertUser(amihaiTenant.id, { name: "Amihai Cohen", email: "amihai@zeptrix.io", password: "Tmp-Amihai-5821!", role: "tenant_admin", mustChangePassword: true, sso: true });
-  await seedCrm(adminTenant.id, [
-    { name: "Enterprise rollout", account: "Orbital Systems", contact: "Liam Brooks", email: "liam@orbitalsystems.com", owner: "Noa Levi", stage: "Negotiation", value: 72000, close: "2026-06-18", priority: "High", group: "active", note: "Security review complete. Waiting on procurement.", updated: "Today, 09:42" },
-    { name: "Q3 expansion plan", account: "Nimbus Labs", contact: "Sophie Green", email: "sophie@nimbuslabs.io", owner: "Daniel Cohen", stage: "Proposal", value: 48500, close: "2026-06-30", priority: "Medium", group: "active", note: "Proposal shared after product workshop.", updated: "Yesterday" },
-    { name: "Operations package", account: "Acme Studios", contact: "Ethan Hall", email: "ethan@acmestudios.co", owner: "Maya Bar", stage: "Qualified", value: 24000, close: "2026-07-11", priority: "Medium", group: "active", note: "Needs a migration timeline.", updated: "May 29" },
-    { name: "Global account migration", account: "Atlas Freight", contact: "Lucas Martin", email: "lucas@atlasfreight.com", owner: "Avi Stein", stage: "Won", value: 96000, close: "2026-05-24", priority: "High", group: "closed", note: "Closed after successful pilot.", updated: "May 24" },
-  ]);
-  await seedCrm(amihaiTenant.id, [
-    { name: "Partner CRM launch", account: "BluePeak Advisory", contact: "Idan Yuval", email: "idan@bluepeak.example", owner: "Amihai Cohen", stage: "Proposal", value: 42000, close: "2026-06-25", priority: "High", group: "active", note: "Pricing review scheduled.", updated: "Today, 10:18" },
-    { name: "Support workflow", account: "Northline Apps", contact: "Yael Ron", email: "yael@northline.example", owner: "Noa Levi", stage: "Qualified", value: 18000, close: "2026-07-08", priority: "Medium", group: "active", note: "Needs SLA mapping.", updated: "Yesterday" },
-    { name: "Renewal package", account: "Cedar Retail", contact: "Tom Bar", email: "tom@cedar.example", owner: "Amihai Cohen", stage: "Won", value: 28000, close: "2026-06-02", priority: "Low", group: "closed", note: "Renewed for 12 months.", updated: "Jun 2" },
-  ]);
+  if (existing.rows[0].count === 0) {
+    const adminTenant = await insertTenant({ name: "Zeptrix Admin", slug: "admin", plan: "Enterprise", status: "Active", region: "US-East", seats: 8, billingEmail: "billing@zeptrix.io" });
+    const amihaiTenant = await insertTenant({ name: "Amihai Sales", slug: "amihai", plan: "Growth", status: "Active", region: "EU-West", seats: 5, billingEmail: "billing@amihai.example" });
+    await insertUser(adminTenant.id, { name: "Platform Admin", email: "admin@zeptrix.io", password: "Tmp-Admin-7394!", role: "platform_admin", mustChangePassword: true, sso: true });
+    await insertUser(amihaiTenant.id, { name: "Amihai Cohen", email: "amihai@zeptrix.io", password: "Tmp-Amihai-5821!", role: "tenant_admin", mustChangePassword: true, sso: true });
+    await seedCrm(adminTenant.id, [
+      { name: "Enterprise rollout", account: "Orbital Systems", contact: "Liam Brooks", email: "liam@orbitalsystems.com", owner: "Noa Levi", stage: "Negotiation", value: 72000, close: "2026-06-18", priority: "High", group: "active", note: "Security review complete. Waiting on procurement.", updated: "Today, 09:42" },
+      { name: "Q3 expansion plan", account: "Nimbus Labs", contact: "Sophie Green", email: "sophie@nimbuslabs.io", owner: "Daniel Cohen", stage: "Proposal", value: 48500, close: "2026-06-30", priority: "Medium", group: "active", note: "Proposal shared after product workshop.", updated: "Yesterday" },
+      { name: "Operations package", account: "Acme Studios", contact: "Ethan Hall", email: "ethan@acmestudios.co", owner: "Maya Bar", stage: "Qualified", value: 24000, close: "2026-07-11", priority: "Medium", group: "active", note: "Needs a migration timeline.", updated: "May 29" },
+      { name: "Global account migration", account: "Atlas Freight", contact: "Lucas Martin", email: "lucas@atlasfreight.com", owner: "Avi Stein", stage: "Won", value: 96000, close: "2026-05-24", priority: "High", group: "closed", note: "Closed after successful pilot.", updated: "May 24" },
+    ]);
+    await seedCrm(amihaiTenant.id, [
+      { name: "Partner CRM launch", account: "BluePeak Advisory", contact: "Idan Yuval", email: "idan@bluepeak.example", owner: "Amihai Cohen", stage: "Proposal", value: 42000, close: "2026-06-25", priority: "High", group: "active", note: "Pricing review scheduled.", updated: "Today, 10:18" },
+      { name: "Support workflow", account: "Northline Apps", contact: "Yael Ron", email: "yael@northline.example", owner: "Noa Levi", stage: "Qualified", value: 18000, close: "2026-07-08", priority: "Medium", group: "active", note: "Needs SLA mapping.", updated: "Yesterday" },
+      { name: "Renewal package", account: "Cedar Retail", contact: "Tom Bar", email: "tom@cedar.example", owner: "Amihai Cohen", stage: "Won", value: 28000, close: "2026-06-02", priority: "Low", group: "closed", note: "Renewed for 12 months.", updated: "Jun 2" },
+    ]);
+  }
+  await ensureDemoTenant();
+}
+
+const demoDeals = [
+  { name: "Enterprise rollout", account: "Orbital Systems", contact: "Liam Brooks", email: "liam@orbitalsystems.com", owner: "Noa Levi", stage: "Negotiation", value: 72000, close: "2026-06-18", priority: "High", group: "active", note: "Security review complete. Waiting on procurement.", updated: "Today, 09:42" },
+  { name: "Q3 expansion plan", account: "Nimbus Labs", contact: "Sophie Green", email: "sophie@nimbuslabs.io", owner: "Daniel Cohen", stage: "Proposal", value: 48500, close: "2026-06-30", priority: "Medium", group: "active", note: "Proposal shared after product workshop.", updated: "Yesterday" },
+  { name: "Operations package", account: "Acme Studios", contact: "Ethan Hall", email: "ethan@acmestudios.co", owner: "Maya Bar", stage: "Qualified", value: 24000, close: "2026-07-11", priority: "Medium", group: "active", note: "Needs a migration timeline.", updated: "May 29" },
+  { name: "Team onboarding", account: "Vertex Health", contact: "Amelia Chen", email: "amelia@vertex.health", owner: "Avi Stein", stage: "Lead", value: 18200, close: "2026-07-20", priority: "Low", group: "active", note: "Inbound request from pricing page.", updated: "May 28" },
+  { name: "Regional license renewal", account: "Strata Finance", contact: "Oliver Davis", email: "oliver@strata.finance", owner: "Noa Levi", stage: "Negotiation", value: 64000, close: "2026-06-09", priority: "High", group: "active", note: "Final legal pass in progress.", updated: "May 28" },
+  { name: "Customer success hub", account: "Northstar Retail", contact: "Emma Wilson", email: "emma@northstarretail.com", owner: "Maya Bar", stage: "Qualified", value: 31000, close: "2026-07-03", priority: "Medium", group: "active", note: "Product fit confirmed with VP Sales.", updated: "May 26" },
+  { name: "Analytics workspace", account: "Bloom Foods", contact: "Jack Turner", email: "jack@bloomfoods.co", owner: "Daniel Cohen", stage: "Proposal", value: 26800, close: "2026-06-26", priority: "Low", group: "active", note: "Review call booked.", updated: "May 25" },
+  { name: "Global account migration", account: "Atlas Freight", contact: "Lucas Martin", email: "lucas@atlasfreight.com", owner: "Avi Stein", stage: "Won", value: 96000, close: "2026-05-24", priority: "High", group: "closed", note: "Closed after successful pilot.", updated: "May 24" },
+  { name: "Marketing automation", account: "Focal Point", contact: "Ella Young", email: "ella@focalpoint.agency", owner: "Noa Levi", stage: "Won", value: 37500, close: "2026-05-21", priority: "Medium", group: "closed", note: "Handoff to onboarding team.", updated: "May 21" },
+  { name: "Procurement workflow", account: "Keystone Group", contact: "Mason King", email: "mason@keystone.group", owner: "Daniel Cohen", stage: "Lost", value: 22000, close: "2026-05-16", priority: "Low", group: "closed", note: "Timing shifted to next fiscal year.", updated: "May 16" },
+];
+
+const demoTasks = [
+  { dealIndex: 0, title: "Confirm procurement timeline", type: "Follow-up", owner: "Noa Levi", due: "2026-05-31", priority: "High", completed: false },
+  { dealIndex: 1, title: "Review proposal feedback", type: "Email", owner: "Daniel Cohen", due: "2026-06-01", priority: "Medium", completed: false },
+  { dealIndex: 2, title: "Send migration timeline", type: "Follow-up", owner: "Maya Bar", due: "2026-05-29", priority: "High", completed: false },
+  { dealIndex: 4, title: "Check legal approval", type: "Call", owner: "Noa Levi", due: "2026-05-31", priority: "High", completed: false },
+  { dealIndex: 6, title: "Run proposal review call", type: "Meeting", owner: "Daniel Cohen", due: "2026-06-02", priority: "Medium", completed: false },
+  { dealIndex: 7, title: "Complete onboarding handoff", type: "Follow-up", owner: "Avi Stein", due: "2026-05-25", priority: "Low", completed: true },
+];
+
+const demoCommunications = [
+  { dealIndex: 0, type: "Email", direction: "outbound", subject: "Security review follow-up", body: "Sharing the final procurement checklist and next steps.", date: "2026-05-30T09:42:00", owner: "Noa Levi", tracked: "Opened twice" },
+  { dealIndex: 1, type: "Meeting", direction: "inbound", subject: "Product workshop completed", body: "The Nimbus team requested a proposal for the Q3 expansion plan.", date: "2026-05-29T14:15:00", owner: "Daniel Cohen", tracked: "60 min" },
+  { dealIndex: 4, type: "Email", direction: "inbound", subject: "Legal review update", body: "Legal expects to complete the final pass this week.", date: "2026-05-28T11:20:00", owner: "Noa Levi", tracked: "Replied" },
+];
+
+async function ensureDemoTenant() {
+  let tenant = (await dbQuery(`select * from tenants where slug='demo'`)).rows[0];
+  if (!tenant) {
+    tenant = await insertTenant({ name: "CRM Demo", slug: "demo", plan: "Enterprise", status: "Active", region: "US-East", seats: 6, billingEmail: "demo@zeptrix.io" });
+  }
+  const existingDeals = await dbQuery(`select count(*)::int as count from deals where tenant_id=$1`, [tenant.id]);
+  if (existingDeals.rows[0].count === 0) await seedFullDemoCrm(tenant.id);
 }
 
 async function insertTenant(values) {
@@ -448,6 +487,35 @@ async function seedCrm(tenantId, deals) {
       `insert into deals (tenant_id, name, account, contact, email, owner, stage, value, close_date, priority, deal_group, notes, updated_label)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [tenantId, deal.name, deal.account, deal.contact, deal.email, deal.owner, deal.stage, deal.value, deal.close, deal.priority, deal.group, deal.note, deal.updated],
+    );
+  }
+}
+
+async function seedFullDemoCrm(tenantId) {
+  const dealIds = [];
+  for (const deal of demoDeals) {
+    const result = await dbQuery(
+      `insert into deals (tenant_id, name, account, contact, email, owner, stage, value, close_date, priority, deal_group, notes, updated_label)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       returning id`,
+      [tenantId, deal.name, deal.account, deal.contact, deal.email, deal.owner, deal.stage, deal.value, deal.close, deal.priority, deal.group, deal.note, deal.updated],
+    );
+    dealIds.push(result.rows[0].id);
+  }
+
+  for (const task of demoTasks) {
+    await dbQuery(
+      `insert into activities (tenant_id, deal_id, title, type, owner, due_date, priority, completed)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [tenantId, dealIds[task.dealIndex], task.title, task.type, task.owner, task.due, task.priority, task.completed],
+    );
+  }
+
+  for (const communication of demoCommunications) {
+    await dbQuery(
+      `insert into communications (tenant_id, deal_id, type, direction, subject, body, owner, tracked, occurred_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [tenantId, dealIds[communication.dealIndex], communication.type, communication.direction, communication.subject, communication.body, communication.owner, communication.tracked, communication.date],
     );
   }
 }
@@ -679,7 +747,7 @@ async function handleApi(req, res) {
       if (validationError) return json(res, 400, { error: validationError });
       const result = await updateTenant(id, payload);
       if (!result) return json(res, 404, { error: "Tenant not found." });
-      return json(res, 200, { tenant: tenantFromRow(result.tenant, [result.user], [], [], []) });
+      return json(res, 200, { tenant: tenantFromRow(result.tenant, result.user ? [result.user] : [], [], [], []) });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to update tenant.", detail: error.statusCode ? undefined : error.message });
     }
