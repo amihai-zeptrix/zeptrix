@@ -532,6 +532,7 @@ h3 { font-size: 14px; }
   font-size: 10px;
   font-weight: 800;
 }
+.account-mark.large { width: 52px; height: 52px; border-radius: 14px; font-size: 16px; }
 .activity-main { border: 0; background: transparent; text-align: left; }
 .task-check {
   display: grid;
@@ -574,14 +575,155 @@ h3 { font-size: 14px; }
 .invite-row:last-child { border-bottom: 0; }
 .metric-row {
   display: flex;
+  align-items: center;
+  gap: 12px;
   width: 100%;
   justify-content: space-between;
   padding: 10px 0;
   border: 0;
   border-top: 1px solid var(--line);
   background: transparent;
+  text-align: left;
 }
 .empty-state { padding: 50px; color: var(--muted); text-align: center; }
+
+.account-profile {
+  display: grid;
+  grid-template-columns: minmax(0, .95fr) minmax(520px, 1.35fr);
+  gap: 14px;
+}
+.account-panel {
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.account-summary-panel {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  align-items: center;
+  gap: 13px;
+}
+.account-kpis {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 6px;
+}
+.account-kpis span {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 7px;
+  background: #f6f8fb;
+}
+.account-kpis small,
+.contact-card dt {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.account-kpis strong { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.contact-card {
+  display: grid;
+  grid-template-columns: 30px minmax(0, .78fr) minmax(220px, 1.2fr);
+  gap: 11px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.contact-main { min-width: 0; }
+.contact-main strong,
+.contact-main small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contact-main small { margin-top: 2px; color: var(--muted); }
+.contact-card dl {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 5px 8px;
+  margin: 0;
+}
+.contact-card dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #334155;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contact-card a { color: var(--blue); text-decoration: none; }
+.correspondence-panel {
+  grid-row: span 2;
+  display: flex;
+  min-height: 620px;
+  flex-direction: column;
+}
+.thread-list {
+  display: grid;
+  gap: 12px;
+  overflow: auto;
+  max-height: 590px;
+  padding-right: 5px;
+}
+.thread-card {
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.thread-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 11px;
+}
+.thread-card header small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.thread-messages {
+  display: grid;
+  gap: 8px;
+}
+.message-bubble {
+  max-width: 78%;
+  padding: 10px 11px;
+  border-radius: 8px;
+}
+.message-bubble small {
+  display: block;
+  margin-bottom: 4px;
+  color: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  opacity: .72;
+}
+.message-bubble p { color: inherit; }
+.message-bubble.customer {
+  justify-self: start;
+  color: #293548;
+  background: #eef2f6;
+}
+.message-bubble.team {
+  justify-self: end;
+  color: #fff;
+  background: var(--blue);
+}
 
 .modal-layer {
   position: fixed;

@@ -714,9 +714,115 @@ function renderContacts() {
 function renderAccounts() {
   const allAccounts = uniqueBy("account");
   const accounts = ui.accountFocus ? allAccounts.filter((deal) => deal.account === ui.accountFocus) : allAccounts;
+  if (ui.accountFocus) return renderAccountDetail(accounts[0], allAccounts.length);
   const title = ui.accountFocus ? `Account: ${ui.accountFocus}` : "Accounts";
   const copy = ui.accountFocus ? "Focused from accounts that need attention." : "Track customers and prospects at the company level.";
   return `${renderPageHeader(title, copy)}<div class="section-toolbar"><strong>${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}</strong><span class="toolbar-spacer"></span>${ui.accountFocus ? `<button class="button" data-action="clear-account-focus">Show all accounts</button>` : ""}<button class="button primary" data-action="add-deal">＋ Add account</button></div><section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-deal="${deal.id}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
+}
+
+function renderAccountDetail(accountDeal, accountCount) {
+  if (!accountDeal) return `${renderPageHeader("Account not found", "The selected account is no longer available.")}<button class="button" data-action="clear-account-focus">Show all accounts</button>`;
+  const tenant = currentTenant();
+  const accountDeals = tenant.deals.filter((deal) => deal.account === accountDeal.account);
+  const contacts = topAccountContacts(accountDeal);
+  const threads = accountCorrespondence(accountDeal, contacts);
+  return `
+    ${renderPageHeader(accountDeal.account, `${accountDeals.length} active relationship ${accountDeals.length === 1 ? "record" : "records"} · ${money(total(accountDeals))} pipeline value`)}
+    <div class="section-toolbar"><strong>Account intelligence</strong><span class="toolbar-spacer"></span><button class="button" data-action="clear-account-focus">Show all ${accountCount} accounts</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
+    <section class="account-profile">
+      <article class="account-panel account-summary-panel">
+        <span class="account-mark large">${initials(accountDeal.account)}</span>
+        <div>
+          <h2>${escapeHtml(accountDeal.account)}</h2>
+          <p class="subcopy">${escapeHtml(accountDeal.note || "Relationship is active and ready for follow-up.")}</p>
+        </div>
+        <div class="account-kpis">
+          <span><small>Stage</small><strong>${escapeHtml(accountDeal.stage)}</strong></span>
+          <span><small>Owner</small><strong>${escapeHtml(accountDeal.owner)}</strong></span>
+          <span><small>Close date</small><strong>${formatDate(accountDeal.close)}</strong></span>
+        </div>
+      </article>
+      <article class="account-panel">
+        <h3>Top contacts</h3>
+        <div class="contact-grid">${contacts.map(renderAccountContact).join("")}</div>
+      </article>
+      <article class="account-panel correspondence-panel">
+        <h3>Correspondence</h3>
+        <div class="thread-list">${threads.map(renderAccountThread).join("")}</div>
+      </article>
+    </section>`;
+}
+
+function topAccountContacts(accountDeal) {
+  const domain = accountDeal.email?.split("@")[1] || `${slugify(accountDeal.account)}.example`;
+  const base = [
+    { name: accountDeal.contact, title: "Executive sponsor", email: accountDeal.email, mobile: contactMobile(accountDeal.contact), twitter: socialHandle(accountDeal.contact), facebook: facebookProfile(accountDeal.contact) },
+    { name: accountStakeholderName(accountDeal.account, 0), title: "VP Operations", email: `ops@${domain}`, mobile: contactMobile(`${accountDeal.account} ops`), twitter: socialHandle(accountDeal.account, "ops"), facebook: facebookProfile(accountDeal.account, "ops") },
+    { name: accountStakeholderName(accountDeal.account, 1), title: "Procurement lead", email: `procurement@${domain}`, mobile: contactMobile(`${accountDeal.account} procurement`), twitter: socialHandle(accountDeal.account, "procurement"), facebook: facebookProfile(accountDeal.account, "procurement") },
+  ];
+  return base.slice(0, 3);
+}
+
+function accountStakeholderName(account, index) {
+  const names = {
+    "Orbital Systems": ["Maya Hart", "Jon Reeves"],
+    "Strata Finance": ["Nina Patel", "Caleb Frost"],
+    "Nimbus Labs": ["Ari Lane", "Grace Kim"],
+    "Acme Studios": ["Mila Stone", "Ben Price"],
+  };
+  return names[account]?.[index] || ["Taylor Morgan", "Jordan Ellis"][index];
+}
+
+function contactMobile(seed) {
+  const digits = [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return `+1 (415) ${String(200 + digits % 700).padStart(3, "0")}-${String(1000 + digits * 7 % 9000).padStart(4, "0")}`;
+}
+
+function socialHandle(name, suffix = "") {
+  return `@${slugify(`${name} ${suffix}`).replaceAll("-", "")}`;
+}
+
+function facebookProfile(name, suffix = "") {
+  return `facebook.com/${slugify(`${name} ${suffix}`).replaceAll("-", ".")}`;
+}
+
+function renderAccountContact(contact) {
+  return `<div class="contact-card">${avatar(contact.name)}<div class="contact-main"><strong>${escapeHtml(contact.name)}</strong><small>${escapeHtml(contact.title)}</small></div><dl><dt>Email</dt><dd><a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a></dd><dt>Mobile</dt><dd><a href="tel:${escapeHtml(contact.mobile)}">${escapeHtml(contact.mobile)}</a></dd><dt>Twitter</dt><dd>${escapeHtml(contact.twitter)}</dd><dt>Facebook</dt><dd>${escapeHtml(contact.facebook)}</dd></dl></div>`;
+}
+
+function accountCorrespondence(accountDeal, contacts) {
+  const existing = currentTenant().communications
+    .filter((item) => currentTenant().deals.find((deal) => deal.id === item.dealId)?.account === accountDeal.account)
+    .map((item, index) => ({
+      subject: item.subject,
+      person: contacts[index % contacts.length].name,
+      date: item.date,
+      messages: [
+        { side: item.direction === "inbound" ? "customer" : "team", author: item.direction === "inbound" ? contacts[index % contacts.length].name : item.owner, body: item.body },
+        { side: item.direction === "inbound" ? "team" : "customer", author: item.direction === "inbound" ? accountDeal.owner : contacts[index % contacts.length].name, body: "Thanks, this is aligned with the account plan. I added the next step and will keep the team updated." },
+      ],
+    }));
+  const generated = [
+    ["Procurement timeline", "Can you send the implementation milestones and the exact owner for security sign-off?", "Yes. The security sign-off is with our solutions lead, and I attached the milestone plan for the rollout."],
+    ["Commercial approval", "Finance is comfortable with the license level, but they need the payment schedule in plain language.", "I simplified the payment schedule and marked the renewal window clearly for your team."],
+    ["Executive recap", "The executive team wants a short recap before they approve the next phase.", "I prepared a one-page recap covering business impact, timeline, and open decisions."],
+    ["Integration scope", "Please confirm whether the first phase includes Salesforce and support desk sync.", "Phase one includes Salesforce sync. Support desk sync is staged for week three after validation."],
+    ["Launch readiness", "We are ready to move forward if training dates are locked this week.", "Training dates are reserved and the onboarding plan is ready for approval."],
+  ].map(([subject, customer, team], index) => ({
+    subject,
+    person: contacts[index % contacts.length].name,
+    date: `2026-06-${String(12 - index).padStart(2, "0")}T${String(10 + index).padStart(2, "0")}:15:00`,
+    messages: [
+      { side: "customer", author: contacts[index % contacts.length].name, body: customer },
+      { side: "team", author: accountDeal.owner, body: team },
+      { side: "customer", author: contacts[(index + 1) % contacts.length].name, body: "That works. Please keep this thread updated when the next milestone is complete." },
+    ],
+  }));
+  return [...existing, ...generated].slice(0, 6);
+}
+
+function renderAccountThread(thread) {
+  return `<section class="thread-card"><header><div><strong>${escapeHtml(thread.subject)}</strong><small>${escapeHtml(thread.person)} · ${formatTimestamp(thread.date)}</small></div></header><div class="thread-messages">${thread.messages.map((message) => `<div class="message-bubble ${message.side}"><small>${escapeHtml(message.author)}</small><p>${escapeHtml(message.body)}</p></div>`).join("")}</div></section>`;
 }
 
 function renderActivities() {
