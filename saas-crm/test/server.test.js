@@ -231,6 +231,8 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   assert.match(app, /Every 3 months/);
   assert.match(app, /const templateTokens =/);
   assert.match(app, /campaigns:/);
+  assert.match(app, /defaultCampaignsForTenant/);
+  assert.match(app, /tenant\.campaigns\?\.length \? tenant\.campaigns : defaultCampaignsForTenant\(tenant\)/);
   assert.match(app, /Quarterly customer health check/);
   assert.match(app, /Expansion discovery pulse|Expansion stakeholder note/);
   assert.match(app, /Renewal value recap|Enterprise renewal readiness/);

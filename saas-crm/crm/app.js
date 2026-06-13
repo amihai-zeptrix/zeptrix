@@ -171,7 +171,7 @@ function normalizeData(nextData) {
   nextData.tenants = nextData.tenants.map((tenant) => ({
     ...tenant,
     deals: (tenant.deals || []).map((deal) => ({ ...deal, tags: deal.tags || defaultAccountTags(deal) })),
-    campaigns: (tenant.campaigns || []).map((campaign) => ({ recurrence: "one-time", ...campaign })),
+    campaigns: (tenant.campaigns?.length ? tenant.campaigns : defaultCampaignsForTenant(tenant)).map((campaign) => ({ recurrence: "one-time", ...campaign })),
     users: (tenant.users || []).map((user) => {
       const generatedPassword = user.password || seedPasswords[user.email] || generateTemporaryPassword();
       if (!user.password && !nextData.inviteEmails.some((mail) => mail.to?.toLowerCase() === user.email.toLowerCase() && mail.temporaryPassword === generatedPassword)) {
@@ -198,6 +198,16 @@ function defaultAccountTags(deal) {
   if (deal.stage === "Won") return ["Renewal"];
   if (deal.stage === "Proposal") return ["Expansion"];
   return ["Pilot"];
+}
+
+function defaultCampaignsForTenant(tenant) {
+  const tags = new Set((tenant.deals || []).flatMap((deal) => deal.tags || defaultAccountTags(deal)));
+  const examples = [
+    { id: 1, name: "Quarterly customer health check", audienceType: "level", audienceValue: "High", recurrence: "quarterly", subject: "Quarterly health check for {{accountName}}", template: "Hi {{mainContactName}},\n\nEvery three months we like to review customer health, outcomes, risks, and next steps. {{ownerName}} would like to check how things are going with {{accountName}} and where {{dealName}} can create more value.\n\nWould next week work for a short conversation?", status: "Draft", createdAt: "2026-06-12T10:20:00" },
+    { id: 2, name: "Expansion discovery pulse", audienceType: "tag", audienceValue: "Expansion", recurrence: "quarterly", subject: "New ideas for {{accountName}}", template: "Hi {{mainContactName}},\n\nBased on {{dealName}}, I see a few opportunities for {{accountName}} to expand usage. I can share a short benchmark and a practical next-step plan.\n\nBest,\n{{ownerName}}", status: "Draft", createdAt: "2026-06-12T10:40:00" },
+    { id: 3, name: "Renewal value recap", audienceType: "tag", audienceValue: "Renewal", recurrence: "renewal-window", subject: "Value recap before renewal for {{accountName}}", template: "Hi {{mainContactName}},\n\nAhead of {{closeDate}}, I prepared a short recap of outcomes from {{dealName}} and the next value areas for {{accountName}}.\n\nBest,\n{{ownerName}}", status: "Draft", createdAt: "2026-06-12T11:00:00" },
+  ];
+  return examples.filter((campaign) => campaign.audienceType !== "tag" || tags.has(campaign.audienceValue));
 }
 
 function loadSession() {
