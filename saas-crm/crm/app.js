@@ -586,7 +586,7 @@ function renderHome() {
     ${renderPageHeader(`Good morning, ${currentUser().name.split(" ")[0]}`, `Here is what is happening in ${tenant.name}.`)}
     ${renderSummary()}
     <section class="admin-grid">
-      <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(({ account, primaryDeal, count, value }) => `<button class="metric-row" data-open-account="${escapeHtml(account)}"><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small></span><strong>${money(value)}</strong><span class="priority priority-high">High</span></button>`).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
+      <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(({ account, primaryDeal, count, value, reasons }) => `<button class="metric-row attention-row" data-open-account="${escapeHtml(account)}"><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">High</span></button>`).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
       <article class="widget"><h3>Today's focus</h3><div class="summary-card"><span class="summary-icon" style="background:var(--orange-soft);color:var(--orange)">◴</span><div><small>Open tasks</small><strong>${tasks.length}</strong></div></div></article>
     </section>`;
 }
@@ -602,9 +602,24 @@ function accountsNeedingAttention(tenant = currentTenant()) {
         primaryDeal: Number(deal.value) > Number(existing.primaryDeal.value) ? deal : existing.primaryDeal,
         count: existing.count + 1,
         value: existing.value + Number(deal.value),
+        reasons: accountAttentionReasons(deal),
       });
     });
   return [...grouped.values()].sort((a, b) => b.value - a.value);
+}
+
+function accountAttentionReasons(deal) {
+  const reasonsByAccount = {
+    "Orbital Systems": ["Renewal checkpoint in 90 days", "Security/legal risk", "Angry customer thread"],
+    "Strata Finance": ["Renewal in 3 months", "Legal approval stalled", "Executive sponsor needed"],
+    "Atlas Freight": ["Onboarding handoff due", "Expansion timing", "Champion follow-up"],
+  };
+  if (reasonsByAccount[deal.account]) return reasonsByAccount[deal.account];
+  const reasons = [];
+  if (daysUntil(deal.close) <= 30) reasons.push("Close date approaching");
+  if (deal.stage === "Negotiation") reasons.push("Commercial approval pending");
+  if (deal.priority === "High") reasons.push("High-value stakeholder follow-up");
+  return reasons.length ? reasons : ["Engagement needs review"];
 }
 
 function renderSummary(deals = currentTenant().deals) {
@@ -765,6 +780,7 @@ function renderAccountDetail(accountDeal, accountCount) {
   const threads = accountCorrespondence(accountDeal, contacts);
   return `
     ${renderPageHeader(accountDeal.account, `${accountDeals.length} active relationship ${accountDeals.length === 1 ? "record" : "records"} · ${money(total(accountDeals))} pipeline value`)}
+    <div class="account-focus-banner"><span class="account-mark">${initials(accountDeal.account)}</span><div><strong>Viewing account</strong><small>${escapeHtml(accountDeal.account)} · opened from account intelligence</small></div><button class="button small" data-action="clear-account-focus">Back to account list</button></div>
     <div class="section-toolbar"><strong>Account intelligence</strong><span class="toolbar-spacer"></span><button class="button" data-action="clear-account-focus">Show all ${accountCount} accounts</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
     <section class="account-profile">
       <article class="account-panel account-summary-panel">
@@ -878,15 +894,17 @@ function accountCorrespondence(accountDeal, contacts) {
       ],
     }));
   const generated = [
+    ["Escalation: angry about delays", "I am angry that this slipped again. We were promised a clear security answer last week, and now procurement is asking why we should renew at all.", "You are right to be frustrated. I am escalating this today, sending a written recovery plan, and booking a same-day checkpoint with security and procurement.", "risk"],
     ["Procurement timeline", "Can you send the implementation milestones and the exact owner for security sign-off?", "Yes. The security sign-off is with our solutions lead, and I attached the milestone plan for the rollout."],
     ["Commercial approval", "Finance is comfortable with the license level, but they need the payment schedule in plain language.", "I simplified the payment schedule and marked the renewal window clearly for your team."],
     ["Executive recap", "The executive team wants a short recap before they approve the next phase.", "I prepared a one-page recap covering business impact, timeline, and open decisions."],
     ["Integration scope", "Please confirm whether the first phase includes Salesforce and support desk sync.", "Phase one includes Salesforce sync. Support desk sync is staged for week three after validation."],
     ["Launch readiness", "We are ready to move forward if training dates are locked this week.", "Training dates are reserved and the onboarding plan is ready for approval."],
-  ].map(([subject, customer, team], index) => ({
+  ].map(([subject, customer, team, risk], index) => ({
     subject,
     person: contacts[index % contacts.length].name,
     date: `2026-06-${String(12 - index).padStart(2, "0")}T${String(10 + index).padStart(2, "0")}:15:00`,
+    risk: risk === "risk",
     messages: [
       { side: "customer", author: contacts[index % contacts.length].name, body: customer },
       { side: "team", author: accountDeal.owner, body: team },
@@ -897,7 +915,7 @@ function accountCorrespondence(accountDeal, contacts) {
 }
 
 function renderAccountThread(thread) {
-  return `<section class="thread-card"><header><div><strong>${escapeHtml(thread.subject)}</strong><small>${escapeHtml(thread.person)} · ${formatTimestamp(thread.date)}</small></div></header><div class="thread-messages">${thread.messages.map((message) => `<div class="message-bubble ${message.side}"><small>${escapeHtml(message.author)}</small><p>${escapeHtml(message.body)}</p></div>`).join("")}</div></section>`;
+  return `<section class="thread-card ${thread.risk ? "risk-thread" : ""}"><header><div><strong>${escapeHtml(thread.subject)}</strong><small>${thread.risk ? "Anger detected · " : ""}${escapeHtml(thread.person)} · ${formatTimestamp(thread.date)}</small></div>${thread.risk ? `<span class="risk-label">Red risk</span>` : ""}</header><div class="thread-messages">${thread.messages.map((message) => `<div class="message-bubble ${message.side}"><small>${escapeHtml(message.author)}</small><p>${escapeHtml(message.body)}</p></div>`).join("")}</div></section>`;
 }
 
 function renderActivities() {
