@@ -780,7 +780,7 @@ function renderAccountDetail(accountDeal, accountCount) {
   const threads = accountCorrespondence(accountDeal, contacts);
   return `
     ${renderPageHeader(accountDeal.account, `${accountDeals.length} active relationship ${accountDeals.length === 1 ? "record" : "records"} · ${money(total(accountDeals))} pipeline value`)}
-    <div class="account-focus-banner"><span class="account-mark">${initials(accountDeal.account)}</span><div><strong>Viewing account</strong><small>${escapeHtml(accountDeal.account)} · opened from account intelligence</small></div><button class="button small" data-action="clear-account-focus">Back to account list</button></div>
+    <div class="account-focus-banner"><span class="account-mark">${initials(accountDeal.account)}</span><div><strong>Viewing account</strong><small>${escapeHtml(accountDeal.account)} · opened from account intelligence</small></div><button class="risk-jump-button" data-action="jump-risk-thread" data-tooltip="Jump to anger correspondence" aria-label="Jump to anger correspondence">!</button><button class="button small" data-action="clear-account-focus">Back to account list</button></div>
     <div class="section-toolbar"><strong>Account intelligence</strong><span class="toolbar-spacer"></span><button class="button" data-action="clear-account-focus">Show all ${accountCount} accounts</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
     <section class="account-profile">
       <article class="account-panel account-summary-panel">
@@ -1045,6 +1045,12 @@ document.addEventListener("click", async (event) => {
     if (action === "google-sso") {
       ui.pendingUser = findUserByEmail("admin@zeptrix.io");
       ui.authStep = "mfa";
+    }
+    if (action === "jump-risk-thread") {
+      document.querySelector(".risk-thread")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.querySelector(".risk-thread")?.classList.add("is-highlighted");
+      setTimeout(() => document.querySelector(".risk-thread")?.classList.remove("is-highlighted"), 1400);
+      return;
     }
     if (action === "back-login") { ui.authStep = "password"; ui.authError = ""; }
     if (action === "logout") { session = null; saveSession(); ui.authStep = "password"; }

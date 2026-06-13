@@ -664,7 +664,20 @@ h3 { font-size: 14px; }
 .account-focus-banner strong,
 .account-focus-banner small { display: block; }
 .account-focus-banner small { color: var(--muted); }
-.account-focus-banner .button { margin-left: auto; }
+.account-focus-banner .button { margin-left: 0; }
+.risk-jump-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  margin-left: auto;
+  place-items: center;
+  border: 1px solid #f0b9b9;
+  border-radius: 50%;
+  color: #a63232;
+  background: #fde1e1;
+  font: 900 18px Manrope, sans-serif;
+}
+.risk-jump-button:hover { background: #fbd1d1; }
 
 .account-profile {
   display: grid;
@@ -767,6 +780,9 @@ h3 { font-size: 14px; }
 .thread-card.risk-thread {
   border-color: #f0b9b9;
   background: #fff7f7;
+}
+.thread-card.risk-thread.is-highlighted {
+  box-shadow: 0 0 0 4px #fde1e1, 0 18px 38px rgba(166, 50, 50, .18);
 }
 .thread-card header {
   display: flex;
