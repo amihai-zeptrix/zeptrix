@@ -425,6 +425,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /saveGmailSettingsViaApi/);
   assert.match(app, /connectGmailViaApi/);
   assert.match(app, /scanGmailViaApi/);
+  assert.match(serverSource(), /if \(!integration\.account_email \|\| profile\.emailAddress\?\.toLowerCase\(\) !== String\(integration\.account_email\)\.toLowerCase\(\)\)/);
   assert.match(clickHandlerSource, /data-settings-tab/);
   assert.match(clickHandlerSource, /action === "connect-gmail"/);
   assert.match(clickHandlerSource, /action === "scan-gmail"/);

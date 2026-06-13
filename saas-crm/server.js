@@ -1251,8 +1251,8 @@ async function handleApi(req, res) {
       if (!integration) throw new Error("Gmail integration settings were not found.");
       const token = await exchangeGmailCode({ code, clientId: integration.client_id, redirectUri: integration.redirect_uri });
       const profile = await gmailApi(token.access_token, "profile");
-      if (integration.account_email && profile.emailAddress?.toLowerCase() !== String(integration.account_email).toLowerCase()) {
-        throw new Error(`Connected Gmail account ${profile.emailAddress || "unknown"} does not match ${integration.account_email}.`);
+      if (!integration.account_email || profile.emailAddress?.toLowerCase() !== String(integration.account_email).toLowerCase()) {
+        throw new Error(`Connected Gmail account ${profile.emailAddress || "unknown"} does not match ${integration.account_email || "the configured Gmail account"}.`);
       }
       await dbQuery(
         `update gmail_integrations
