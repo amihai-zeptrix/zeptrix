@@ -114,6 +114,7 @@ let ui = {
   collapsed: [],
   accountFocus: "",
   selectedContactEmail: "",
+  selectedCommunicationId: null,
   replyingThread: "",
   correspondenceDrafts: {},
 };
@@ -1057,8 +1058,17 @@ function renderInbox() {
   const items = [...currentTenant().communications].sort((a, b) => b.date.localeCompare(a.date));
   return `${renderPageHeader("Inbox", "Keep customer communication attached to every opportunity.")}<div class="section-toolbar"><strong>${items.length} logged interactions</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="compose-email">＋ Log email</button></div><section class="activity-card">${items.map((item) => {
     const deal = currentTenant().deals.find((candidate) => candidate.id === item.dealId);
-    return `<div class="communication-row"><span class="activity-symbol">${item.type === "Meeting" ? "◴" : "✉"}</span><button class="activity-main" data-open-deal="${item.dealId}"><span class="list-primary">${escapeHtml(item.subject)}<small>${escapeHtml(deal?.name || "Unlinked")} · ${escapeHtml(item.owner)} · ${escapeHtml(item.tracked)}</small></span></button><span class="muted">${formatTimestamp(item.date)}</span><button class="button small danger" data-action="delete-communication" data-id="${item.id}">Delete</button></div>`;
+    const isOpen = ui.selectedCommunicationId === item.id;
+    return `<div class="communication-row ${isOpen ? "is-open" : ""}"><span class="activity-symbol">${item.type === "Meeting" ? "◴" : "✉"}</span><button class="activity-main" data-open-communication="${item.id}"><span class="list-primary">${escapeHtml(item.subject)}<small>${escapeHtml(deal?.name || "Unlinked")} · ${escapeHtml(deal?.account || "No account")} · ${escapeHtml(item.owner)} · ${escapeHtml(item.tracked)}</small></span></button><span class="muted">${formatTimestamp(item.date)}</span><button class="button small danger" data-action="delete-communication" data-id="${item.id}">Delete</button></div>${isOpen ? renderInboxThread(item, deal) : ""}`;
   }).join("") || `<p class="empty-state">No communication logged yet.</p>`}</section>`;
+}
+
+function renderInboxThread(item, deal) {
+  const contactName = deal?.contact || "Customer";
+  const accountName = deal?.account || "Unlinked account";
+  const customerBody = item.direction === "inbound" ? item.body : "Thanks for the update. Please keep this attached to the account plan so the next owner has full context.";
+  const teamBody = item.direction === "inbound" ? "I logged this in the account timeline and added the next step for the owner." : item.body;
+  return `<div class="inbox-thread-row"><section class="thread-card inbox-thread-card"><header><div><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(accountName)} · ${escapeHtml(contactName)} · ${formatTimestamp(item.date)}</small></div><span class="thread-actions"><button class="icon-button small" data-open-account="${escapeHtml(accountName)}" data-tooltip="Open account" aria-label="Open account">↗</button></span></header><div class="thread-messages"><div class="message-bubble customer"><small>${escapeHtml(contactName)}</small><p>${escapeHtml(customerBody)}</p></div><div class="message-bubble team"><small>${escapeHtml(item.owner)}</small><p>${escapeHtml(teamBody)}</p></div></div></section></div>`;
 }
 
 function renderModal() {
@@ -1142,14 +1152,16 @@ document.addEventListener("click", async (event) => {
   const dealId = event.target.closest("[data-open-deal]")?.dataset.openDeal;
   const account = event.target.closest("[data-open-account]")?.dataset.openAccount;
   const contactEmail = event.target.closest("[data-open-contact]")?.dataset.openContact;
+  const communicationId = event.target.closest("[data-open-communication]")?.dataset.openCommunication;
   const collapse = event.target.closest("[data-collapse]")?.dataset.collapse;
   const column = event.target.closest("[data-column]")?.dataset.column;
 
-  if (!section && !view && !dealId && !account && !contactEmail && !collapse && !column && !actionElement) return;
+  if (!section && !view && !dealId && !account && !contactEmail && !communicationId && !collapse && !column && !actionElement) return;
 
   if (section) {
     ui.section = section;
     ui.selectedContactEmail = "";
+    ui.selectedCommunicationId = null;
     ui.selected = null;
     ui.accountFocus = "";
   }
@@ -1164,6 +1176,11 @@ document.addEventListener("click", async (event) => {
   if (contactEmail) {
     ui.section = "contacts";
     ui.selectedContactEmail = ui.selectedContactEmail === contactEmail ? "" : contactEmail;
+    ui.selected = null;
+  }
+  if (communicationId) {
+    ui.section = "inbox";
+    ui.selectedCommunicationId = ui.selectedCommunicationId === Number(communicationId) ? null : Number(communicationId);
     ui.selected = null;
   }
   if (collapse) ui.collapsed = ui.collapsed.includes(collapse) ? ui.collapsed.filter((item) => item !== collapse) : [...ui.collapsed, collapse];
@@ -1204,6 +1221,7 @@ document.addEventListener("click", async (event) => {
       ui.selected = null;
       ui.accountFocus = "";
       ui.selectedContactEmail = "";
+      ui.selectedCommunicationId = null;
     }
     if (action === "filter-activities") ui.activityFilter = actionElement.dataset.filter || "open";
     if (action === "reply-correspondence") {
@@ -1298,6 +1316,7 @@ document.addEventListener("click", async (event) => {
     if (action === "delete-communication") {
       const tenant = currentTenant();
       setTenant({ ...tenant, communications: tenant.communications.filter((item) => item.id !== Number(id)) });
+      if (ui.selectedCommunicationId === Number(id)) ui.selectedCommunicationId = null;
     }
     if (action === "add-custom-field") {
       const field = prompt("Custom field name");

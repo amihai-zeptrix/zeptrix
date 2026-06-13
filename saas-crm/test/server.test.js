@@ -164,3 +164,15 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(app, /Anger detected/);
   assert.match(app, /risk-thread/);
 });
+
+test("CRM inbox expands communication rows into correspondence threads", () => {
+  const app = fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "..", "crm", "styles.css"), "utf8");
+
+  assert.match(app, /selectedCommunicationId/);
+  assert.match(app, /data-open-communication/);
+  assert.match(app, /function renderInboxThread/);
+  assert.match(app, /class="inbox-thread-row"/);
+  assert.match(app, /data-open-account/);
+  assert.match(styles, /\.inbox-thread-row/);
+});
