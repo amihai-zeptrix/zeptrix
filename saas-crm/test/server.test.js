@@ -142,4 +142,5 @@ test("CRM demo route serves the CRM app shell", () => {
 
   assert.equal(staticFilePathForUrlPath("/crm/demo"), crmIndex);
   assert.equal(staticFilePathForUrlPath("/crm/demo/"), crmIndex);
+  assert.equal(staticFilePathForUrlPath("/crm/demo/ron"), crmIndex);
 });

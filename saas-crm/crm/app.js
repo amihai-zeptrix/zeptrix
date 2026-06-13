@@ -3,7 +3,9 @@ const SESSION_KEY = "zeptrix-saas-session-v1";
 const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
-const IS_DEMO_ROUTE = location.pathname.replace(/\/+$/, "") === "/crm/demo";
+const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm\/demo(?:\/([^/]+))?\/?$/);
+const IS_DEMO_ROUTE = !!DEMO_ROUTE_MATCH;
+const DEMO_USER_NAME = DEMO_ROUTE_MATCH?.[1] ? titleCase(DEMO_ROUTE_MATCH[1]) : "Demo User";
 
 const stages = ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"];
 const stageClass = {
@@ -108,6 +110,7 @@ let ui = {
   taskDealId: null,
   emailDealId: null,
   collapsed: [],
+  accountFocus: "",
 };
 
 loadStateFromApi();
@@ -167,17 +170,28 @@ function saveSession() {
   else localStorage.removeItem(SESSION_KEY);
 }
 
+function titleCase(value) {
+  return decodeURIComponent(value)
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .trim() || "Demo User";
+}
+
+function slugify(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "demo";
+}
+
 function applyDemoSession() {
   const demoTenant = data.tenants.find((tenant) => tenant.slug === "demo" || tenant.id === "demo");
   session = {
-    email: "demo@zeptrix.io",
-    name: "Demo User",
+    email: `${slugify(DEMO_USER_NAME)}@demo.zeptrix.io`,
+    name: DEMO_USER_NAME,
     role: "demo_user",
     tenantId: demoTenant?.id || "demo",
     forcePasswordChange: false,
   };
   ui.tenantId = session.tenantId;
-  ui.section = "pipeline";
+  ui.section = "home";
   ui.authError = "";
 }
 
@@ -566,13 +580,30 @@ function tenantActions(tenant) {
 function renderHome() {
   const tenant = currentTenant();
   const tasks = openTasks(tenant);
+  const attentionAccounts = accountsNeedingAttention(tenant);
   return `
     ${renderPageHeader(`Good morning, ${currentUser().name.split(" ")[0]}`, `Here is what is happening in ${tenant.name}.`)}
     ${renderSummary()}
     <section class="admin-grid">
-      <article class="widget wide"><h3>Deals that need attention</h3>${tenant.deals.filter((deal) => deal.priority === "High").map((deal) => `<button class="metric-row" data-open-deal="${deal.id}"><span class="list-primary">${escapeHtml(deal.name)}<small>${escapeHtml(deal.account)} · ${escapeHtml(deal.contact)}</small></span><span class="priority priority-high">High</span></button>`).join("")}</article>
+      <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(({ account, primaryDeal, count, value }) => `<button class="metric-row" data-open-account="${escapeHtml(account)}"><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small></span><strong>${money(value)}</strong><span class="priority priority-high">High</span></button>`).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
       <article class="widget"><h3>Today's focus</h3><div class="summary-card"><span class="summary-icon" style="background:var(--orange-soft);color:var(--orange)">◴</span><div><small>Open tasks</small><strong>${tasks.length}</strong></div></div></article>
     </section>`;
+}
+
+function accountsNeedingAttention(tenant = currentTenant()) {
+  const grouped = new Map();
+  tenant.deals
+    .filter((deal) => deal.priority === "High" && !["Won", "Lost"].includes(deal.stage))
+    .forEach((deal) => {
+      const existing = grouped.get(deal.account) || { account: deal.account, primaryDeal: deal, count: 0, value: 0 };
+      grouped.set(deal.account, {
+        ...existing,
+        primaryDeal: Number(deal.value) > Number(existing.primaryDeal.value) ? deal : existing.primaryDeal,
+        count: existing.count + 1,
+        value: existing.value + Number(deal.value),
+      });
+    });
+  return [...grouped.values()].sort((a, b) => b.value - a.value);
 }
 
 function renderSummary(deals = currentTenant().deals) {
@@ -681,8 +712,11 @@ function renderContacts() {
 }
 
 function renderAccounts() {
-  const accounts = uniqueBy("account");
-  return `${renderPageHeader("Accounts", "Track customers and prospects at the company level.")}<div class="section-toolbar"><strong>${accounts.length} accounts</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-deal">＋ Add account</button></div><section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-deal="${deal.id}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
+  const allAccounts = uniqueBy("account");
+  const accounts = ui.accountFocus ? allAccounts.filter((deal) => deal.account === ui.accountFocus) : allAccounts;
+  const title = ui.accountFocus ? `Account: ${ui.accountFocus}` : "Accounts";
+  const copy = ui.accountFocus ? "Focused from accounts that need attention." : "Track customers and prospects at the company level.";
+  return `${renderPageHeader(title, copy)}<div class="section-toolbar"><strong>${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}</strong><span class="toolbar-spacer"></span>${ui.accountFocus ? `<button class="button" data-action="clear-account-focus">Show all accounts</button>` : ""}<button class="button primary" data-action="add-deal">＋ Add account</button></div><section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-deal="${deal.id}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
 }
 
 function renderActivities() {
@@ -774,14 +808,23 @@ document.addEventListener("click", async (event) => {
   const section = event.target.closest("[data-section]")?.dataset.section;
   const actionElement = event.target.closest("[data-action]");
   const dealId = event.target.closest("[data-open-deal]")?.dataset.openDeal;
+  const account = event.target.closest("[data-open-account]")?.dataset.openAccount;
   const collapse = event.target.closest("[data-collapse]")?.dataset.collapse;
   const column = event.target.closest("[data-column]")?.dataset.column;
 
-  if (!section && !view && !dealId && !collapse && !column && !actionElement) return;
+  if (!section && !view && !dealId && !account && !collapse && !column && !actionElement) return;
 
-  if (section) ui.section = section;
+  if (section) {
+    ui.section = section;
+    if (section !== "accounts") ui.accountFocus = "";
+  }
   if (view) ui.view = view;
   if (dealId) ui.selected = Number(dealId);
+  if (account) {
+    ui.section = "accounts";
+    ui.accountFocus = account;
+    ui.selected = null;
+  }
   if (collapse) ui.collapsed = ui.collapsed.includes(collapse) ? ui.collapsed.filter((item) => item !== collapse) : [...ui.collapsed, collapse];
   if (column) data.visibleColumns = event.target.checked ? [...data.visibleColumns, column] : data.visibleColumns.filter((item) => item !== column);
 
@@ -871,6 +914,7 @@ document.addEventListener("click", async (event) => {
       const field = prompt("Custom field name");
       if (field?.trim() && !data.customFields.includes(field.trim())) data.customFields = [...data.customFields, field.trim()];
     }
+    if (action === "clear-account-focus") ui.accountFocus = "";
     if (action === "reset") { data = structuredClone(defaultData); ui.tenantId = session?.tenantId || "admin"; }
     if (action === "export") exportCsv();
   }

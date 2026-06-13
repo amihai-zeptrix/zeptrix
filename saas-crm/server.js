@@ -802,7 +802,7 @@ async function handleApi(req, res) {
 }
 
 function staticFilePathForUrlPath(urlPath) {
-  if (urlPath === "/crm/demo" || urlPath === "/crm/demo/") return path.join(root, "crm/index.html");
+  if (urlPath === "/crm/demo" || urlPath === "/crm/demo/" || urlPath.startsWith("/crm/demo/")) return path.join(root, "crm/index.html");
   return path.join(root, urlPath === "/" ? "index.html" : urlPath);
 }
 
