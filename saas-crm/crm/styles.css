@@ -929,7 +929,7 @@ h3 { font-size: 14px; }
   gap: 8px;
 }
 .message-bubble {
-  max-width: 78%;
+  max-width: 100%;
   padding: 10px 11px;
   border-radius: 8px;
 }

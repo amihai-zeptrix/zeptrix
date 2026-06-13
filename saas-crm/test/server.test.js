@@ -160,6 +160,7 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(app, /Birthday/);
   assert.match(app, /class="event-account" data-open-account/);
   assert.match(app, /restoreSearchFocus\("\[data-contact-search\]", cursor\)/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "crm", "styles.css"), "utf8"), /\.message-bubble \{\s+max-width: 100%;/);
   assert.match(app, /Anger detected/);
   assert.match(app, /risk-thread/);
 });
