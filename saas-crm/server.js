@@ -362,6 +362,14 @@ const demoDeals = [
   { name: "Global account migration", account: "Atlas Freight", contact: "Lucas Martin", email: "lucas@atlasfreight.com", owner: "Avi Stein", stage: "Won", value: 96000, close: "2026-05-24", priority: "High", group: "closed", note: "Closed after successful pilot.", updated: "May 24" },
   { name: "Marketing automation", account: "Focal Point", contact: "Ella Young", email: "ella@focalpoint.agency", owner: "Noa Levi", stage: "Won", value: 37500, close: "2026-05-21", priority: "Medium", group: "closed", note: "Handoff to onboarding team.", updated: "May 21" },
   { name: "Procurement workflow", account: "Keystone Group", contact: "Mason King", email: "mason@keystone.group", owner: "Daniel Cohen", stage: "Lost", value: 22000, close: "2026-05-16", priority: "Low", group: "closed", note: "Timing shifted to next fiscal year.", updated: "May 16" },
+  { name: "Revenue operations rollout", account: "SignalForge", contact: "Priya Shah", email: "priya@signalforge.ai", owner: "Maya Bar", stage: "Qualified", value: 44600, close: "2026-07-18", priority: "Medium", group: "active", note: "RevOps leader wants dashboard governance before rollout.", updated: "Jun 3" },
+  { name: "Customer data cleanup", account: "Harbor Cloud", contact: "Nora Evans", email: "nora@harborcloud.io", owner: "Daniel Cohen", stage: "Lead", value: 15800, close: "2026-08-04", priority: "Low", group: "active", note: "Evaluating duplicate detection and enrichment.", updated: "Jun 1" },
+  { name: "Field team automation", account: "Summit Energy", contact: "Marcus Lee", email: "marcus@summitenergy.com", owner: "Avi Stein", stage: "Proposal", value: 52200, close: "2026-07-15", priority: "High", group: "active", note: "Field managers need mobile-friendly follow-up workflows.", updated: "May 31" },
+  { name: "Investor relations CRM", account: "Cobalt Ventures", contact: "Rachel Stone", email: "rachel@cobalt.vc", owner: "Noa Levi", stage: "Qualified", value: 33800, close: "2026-07-28", priority: "Medium", group: "active", note: "Needs segmentation by fund and investor profile.", updated: "May 30" },
+  { name: "Partner portal sync", account: "Helio Partners", contact: "Owen Blake", email: "owen@heliopartners.co", owner: "Maya Bar", stage: "Negotiation", value: 58700, close: "2026-06-22", priority: "High", group: "active", note: "Partner success team requested API scope confirmation.", updated: "May 30" },
+  { name: "Service desk CRM bridge", account: "Prairie Software", contact: "Isabella Ross", email: "isabella@prairiesoftware.com", owner: "Daniel Cohen", stage: "Proposal", value: 29100, close: "2026-07-09", priority: "Medium", group: "active", note: "Support leadership wants case-to-opportunity visibility.", updated: "May 27" },
+  { name: "Healthcare outreach workflow", account: "Evergreen Clinics", contact: "Caleb Wright", email: "caleb@evergreenclinics.org", owner: "Avi Stein", stage: "Lead", value: 21400, close: "2026-08-12", priority: "Low", group: "active", note: "Needs HIPAA-aligned communication tracking.", updated: "May 26" },
+  { name: "Enterprise territory planning", account: "Redwood Manufacturing", contact: "Hannah Park", email: "hannah@redwoodmfg.com", owner: "Noa Levi", stage: "Proposal", value: 67100, close: "2026-07-02", priority: "High", group: "active", note: "Regional directors want territory coverage reporting.", updated: "May 25" },
 ];
 
 const demoTasks = [
@@ -386,6 +394,7 @@ async function ensureDemoTenant() {
   }
   const existingDeals = await dbQuery(`select count(*)::int as count from deals where tenant_id=$1`, [tenant.id]);
   if (existingDeals.rows[0].count === 0) await seedFullDemoCrm(tenant.id);
+  else await seedMissingDemoDeals(tenant.id);
 }
 
 async function insertTenant(values) {
@@ -516,6 +525,19 @@ async function seedFullDemoCrm(tenantId) {
       `insert into communications (tenant_id, deal_id, type, direction, subject, body, owner, tracked, occurred_at)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [tenantId, dealIds[communication.dealIndex], communication.type, communication.direction, communication.subject, communication.body, communication.owner, communication.tracked, communication.date],
+    );
+  }
+}
+
+async function seedMissingDemoDeals(tenantId) {
+  const existing = await dbQuery(`select lower(email) as email from deals where tenant_id=$1`, [tenantId]);
+  const existingEmails = new Set(existing.rows.map((row) => row.email));
+  for (const deal of demoDeals) {
+    if (existingEmails.has(deal.email.toLowerCase())) continue;
+    await dbQuery(
+      `insert into deals (tenant_id, name, account, contact, email, owner, stage, value, close_date, priority, deal_group, notes, updated_label)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [tenantId, deal.name, deal.account, deal.contact, deal.email, deal.owner, deal.stage, deal.value, deal.close, deal.priority, deal.group, deal.note, deal.updated],
     );
   }
 }

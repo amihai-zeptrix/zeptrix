@@ -100,6 +100,7 @@ let ui = {
   view: "table",
   savedView: "All deals",
   search: "",
+  contactSearch: "",
   stageFilter: "All",
   selected: null,
   modal: null,
@@ -112,6 +113,8 @@ let ui = {
   collapsed: [],
   accountFocus: "",
   selectedContactEmail: "",
+  replyingThread: "",
+  correspondenceDrafts: {},
 };
 
 loadStateFromApi();
@@ -723,8 +726,25 @@ function renderDashboard() {
 }
 
 function renderContacts() {
-  const contacts = uniqueBy("email");
-  return `${renderPageHeader("Contacts", "Keep the people behind every opportunity organized.")}<div class="section-toolbar"><strong>${contacts.length} contacts</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-deal">＋ Add contact</button></div><section class="list-card">${contacts.map(renderContactRow).join("") || `<p class="empty-state">No contacts yet.</p>`}</section>`;
+  const allContacts = uniqueBy("email");
+  const contacts = filteredContacts(allContacts);
+  const query = ui.contactSearch.trim();
+  return `${renderPageHeader("Contacts", "Keep the people behind every opportunity organized.")}<div class="section-toolbar"><strong>${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"}</strong><span class="toolbar-spacer"></span><button class="button" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ Add contact</button></div><div class="contact-search-bar"><label class="table-search contact-search"><span>⌕</span><input data-contact-search value="${escapeHtml(ui.contactSearch)}" placeholder="Search contacts, accounts, email, owner, deal, stage..." /></label>${query ? `<button class="button small" data-action="clear-contact-search">Clear</button>` : ""}</div>${renderImportStrip()}<section class="list-card">${contacts.map(renderContactRow).join("") || `<p class="empty-state">${query ? `No contacts match "${escapeHtml(query)}".` : "No contacts yet."}</p>`}</section>`;
+}
+
+function filteredContacts(contacts = uniqueBy("email")) {
+  const query = ui.contactSearch.trim().toLowerCase();
+  if (!query) return contacts;
+  return contacts.filter((deal) => [
+    deal.contact,
+    deal.account,
+    deal.email,
+    deal.owner,
+    deal.name,
+    deal.stage,
+    deal.priority,
+    deal.note,
+  ].join(" ").toLowerCase().includes(query));
 }
 
 function renderContactRow(deal) {
@@ -769,7 +789,11 @@ function renderAccounts() {
   const allAccounts = uniqueBy("account");
   const accounts = ui.accountFocus ? allAccounts.filter((deal) => deal.account === ui.accountFocus) : allAccounts;
   if (ui.accountFocus) return renderAccountDetail(accounts[0], allAccounts.length);
-  return `${renderPageHeader("Accounts", "Track customers and prospects at the company level.")}<div class="section-toolbar"><strong>${accounts.length} accounts</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-deal">＋ Add account</button></div><section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-account="${escapeHtml(deal.account)}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
+  return `${renderPageHeader("Accounts", "Track customers and prospects at the company level.")}<div class="section-toolbar"><strong>${accounts.length} accounts</strong><span class="toolbar-spacer"></span><button class="button" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ Add account</button></div>${renderImportStrip()}<section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-account="${escapeHtml(deal.account)}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
+}
+
+function renderImportStrip() {
+  return `<section class="import-strip"><button data-action="import-source" data-source="csv"><strong>CSV</strong><small>Upload accounts and contacts from a spreadsheet</small></button><button data-action="import-source" data-source="salesforce"><strong>Salesforce</strong><small>Sync leads, accounts, contacts, and owners</small></button><button data-action="import-source" data-source="zendesk"><strong>Zendesk</strong><small>Bring support contacts and account context</small></button></section>`;
 }
 
 function renderAccountDetail(accountDeal, accountCount) {
@@ -800,7 +824,7 @@ function renderAccountDetail(accountDeal, accountCount) {
         <div class="contact-grid">${contacts.map(renderAccountContact).join("")}</div>
       </article>
       <article class="account-panel correspondence-panel">
-        <h3>Correspondence</h3>
+        <div class="panel-head"><h3>Correspondence</h3><button class="icon-button small" data-action="new-correspondence" data-tooltip="Add correspondence" aria-label="Add correspondence">＋</button></div>
         <div class="thread-list">${threads.map(renderAccountThread).join("")}</div>
       </article>
       <article class="account-panel moments-panel">
@@ -882,9 +906,11 @@ function renderRelationshipMoment(moment) {
 }
 
 function accountCorrespondence(accountDeal, contacts) {
+  const accountKey = slugify(accountDeal.account);
   const existing = currentTenant().communications
     .filter((item) => currentTenant().deals.find((deal) => deal.id === item.dealId)?.account === accountDeal.account)
     .map((item, index) => ({
+      id: `logged-${item.id}`,
       subject: item.subject,
       person: contacts[index % contacts.length].name,
       date: item.date,
@@ -901,6 +927,7 @@ function accountCorrespondence(accountDeal, contacts) {
     ["Integration scope", "Please confirm whether the first phase includes Salesforce and support desk sync.", "Phase one includes Salesforce sync. Support desk sync is staged for week three after validation."],
     ["Launch readiness", "We are ready to move forward if training dates are locked this week.", "Training dates are reserved and the onboarding plan is ready for approval."],
   ].map(([subject, customer, team, risk], index) => ({
+    id: `${accountKey}-${slugify(subject)}`,
     subject,
     person: contacts[index % contacts.length].name,
     date: `2026-06-${String(12 - index).padStart(2, "0")}T${String(10 + index).padStart(2, "0")}:15:00`,
@@ -911,11 +938,52 @@ function accountCorrespondence(accountDeal, contacts) {
       { side: "customer", author: contacts[(index + 1) % contacts.length].name, body: "That works. Please keep this thread updated when the next milestone is complete." },
     ],
   }));
-  return [...existing, ...generated].slice(0, 6);
+  return [...(ui.correspondenceDrafts[accountKey] || []), ...existing, ...generated].slice(0, 8);
 }
 
 function renderAccountThread(thread) {
-  return `<section class="thread-card ${thread.risk ? "risk-thread" : ""}"><header><div><strong>${escapeHtml(thread.subject)}</strong><small>${thread.risk ? "Anger detected · " : ""}${escapeHtml(thread.person)} · ${formatTimestamp(thread.date)}</small></div>${thread.risk ? `<span class="risk-label">Red risk</span>` : ""}</header><div class="thread-messages">${thread.messages.map((message) => `<div class="message-bubble ${message.side}"><small>${escapeHtml(message.author)}</small><p>${escapeHtml(message.body)}</p></div>`).join("")}</div></section>`;
+  const isReplying = ui.replyingThread === thread.id;
+  return `<section class="thread-card ${thread.risk ? "risk-thread" : ""}" data-thread-id="${escapeHtml(thread.id)}"><header><div><strong>${escapeHtml(thread.subject)}</strong><small>${thread.risk ? "Anger detected · " : ""}${escapeHtml(thread.person)} · ${formatTimestamp(thread.date)}</small></div><span class="thread-actions">${thread.risk ? `<span class="risk-label">Red risk</span>` : ""}<button class="icon-button small" data-action="reply-correspondence" data-thread-id="${escapeHtml(thread.id)}" data-tooltip="Reply" aria-label="Reply">↩</button></span></header><div class="thread-messages">${thread.messages.map((message) => `<div class="message-bubble ${message.side}"><small>${escapeHtml(message.author)}</small><p>${escapeHtml(message.body)}</p></div>`).join("")}</div>${isReplying ? renderReplyComposer(thread.id) : ""}</section>`;
+}
+
+function renderReplyComposer(threadId) {
+  return `<form class="reply-composer" data-reply-form data-thread-id="${escapeHtml(threadId)}"><textarea name="body" placeholder="Write a reply..." required></textarea><div><button type="button" class="button small" data-action="cancel-reply">Cancel</button><button class="button small primary">Add reply</button></div></form>`;
+}
+
+function addCorrespondenceThread() {
+  const account = ui.accountFocus || currentTenant().deals[0]?.account || "Account";
+  const key = slugify(account);
+  const owner = currentUser()?.name || "Zeptrix";
+  const thread = {
+    id: `${key}-manual-${Date.now()}`,
+    subject: "New correspondence",
+    person: owner,
+    date: new Date().toISOString(),
+    messages: [
+      { side: "team", author: owner, body: "Added a new account correspondence thread for follow-up." },
+    ],
+  };
+  ui.correspondenceDrafts = { ...ui.correspondenceDrafts, [key]: [thread, ...(ui.correspondenceDrafts[key] || [])] };
+  saveData();
+  render();
+}
+
+function addCorrespondenceReply(threadId, body) {
+  const account = ui.accountFocus || currentTenant().deals[0]?.account || "Account";
+  const key = slugify(account);
+  const owner = currentUser()?.name || "Zeptrix";
+  const drafts = ui.correspondenceDrafts[key] || [];
+  const updatedDrafts = drafts.map((thread) => thread.id === threadId ? { ...thread, messages: [...thread.messages, { side: "team", author: owner, body }] } : thread);
+  if (updatedDrafts.some((thread) => thread.id === threadId)) {
+    ui.correspondenceDrafts = { ...ui.correspondenceDrafts, [key]: updatedDrafts };
+  } else {
+    const source = accountCorrespondence(currentTenant().deals.find((deal) => deal.account === account) || currentTenant().deals[0], topAccountContacts(currentTenant().deals.find((deal) => deal.account === account) || currentTenant().deals[0])).find((thread) => thread.id === threadId);
+    if (source) {
+      ui.correspondenceDrafts = { ...ui.correspondenceDrafts, [key]: [{ ...source, messages: [...source.messages, { side: "team", author: owner, body }] }, ...drafts] };
+    }
+  }
+  ui.replyingThread = "";
+  saveData();
 }
 
 function renderActivities() {
@@ -942,6 +1010,7 @@ function renderModal() {
   if (ui.modal === "deal") return renderDealForm();
   if (ui.modal === "task") return renderTaskForm();
   if (ui.modal === "email") return renderEmailForm();
+  if (ui.modal === "import") return renderImportModal();
   if (ui.modal === "settings") return renderSettings();
   if (ui.selected) return renderDealDrawer(currentTenant().deals.find((deal) => deal.id === ui.selected));
   return "";
@@ -966,6 +1035,10 @@ function renderTaskForm() {
 function renderEmailForm() {
   const dealId = ui.emailDealId || currentTenant().deals[0]?.id;
   return `<div class="modal-layer center"><form class="modal" data-email-form><header class="modal-head"><div><h2>Log email</h2><p class="subcopy">Capture the message and attach it to the right opportunity.</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="form-grid">${selectField("Deal", "dealId", currentTenant().deals.map((deal) => [deal.id, deal.name]), dealId)}${selectField("Direction", "direction", [["outbound", "Outbound"], ["inbound", "Inbound"]], "outbound")}${formField("Subject", "subject", "", "text", true, "full")}<div class="field full"><label>Message</label><textarea name="body" required></textarea></div></div><div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">Log email</button></div></form></div>`;
+}
+
+function renderImportModal() {
+  return `<div class="modal-layer center"><section class="modal import-modal"><header class="modal-head"><div><h2>Import accounts and contacts</h2><p class="subcopy">Bring relationship data in from files and connected systems.</p></div><button class="close-button" data-action="close">×</button></header><div class="import-options"><button data-action="import-source" data-source="csv"><strong>CSV import</strong><small>Map columns like account, contact, email, phone, owner, and stage.</small></button><button data-action="import-source" data-source="salesforce"><strong>Salesforce sync</strong><small>Import leads, accounts, contacts, opportunities, owners, and stages.</small></button><button data-action="import-source" data-source="zendesk"><strong>Zendesk sync</strong><small>Import organizations, requesters, support context, and sentiment signals.</small></button></div><div class="import-preview"><h3>Demo mapping preview</h3><div class="import-map"><span>Source field</span><span>Zeptrix field</span><span>Confidence</span><strong>Company / Organization</strong><strong>Account</strong><em>High</em><strong>Name / Requester</strong><strong>Contact</strong><em>High</em><strong>Email</strong><strong>Email</strong><em>High</em><strong>Owner / Assignee</strong><strong>Owner</strong><em>Medium</em></div></div></section></div>`;
 }
 
 function renderSettings() {
@@ -1052,6 +1125,19 @@ document.addEventListener("click", async (event) => {
       setTimeout(() => document.querySelector(".risk-thread")?.classList.remove("is-highlighted"), 1400);
       return;
     }
+    if (action === "new-correspondence") {
+      addCorrespondenceThread();
+      return;
+    }
+    if (action === "reply-correspondence") {
+      ui.replyingThread = actionElement.dataset.threadId;
+      render();
+      [...document.querySelectorAll("[data-thread-id]")].find((item) => item.dataset.threadId === ui.replyingThread)?.querySelector("textarea")?.focus();
+      return;
+    }
+    if (action === "cancel-reply") {
+      ui.replyingThread = "";
+    }
     if (action === "back-login") { ui.authStep = "password"; ui.authError = ""; }
     if (action === "logout") { session = null; saveSession(); ui.authStep = "password"; }
     if (action === "open-tenant") { ui.tenantId = id; ui.section = "pipeline"; session.tenantId = id; saveSession(); }
@@ -1059,6 +1145,14 @@ document.addEventListener("click", async (event) => {
     if (action === "add-deal") { ui.modal = "deal"; ui.editing = null; ui.newGroup = group || "active"; ui.selected = null; }
     if (action === "add-task") { ui.modal = "task"; ui.taskDealId = taskDealId ? Number(taskDealId) : null; ui.selected = null; }
     if (action === "compose-email") { ui.modal = "email"; ui.emailDealId = taskDealId ? Number(taskDealId) : null; ui.selected = null; }
+    if (action === "open-import") ui.modal = "import";
+    if (action === "import-source") {
+      importSampleRecords(actionElement.dataset.source);
+      ui.modal = null;
+      ui.section = "contacts";
+      ui.contactSearch = actionElement.dataset.source || "";
+      ui.selectedContactEmail = "";
+    }
     if (action === "open-settings") ui.modal = "settings";
     if (action === "edit-tenant") { ui.editingTenant = data.tenants.find((tenant) => tenant.id === id); ui.authError = ""; ui.adminNotice = ""; ui.modal = "tenant"; }
     if (action === "reset-tenant-password") {
@@ -1133,6 +1227,7 @@ document.addEventListener("click", async (event) => {
       if (field?.trim() && !data.customFields.includes(field.trim())) data.customFields = [...data.customFields, field.trim()];
     }
     if (action === "clear-account-focus") ui.accountFocus = "";
+    if (action === "clear-contact-search") { ui.contactSearch = ""; ui.selectedContactEmail = ""; }
     if (action === "reset") { data = structuredClone(defaultData); ui.tenantId = session?.tenantId || "admin"; }
     if (action === "export") exportCsv();
   }
@@ -1141,10 +1236,18 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("input", (event) => {
-  if (!event.target.matches("[data-search]")) return;
-  ui.search = event.target.value;
-  render();
-  document.querySelector("[data-search]")?.focus();
+  if (event.target.matches("[data-search]")) {
+    ui.search = event.target.value;
+    render();
+    document.querySelector("[data-search]")?.focus();
+    return;
+  }
+  if (event.target.matches("[data-contact-search]")) {
+    ui.contactSearch = event.target.value;
+    ui.selectedContactEmail = "";
+    render();
+    document.querySelector("[data-contact-search]")?.focus();
+  }
 });
 
 document.addEventListener("change", (event) => {
@@ -1294,6 +1397,13 @@ document.addEventListener("submit", async (event) => {
     render();
     return;
   }
+  if (event.target.matches("[data-reply-form]")) {
+    event.preventDefault();
+    const { body } = Object.fromEntries(new FormData(event.target));
+    addCorrespondenceReply(event.target.dataset.threadId, body);
+    render();
+    return;
+  }
   if (event.target.matches("[data-task-form]")) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));
@@ -1351,6 +1461,30 @@ function exportCsv() {
   link.download = `${currentTenant().slug}-crm-deals.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function importSampleRecords(source = "csv") {
+  const imported = {
+    csv: [
+      { name: "CSV account enrichment", account: "Marble Ridge", contact: "Tara Quinn", email: "tara@marbleridge.com", owner: "Maya Bar", stage: "Lead", value: 14300, close: "2026-08-18", priority: "Medium", group: "active", note: "Imported from CSV with mapped account, contact, email, and owner fields." },
+      { name: "CSV contact cleanup", account: "Lakeview Supply", contact: "Peter Walsh", email: "peter@lakeviewsupply.com", owner: "Daniel Cohen", stage: "Qualified", value: 19600, close: "2026-08-02", priority: "Low", group: "active", note: "Imported from CSV contact list." },
+    ],
+    salesforce: [
+      { name: "Salesforce enterprise opportunity", account: "Apex Robotics", contact: "Mei Lin", email: "mei@apexrobotics.com", owner: "Noa Levi", stage: "Proposal", value: 74200, close: "2026-07-22", priority: "High", group: "active", note: "Synced from Salesforce opportunity and account owner." },
+      { name: "Salesforce expansion lead", account: "BrightPath Logistics", contact: "Andre Moore", email: "andre@brightpathlogistics.com", owner: "Avi Stein", stage: "Qualified", value: 38400, close: "2026-07-29", priority: "Medium", group: "active", note: "Synced from Salesforce lead conversion." },
+    ],
+    zendesk: [
+      { name: "Zendesk support escalation", account: "Pioneer Apps", contact: "Leah Brooks", email: "leah@pioneerapps.io", owner: "Maya Bar", stage: "Negotiation", value: 46300, close: "2026-06-29", priority: "High", group: "active", note: "Imported from Zendesk organization with active support context." },
+      { name: "Zendesk renewal recovery", account: "Urban Ledger", contact: "Samir Khan", email: "samir@urbanledger.co", owner: "Daniel Cohen", stage: "Proposal", value: 31700, close: "2026-07-17", priority: "High", group: "active", note: "Imported from Zendesk requester and organization records." },
+    ],
+  }[source] || [];
+  const tenant = currentTenant();
+  const existingEmails = new Set(tenant.deals.map((deal) => deal.email?.toLowerCase()));
+  const nextId = Math.max(0, ...tenant.deals.map((deal) => deal.id)) + 1;
+  const deals = imported
+    .filter((deal) => !existingEmails.has(deal.email.toLowerCase()))
+    .map((deal, index) => ({ ...deal, id: nextId + index, updated: "Imported just now" }));
+  if (deals.length) setTenant({ ...tenant, deals: [...deals, ...tenant.deals] });
 }
 
 render();
