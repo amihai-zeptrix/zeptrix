@@ -779,15 +779,17 @@ function contactMobile(seed) {
 }
 
 function socialHandle(name, suffix = "") {
-  return `@${slugify(`${name} ${suffix}`).replaceAll("-", "")}`;
+  const handle = slugify(`${name} ${suffix}`).replaceAll("-", "");
+  return { label: `@${handle}`, url: `https://twitter.com/${handle}` };
 }
 
 function facebookProfile(name, suffix = "") {
-  return `facebook.com/${slugify(`${name} ${suffix}`).replaceAll("-", ".")}`;
+  const path = slugify(`${name} ${suffix}`).replaceAll("-", ".");
+  return { label: `facebook.com/${path}`, url: `https://www.facebook.com/${path}` };
 }
 
 function renderAccountContact(contact) {
-  return `<div class="contact-card">${avatar(contact.name)}<div class="contact-main"><strong>${escapeHtml(contact.name)}</strong><small>${escapeHtml(contact.title)}</small></div><dl><dt>Email</dt><dd><a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a></dd><dt>Mobile</dt><dd><a href="tel:${escapeHtml(contact.mobile)}">${escapeHtml(contact.mobile)}</a></dd><dt>Twitter</dt><dd>${escapeHtml(contact.twitter)}</dd><dt>Facebook</dt><dd>${escapeHtml(contact.facebook)}</dd></dl></div>`;
+  return `<div class="contact-card">${avatar(contact.name)}<div class="contact-main"><strong>${escapeHtml(contact.name)}</strong><small>${escapeHtml(contact.title)}</small></div><dl><dt>Email</dt><dd><a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a></dd><dt>Mobile</dt><dd><a href="tel:${escapeHtml(contact.mobile)}">${escapeHtml(contact.mobile)}</a></dd><dt>Twitter</dt><dd><a href="${escapeHtml(contact.twitter.url)}" target="_blank" rel="noreferrer">${escapeHtml(contact.twitter.label)}</a></dd><dt>Facebook</dt><dd><a href="${escapeHtml(contact.facebook.url)}" target="_blank" rel="noreferrer">${escapeHtml(contact.facebook.label)}</a></dd></dl></div>`;
 }
 
 function accountCorrespondence(accountDeal, contacts) {
