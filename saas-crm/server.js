@@ -766,7 +766,7 @@ function verifySignedPayload(token) {
 }
 
 function signAuthToken(user) {
-  return signPayload({ userId: user.id, tenantId: user.tenantId, role: user.role, exp: Date.now() + 12 * 60 * 60 * 1000 });
+  return signPayload({ userId: user.id, tenantId: user.tenantId, email: user.email, role: user.role, exp: Date.now() + 12 * 60 * 60 * 1000 });
 }
 
 function authFromRequest(req) {
@@ -818,8 +818,14 @@ function escapeHtml(value) {
 }
 
 function normalizeGmailSettings(payload = {}) {
+  const accountEmail = String(payload.accountEmail || "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
+    const error = new Error("Gmail account is required.");
+    error.statusCode = 400;
+    throw error;
+  }
   return {
-    accountEmail: String(payload.accountEmail || "").trim(),
+    accountEmail,
     workspaceDomain: String(payload.workspaceDomain || "zeptrix.io").trim(),
     clientId: String(payload.clientId || "").trim(),
     redirectUri: String(payload.redirectUri || `${publicBaseUrl}/api/gmail/oauth/callback`).trim(),
@@ -1063,8 +1069,11 @@ async function handleApi(req, res) {
   if (req.method === "POST" && pathname === "/api/auth/change-password") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const auth = requireAuth(req, res);
+      if (!auth) return;
       const { email, password } = await readBody(req);
       if (!email || !password || String(password).length < 10) return json(res, 400, { error: "Password must be at least 10 characters." });
+      if (String(auth.email || "").toLowerCase() !== String(email).toLowerCase()) return json(res, 403, { error: "Password can only be changed by the authenticated user." });
       await dbQuery(`update users set password_hash=$2, password_change_required=false where lower(email)=lower($1)`, [email, hashPassword(password)]);
       return json(res, 200, { ok: true });
     } catch (error) {
@@ -1195,7 +1204,7 @@ async function handleApi(req, res) {
       const gmailIntegration = await upsertGmailSettings(resolved.tenantId, await readBody(req));
       return json(res, 200, { gmailIntegration });
     } catch (error) {
-      return json(res, 500, { error: "Unable to save Gmail settings.", detail: error.message });
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save Gmail settings.", detail: error.statusCode ? undefined : error.message });
     }
   }
 
@@ -1214,6 +1223,7 @@ async function handleApi(req, res) {
       );
       const integration = integrationResult.rows[0];
       if (!integration) return json(res, 404, { error: "Tenant not found." });
+      if (!integration.account_email) return json(res, 400, { error: "Save Gmail account before connecting." });
       if (!integration.client_id || !integration.redirect_uri) return json(res, 400, { error: "Save Gmail client ID and redirect URI before connecting." });
       return json(res, 200, {
         authUrl: gmailAuthUrl({

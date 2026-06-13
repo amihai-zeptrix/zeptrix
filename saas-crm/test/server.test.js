@@ -12,6 +12,10 @@ function crmStylesSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "styles.css"), "utf8");
 }
 
+function serverSource() {
+  return fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+}
+
 function functionSource(source, name, nextName) {
   const start = source.indexOf(`function ${name}(`);
   const end = nextName ? source.indexOf(`function ${nextName}(`, start) : source.length;
@@ -168,6 +172,7 @@ test("Gmail settings normalization clamps scan thresholds and defaults detection
   assert.equal(settings.detectNewContacts, false);
   assert.equal(settings.detectDormantContacts, true);
   assert.equal(settings.labels, "Inbox, Sent");
+  assert.throws(() => normalizeGmailSettings({ accountEmail: "" }), /Gmail account is required/);
 });
 
 test("Gmail OAuth URL uses readonly scope and tenant state", () => {
@@ -201,15 +206,25 @@ test("Gmail helpers parse addresses and encrypt tokens", () => {
 });
 
 test("API auth tokens and Gmail labels are signed and bounded", () => {
-  const token = signAuthToken({ id: "user-123", tenantId: "tenant-123", role: "tenant_admin" });
+  const token = signAuthToken({ id: "user-123", tenantId: "tenant-123", email: "owner@example.com", role: "tenant_admin" });
   const auth = verifySignedPayload(token);
 
   assert.equal(auth.userId, "user-123");
   assert.equal(auth.tenantId, "tenant-123");
+  assert.equal(auth.email, "owner@example.com");
   assert.equal(auth.role, "tenant_admin");
   assert.equal(verifySignedPayload(`${token}tampered`), null);
   assert.equal(gmailLabelQuery("Inbox, Sales Follow Up, Sent"), "{in:inbox label:sales-follow-up}");
   assert.equal(gmailLabelQuery("Sent"), "in:anywhere");
+});
+
+test("password changes require an authenticated matching user", () => {
+  const server = serverSource();
+  const changePasswordRoute = server.slice(server.indexOf("pathname === \"/api/auth/change-password\""), server.indexOf("if (req.method === \"POST\" && pathname === \"/api/tenants\"", server.indexOf("pathname === \"/api/auth/change-password\"")));
+
+  assert.match(changePasswordRoute, /const auth = requireAuth\(req, res\)/);
+  assert.match(changePasswordRoute, /auth\.email/);
+  assert.match(changePasswordRoute, /Password can only be changed by the authenticated user/);
 });
 
 test("CRM demo route serves the CRM app shell", () => {
@@ -396,7 +411,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSettingsPageSource, /Mail integrations/);
   assert.match(renderSettingsPageSource, /data-settings-tab="mail"/);
   assert.match(renderMailSettingsSource, /data-gmail-settings-form/);
-  assert.match(renderMailSettingsSource, /Gmail account/);
+  assert.match(renderMailSettingsSource, /formField\("Gmail account", "accountEmail", gmail\.accountEmail, "email", true\)/);
   assert.match(renderMailSettingsSource, /OAuth client ID/);
   assert.match(renderMailSettingsSource, /Authorized redirect URI/);
   assert.match(renderMailSettingsSource, /No-mail threshold in months/);
@@ -406,6 +421,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /staleMonths: 3/);
   assert.match(app, /gmailContactDiscoveries/);
   assert.match(app, /gmailDormantContacts/);
+  assert.match(app, /if \(gmail\.lastScanAt\) return \[\]/);
   assert.match(app, /saveGmailSettingsViaApi/);
   assert.match(app, /connectGmailViaApi/);
   assert.match(app, /scanGmailViaApi/);

@@ -1331,7 +1331,7 @@ function renderMailIntegrationsSettings() {
         <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Read Gmail metadata and messages to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
         <form class="settings-form" data-gmail-settings-form>
           <div class="form-grid">
-            ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", false)}
+            ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
             ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
             ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full")}
             ${formField("Authorized redirect URI", "redirectUri", gmail.redirectUri, "url", false, "full")}
@@ -1381,9 +1381,11 @@ function gmailFormValues(form) {
 }
 
 function gmailContactDiscoveries(tenant = currentTenant()) {
-  const signals = gmailIntegration(tenant).signals || [];
+  const gmail = gmailIntegration(tenant);
+  const signals = gmail.signals || [];
   const scanned = signals.filter((signal) => signal.type === "new_contact");
   if (scanned.length) return scanned.map((signal) => ({ name: signal.name || signal.email.split("@")[0], email: signal.email, source: signal.source || "Gmail scan" }));
+  if (gmail.lastScanAt) return [];
   const existing = new Set(tenant.deals.map((deal) => String(deal.email || "").toLowerCase()).filter(Boolean));
   return [
     { name: "Maya Rosenthal", email: "maya.rosenthal@newbridge.ai", source: "Inbound Gmail thread" },
@@ -1393,9 +1395,11 @@ function gmailContactDiscoveries(tenant = currentTenant()) {
 }
 
 function gmailDormantContacts(tenant = currentTenant(), thresholdMonths = 3) {
-  const signals = gmailIntegration(tenant).signals || [];
+  const gmail = gmailIntegration(tenant);
+  const signals = gmail.signals || [];
   const scanned = signals.filter((signal) => signal.type === "dormant_contact");
   if (scanned.length) return scanned.map((signal) => ({ contact: signal.name || signal.email.split("@")[0], email: signal.email, account: signal.account || signal.email.split("@")[1], months: signal.months || thresholdMonths }));
+  if (gmail.lastScanAt) return [];
   const recentOutboundByEmail = new Map();
   tenant.communications
     .filter((item) => item.direction === "outbound")
