@@ -146,12 +146,14 @@ test("CRM demo route serves the CRM app shell", () => {
   assert.equal(staticFilePathForUrlPath("/crm/demo/ron"), crmIndex);
 });
 
-test("CRM home keeps correspondence and relationship event panels", () => {
+test("CRM home keeps attention correspondence and relationship event panels", () => {
   const app = fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
   const renderHomeStart = app.indexOf("function renderHome()");
-  const renderHomeEnd = app.indexOf("function homeCorrespondence", renderHomeStart);
+  const renderHomeEnd = app.indexOf("function homeCorrespondenceNeedingAttention", renderHomeStart);
   const renderHomeSource = app.slice(renderHomeStart, renderHomeEnd);
 
-  assert.match(renderHomeSource, /Recent correspondence/);
+  assert.match(renderHomeSource, /Correspondence needing attention/);
   assert.match(renderHomeSource, /Relationship events/);
+  assert.match(app, /Anger detected/);
+  assert.match(app, /risk-thread/);
 });
