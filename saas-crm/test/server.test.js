@@ -202,10 +202,13 @@ test("CRM accounts keep account detail intelligence and correspondence controls"
   const styles = crmStylesSource();
 
   assert.match(renderAccountsSource, /data-open-account/);
+  assert.match(renderAccountsSource, /accountTags\(deal\.account\)/);
   assert.match(renderAccountDetailSource, /Top contacts/);
   assert.match(renderAccountDetailSource, /Correspondence/);
   assert.match(renderAccountDetailSource, /Relationship moments/);
   assert.match(renderAccountDetailSource, /account-reason-chips/);
+  assert.match(renderAccountDetailSource, /data-account-tag-select/);
+  assert.match(renderAccountDetailSource, /remove-account-tag/);
   assert.match(renderAccountDetailSource, /data-action="jump-risk-thread"/);
   assert.match(renderAccountDetailSource, /data-action="new-correspondence"/);
   assert.match(renderAccountThreadSource, /data-action="reply-correspondence"/);
@@ -214,6 +217,32 @@ test("CRM accounts keep account detail intelligence and correspondence controls"
   assert.match(app, /Anger detected/);
   assert.match(styles, /\.correspondence-panel/);
   assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
+});
+
+test("CRM campaigns support account tags, audience targeting, and merge tokens", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const sidebarSource = functionSource(app, "renderSidebar", "sideLink");
+  const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
+  const renderCampaignsSource = functionSource(app, "renderCampaigns", "renderAccountDetail");
+
+  assert.match(app, /const defaultTags =/);
+  assert.match(app, /const templateTokens =/);
+  assert.match(app, /campaigns:/);
+  assert.match(app, /function allAccountTags/);
+  assert.match(app, /function campaignRecipients/);
+  assert.match(app, /function renderMergedTemplate/);
+  assert.match(sidebarSource, /sideLink\("campaigns", "◉", "Campaigns"/);
+  assert.match(renderSectionSource, /ui\.section === "campaigns"/);
+  assert.match(renderCampaignsSource, /data-campaign-form/);
+  assert.match(renderCampaignsSource, /By tag/);
+  assert.match(renderCampaignsSource, /By level/);
+  assert.match(renderCampaignsSource, /By account name/);
+  assert.match(renderCampaignsSource, /data-action="insert-template-token"/);
+  assert.match(renderCampaignsSource, /data-campaign-template/);
+  assert.match(styles, /\.campaign-layout/);
+  assert.match(styles, /\.token-bar/);
+  assert.match(styles, /\.account-tag-editor/);
 });
 
 test("CRM inbox expands communication rows into correspondence threads", () => {
@@ -245,5 +274,21 @@ test("CRM click handling preserves account, inbox, and search interactions", () 
   assert.match(clickHandlerSource, /data-open-communication/);
   assert.match(clickHandlerSource, /ui\.section = "inbox"/);
   assert.match(clickHandlerSource, /ui\.selectedCommunicationId = ui\.selectedCommunicationId === Number\(communicationId\) \? null : Number\(communicationId\)/);
+  assert.match(clickHandlerSource, /insert-template-token/);
+  assert.match(clickHandlerSource, /remove-account-tag/);
   assert.match(inputHandlerSource, /restoreSearchFocus\("\[data-contact-search\]", cursor\)/);
+});
+
+test("CRM form handling persists campaigns and account tags", () => {
+  const app = crmAppSource();
+  const changeHandlerSource = app.slice(app.indexOf("document.addEventListener(\"change\""), app.indexOf("document.addEventListener(\"submit\""));
+  const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+
+  assert.match(changeHandlerSource, /data-campaign-field/);
+  assert.match(changeHandlerSource, /data-account-tag-select/);
+  assert.match(changeHandlerSource, /prompt\("New account tag"\)/);
+  assert.match(submitHandlerSource, /data-campaign-form/);
+  assert.match(submitHandlerSource, /campaigns: \[campaign, \.\.\.tenant\.campaigns\]/);
+  assert.match(submitHandlerSource, /status: "Draft"/);
+  assert.match(submitHandlerSource, /campaigns: tenant\.campaigns/);
 });

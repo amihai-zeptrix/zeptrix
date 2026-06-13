@@ -568,6 +568,38 @@ h3 { font-size: 14px; }
   text-align: left;
 }
 .text-link { padding: 0; }
+.account-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.account-tags span,
+.account-tags button {
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #2f5f90;
+  background: #eaf2ff;
+  font-size: 10px;
+  font-weight: 900;
+}
+.account-tags button { cursor: pointer; }
+.account-tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.account-tag-editor select {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: #fff;
+  font-weight: 800;
+}
 .contact-detail-row {
   padding: 16px 18px 18px 58px;
   border-bottom: 1px solid var(--line);
@@ -1117,6 +1149,103 @@ h3 { font-size: 14px; }
 .probability-row { display: grid; grid-template-columns: 1fr 74px 20px; align-items: center; gap: 8px; }
 .tag-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .field-tag { padding: 6px 9px; border-radius: 14px; color: var(--blue); background: var(--blue-soft); font-weight: 800; }
+
+.campaign-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, .85fr) minmax(520px, 1.25fr);
+  gap: 14px;
+  align-items: start;
+}
+.campaign-list {
+  display: grid;
+  gap: 10px;
+}
+.campaign-card {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.campaign-card strong,
+.campaign-card small {
+  display: block;
+}
+.campaign-card small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+.campaign-card p {
+  margin-top: 8px;
+  color: #334155;
+}
+.campaign-builder {
+  display: grid;
+  gap: 12px;
+}
+.campaign-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.campaign-builder .field {
+  display: grid;
+  gap: 5px;
+}
+.campaign-builder .field span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.campaign-builder input,
+.campaign-builder select,
+.campaign-builder textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+}
+.recipient-preview {
+  display: grid;
+  gap: 3px;
+  padding: 11px 12px;
+  border: 1px solid #c8dcff;
+  border-radius: 8px;
+  background: #f6f9ff;
+}
+.recipient-preview span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.token-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.token-bar .field-tag {
+  border: 0;
+  cursor: pointer;
+}
+.campaign-preview {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.campaign-preview small {
+  color: var(--muted);
+  font-weight: 800;
+}
+.campaign-preview h4 {
+  margin: 5px 0 9px;
+  font-size: 16px;
+}
+.campaign-preview p {
+  color: #334155;
+}
 
 @media (max-width: 760px) {
   body { min-width: 0; }

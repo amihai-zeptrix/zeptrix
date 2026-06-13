@@ -23,6 +23,15 @@ const owners = {
   "Avi Stein": ["AS", "#22a27b"],
   "Amihai Cohen": ["AC", "#24a978"],
 };
+const defaultTags = ["Enterprise", "Renewal", "Expansion", "At risk", "Pilot"];
+const templateTokens = [
+  ["mainContactName", "Main contact name"],
+  ["accountName", "Account name"],
+  ["ownerName", "Owner name"],
+  ["dealName", "Deal name"],
+  ["dealValue", "Deal value"],
+  ["closeDate", "Close date"],
+];
 
 const tenantSeed = [
   {
@@ -38,10 +47,10 @@ const tenantSeed = [
       { id: "admin-owner", name: "Platform Admin", email: "admin@zeptrix.io", password: SEED_ADMIN_TEMP_PASSWORD, mustChangePassword: true, role: "platform_admin", mfa: true, sso: true },
     ],
     deals: [
-      { id: 1, name: "Enterprise rollout", account: "Orbital Systems", contact: "Liam Brooks", email: "liam@orbitalsystems.com", owner: "Noa Levi", stage: "Negotiation", value: 72000, close: "2026-06-18", priority: "High", group: "active", note: "Security review complete. Waiting on procurement.", updated: "Today, 09:42" },
-      { id: 2, name: "Q3 expansion plan", account: "Nimbus Labs", contact: "Sophie Green", email: "sophie@nimbuslabs.io", owner: "Daniel Cohen", stage: "Proposal", value: 48500, close: "2026-06-30", priority: "Medium", group: "active", note: "Proposal shared after product workshop.", updated: "Yesterday" },
-      { id: 3, name: "Operations package", account: "Acme Studios", contact: "Ethan Hall", email: "ethan@acmestudios.co", owner: "Maya Bar", stage: "Qualified", value: 24000, close: "2026-07-11", priority: "Medium", group: "active", note: "Needs a migration timeline.", updated: "May 29" },
-      { id: 4, name: "Global account migration", account: "Atlas Freight", contact: "Lucas Martin", email: "lucas@atlasfreight.com", owner: "Avi Stein", stage: "Won", value: 96000, close: "2026-05-24", priority: "High", group: "closed", note: "Closed after successful pilot.", updated: "May 24" },
+      { id: 1, name: "Enterprise rollout", account: "Orbital Systems", contact: "Liam Brooks", email: "liam@orbitalsystems.com", owner: "Noa Levi", stage: "Negotiation", value: 72000, close: "2026-06-18", priority: "High", group: "active", tags: ["Enterprise", "Renewal"], note: "Security review complete. Waiting on procurement.", updated: "Today, 09:42" },
+      { id: 2, name: "Q3 expansion plan", account: "Nimbus Labs", contact: "Sophie Green", email: "sophie@nimbuslabs.io", owner: "Daniel Cohen", stage: "Proposal", value: 48500, close: "2026-06-30", priority: "Medium", group: "active", tags: ["Expansion"], note: "Proposal shared after product workshop.", updated: "Yesterday" },
+      { id: 3, name: "Operations package", account: "Acme Studios", contact: "Ethan Hall", email: "ethan@acmestudios.co", owner: "Maya Bar", stage: "Qualified", value: 24000, close: "2026-07-11", priority: "Medium", group: "active", tags: ["Pilot"], note: "Needs a migration timeline.", updated: "May 29" },
+      { id: 4, name: "Global account migration", account: "Atlas Freight", contact: "Lucas Martin", email: "lucas@atlasfreight.com", owner: "Avi Stein", stage: "Won", value: 96000, close: "2026-05-24", priority: "High", group: "closed", tags: ["Enterprise"], note: "Closed after successful pilot.", updated: "May 24" },
     ],
     tasks: [
       { id: 1, dealId: 1, title: "Confirm procurement timeline", type: "Follow-up", owner: "Noa Levi", due: "2026-06-13", priority: "High", completed: false },
@@ -49,6 +58,9 @@ const tenantSeed = [
     ],
     communications: [
       { id: 1, dealId: 1, type: "Email", direction: "outbound", subject: "Security review follow-up", body: "Sharing the final procurement checklist and next steps.", date: "2026-06-10T09:42:00", owner: "Noa Levi", tracked: "Opened twice" },
+    ],
+    campaigns: [
+      { id: 1, name: "Enterprise renewal readiness", audienceType: "tag", audienceValue: "Enterprise", subject: "Planning your next Zeptrix milestone", template: "Hi {{mainContactName}},\n\nAs {{accountName}} approaches the next milestone, {{ownerName}} prepared a short plan around {{dealName}} and the {{dealValue}} relationship.\n\nCan we review it before {{closeDate}}?", status: "Draft", createdAt: "2026-06-12T10:00:00" },
     ],
   },
   {
@@ -64,15 +76,18 @@ const tenantSeed = [
       { id: "amihai-owner", name: "Amihai Cohen", email: "amihai@zeptrix.io", password: SEED_AMIHAI_TEMP_PASSWORD, mustChangePassword: true, role: "tenant_admin", mfa: true, sso: true },
     ],
     deals: [
-      { id: 1, name: "Partner CRM launch", account: "BluePeak Advisory", contact: "Idan Yuval", email: "idan@bluepeak.example", owner: "Amihai Cohen", stage: "Proposal", value: 42000, close: "2026-06-25", priority: "High", group: "active", note: "Pricing review scheduled.", updated: "Today, 10:18" },
-      { id: 2, name: "Support workflow", account: "Northline Apps", contact: "Yael Ron", email: "yael@northline.example", owner: "Noa Levi", stage: "Qualified", value: 18000, close: "2026-07-08", priority: "Medium", group: "active", note: "Needs SLA mapping.", updated: "Yesterday" },
-      { id: 3, name: "Renewal package", account: "Cedar Retail", contact: "Tom Bar", email: "tom@cedar.example", owner: "Amihai Cohen", stage: "Won", value: 28000, close: "2026-06-02", priority: "Low", group: "closed", note: "Renewed for 12 months.", updated: "Jun 2" },
+      { id: 1, name: "Partner CRM launch", account: "BluePeak Advisory", contact: "Idan Yuval", email: "idan@bluepeak.example", owner: "Amihai Cohen", stage: "Proposal", value: 42000, close: "2026-06-25", priority: "High", group: "active", tags: ["Enterprise", "Expansion"], note: "Pricing review scheduled.", updated: "Today, 10:18" },
+      { id: 2, name: "Support workflow", account: "Northline Apps", contact: "Yael Ron", email: "yael@northline.example", owner: "Noa Levi", stage: "Qualified", value: 18000, close: "2026-07-08", priority: "Medium", group: "active", tags: ["Pilot"], note: "Needs SLA mapping.", updated: "Yesterday" },
+      { id: 3, name: "Renewal package", account: "Cedar Retail", contact: "Tom Bar", email: "tom@cedar.example", owner: "Amihai Cohen", stage: "Won", value: 28000, close: "2026-06-02", priority: "Low", group: "closed", tags: ["Renewal"], note: "Renewed for 12 months.", updated: "Jun 2" },
     ],
     tasks: [
       { id: 1, dealId: 1, title: "Send revised quote", type: "Email", owner: "Amihai Cohen", due: "2026-06-14", priority: "High", completed: false },
     ],
     communications: [
       { id: 1, dealId: 1, type: "Meeting", direction: "inbound", subject: "Pricing workshop", body: "Reviewed Growth plan and data migration needs.", date: "2026-06-11T15:30:00", owner: "Amihai Cohen", tracked: "45 min" },
+    ],
+    campaigns: [
+      { id: 1, name: "Expansion stakeholder note", audienceType: "tag", audienceValue: "Expansion", subject: "Next step for {{accountName}}", template: "Hi {{mainContactName}},\n\nFollowing {{dealName}}, I wanted to share a tailored rollout plan for {{accountName}}.\n\n{{ownerName}} can walk through it this week.", status: "Draft", createdAt: "2026-06-12T11:00:00" },
     ],
   },
 ];
@@ -117,6 +132,13 @@ let ui = {
   selectedCommunicationId: null,
   replyingThread: "",
   correspondenceDrafts: {},
+  campaignDraft: {
+    name: "Renewal planning outreach",
+    audienceType: "tag",
+    audienceValue: "Enterprise",
+    subject: "Next step for {{accountName}}",
+    template: "Hi {{mainContactName}},\n\nI prepared a short plan for {{accountName}} around {{dealName}}. {{ownerName}} can walk through the next step before {{closeDate}}.\n\nBest,\n{{ownerName}}",
+  },
 };
 
 loadStateFromApi();
@@ -136,6 +158,8 @@ function normalizeData(nextData) {
   nextData.inviteEmails = nextData.inviteEmails || [];
   nextData.tenants = nextData.tenants.map((tenant) => ({
     ...tenant,
+    deals: (tenant.deals || []).map((deal) => ({ ...deal, tags: deal.tags || defaultAccountTags(deal) })),
+    campaigns: tenant.campaigns || [],
     users: (tenant.users || []).map((user) => {
       const generatedPassword = user.password || seedPasswords[user.email] || generateTemporaryPassword();
       if (!user.password && !nextData.inviteEmails.some((mail) => mail.to?.toLowerCase() === user.email.toLowerCase() && mail.temporaryPassword === generatedPassword)) {
@@ -155,6 +179,13 @@ function normalizeData(nextData) {
     }),
   }));
   return nextData;
+}
+
+function defaultAccountTags(deal) {
+  if (deal.priority === "High") return ["Enterprise"];
+  if (deal.stage === "Won") return ["Renewal"];
+  if (deal.stage === "Proposal") return ["Expansion"];
+  return ["Pilot"];
 }
 
 function loadSession() {
@@ -489,6 +520,7 @@ function renderSidebar() {
       <p class="side-label">Workspace</p>
       ${sideLink("pipeline", "▦", "Sales pipeline")}
       ${sideLink("accounts", "▣", "Accounts", uniqueBy("account").length)}
+      ${sideLink("campaigns", "◉", "Campaigns", tenant.campaigns?.length || 0)}
       ${sideLink("contacts", "♙", "Contacts", uniqueBy("email").length)}
       ${sideLink("activities", "✓", "Activities", openTasks().length)}
       ${sideLink("inbox", "✉", "Inbox", tenant.communications.length)}
@@ -521,6 +553,7 @@ function renderSection() {
   if (ui.section === "pipeline") return `${renderPageHeader()}${renderSummary()}${renderTabs()}${ui.view === "dashboard" ? renderDashboard() : `${renderToolbar()}${ui.view === "table" ? renderBoard() : renderKanban()}`}`;
   if (ui.section === "contacts") return renderContacts();
   if (ui.section === "accounts") return renderAccounts();
+  if (ui.section === "campaigns") return renderCampaigns();
   if (ui.section === "activities") return renderActivities();
   if (ui.section === "inbox") return renderInbox();
   if (ui.section === "reports") return `${renderPageHeader("Reports", "Monitor pipeline health and sales performance.")}${renderDashboard()}`;
@@ -842,11 +875,88 @@ function renderAccounts() {
   const allAccounts = uniqueBy("account");
   const accounts = ui.accountFocus ? allAccounts.filter((deal) => deal.account === ui.accountFocus) : allAccounts;
   if (ui.accountFocus) return renderAccountDetail(accounts[0], allAccounts.length);
-  return `${renderPageHeader("Accounts", "Track customers and prospects at the company level.")}<div class="section-toolbar"><strong>${accounts.length} accounts</strong><span class="toolbar-spacer"></span><button class="button" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ Add account</button></div>${renderImportStrip()}<section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-account="${escapeHtml(deal.account)}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
+  return `${renderPageHeader("Accounts", "Track customers and prospects at the company level.")}<div class="section-toolbar"><strong>${accounts.length} accounts</strong><span class="toolbar-spacer"></span><button class="button" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ Add account</button></div>${renderImportStrip()}<section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-account="${escapeHtml(deal.account)}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small><span class="account-tags">${accountTags(deal.account).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</span></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
+}
+
+function allAccountTags() {
+  return [...new Set([...defaultTags, ...currentTenant().deals.flatMap((deal) => deal.tags || [])])].sort();
+}
+
+function accountTags(account) {
+  return [...new Set(currentTenant().deals.filter((deal) => deal.account === account).flatMap((deal) => deal.tags || []))].sort();
+}
+
+function setAccountTags(account, tags) {
+  const tenant = currentTenant();
+  setTenant({ ...tenant, deals: tenant.deals.map((deal) => deal.account === account ? { ...deal, tags } : deal) });
+}
+
+function accountLevel(deal) {
+  return deal.priority;
+}
+
+function campaignRecipients(audienceType, audienceValue) {
+  const accounts = uniqueBy("account");
+  if (!audienceType || audienceType === "tag") return accounts.filter((deal) => accountTags(deal.account).includes(audienceValue || allAccountTags()[0]));
+  if (audienceType === "level") return accounts.filter((deal) => accountLevel(deal) === audienceValue);
+  if (audienceType === "name") return accounts.filter((deal) => deal.account === audienceValue);
+  return accounts;
+}
+
+function mergeDataForDeal(deal) {
+  return {
+    mainContactName: deal?.contact || "customer",
+    accountName: deal?.account || "account",
+    ownerName: deal?.owner || currentUser().name,
+    dealName: deal?.name || "your next initiative",
+    dealValue: deal ? money(deal.value) : "$0",
+    closeDate: deal ? formatDate(deal.close) : "the target date",
+  };
+}
+
+function renderMergedTemplate(template, deal) {
+  const data = mergeDataForDeal(deal);
+  return escapeHtml(template || "").replace(/\{\{(\w+)\}\}/g, (_, key) => `<strong>${escapeHtml(data[key] || "")}</strong>`).replace(/\n/g, "<br>");
 }
 
 function renderImportStrip() {
   return `<section class="import-strip"><button data-action="import-source" data-source="csv"><strong>CSV</strong><small>Upload accounts and contacts from a spreadsheet</small></button><button data-action="import-source" data-source="salesforce"><strong>Salesforce</strong><small>Sync leads, accounts, contacts, and owners</small></button><button data-action="import-source" data-source="zendesk"><strong>Zendesk</strong><small>Bring support contacts and account context</small></button></section>`;
+}
+
+function renderCampaigns() {
+  const tenant = currentTenant();
+  const draft = ui.campaignDraft;
+  const tags = allAccountTags();
+  const accounts = uniqueBy("account");
+  const levels = ["High", "Medium", "Low"];
+  const audienceOptions = draft.audienceType === "level" ? levels : draft.audienceType === "name" ? accounts.map((deal) => deal.account) : tags;
+  const audienceValue = draft.audienceValue || audienceOptions[0] || "";
+  const recipients = campaignRecipients(draft.audienceType, audienceValue);
+  const previewDeal = recipients[0] || accounts[0];
+  return `${renderPageHeader("Campaigns", "Segment customers, personalize outreach, and keep every campaign tied to account data.")}
+    <section class="campaign-layout">
+      <article class="widget">
+        <div class="panel-head"><h3>Existing campaigns</h3><span class="count">${tenant.campaigns.length}</span></div>
+        <div class="campaign-list">${tenant.campaigns.map((campaign) => {
+          const recipients = campaignRecipients(campaign.audienceType, campaign.audienceValue);
+          return `<div class="campaign-card"><strong>${escapeHtml(campaign.name)}</strong><small>${escapeHtml(campaign.status)} · ${escapeHtml(campaign.audienceType)}: ${escapeHtml(campaign.audienceValue)} · ${recipients.length} accounts</small><p>${renderMergedTemplate(campaign.subject, recipients[0] || accounts[0])}</p></div>`;
+        }).join("") || `<p class="empty-state compact">No campaigns yet.</p>`}</div>
+      </article>
+      <form class="widget campaign-builder" data-campaign-form>
+        <h3>Add campaign</h3>
+        <div class="campaign-fields">
+          <label class="field"><span>Name</span><input name="name" value="${escapeHtml(draft.name)}" data-campaign-field required /></label>
+          <label class="field"><span>Audience</span><select name="audienceType" data-campaign-field><option value="tag" ${draft.audienceType === "tag" ? "selected" : ""}>By tag</option><option value="level" ${draft.audienceType === "level" ? "selected" : ""}>By level</option><option value="name" ${draft.audienceType === "name" ? "selected" : ""}>By account name</option></select></label>
+          <label class="field"><span>Selector</span><select name="audienceValue" data-campaign-field>${audienceOptions.map((option) => `<option value="${escapeHtml(option)}" ${option === audienceValue ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select></label>
+          <label class="field"><span>Subject</span><input name="subject" value="${escapeHtml(draft.subject)}" data-campaign-field required /></label>
+        </div>
+        <div class="recipient-preview"><strong>${recipients.length} selected accounts</strong><span>${recipients.map((deal) => escapeHtml(deal.account)).join(", ") || "No matching accounts"}</span></div>
+        <div class="token-bar">${templateTokens.map(([token, label]) => `<button type="button" class="field-tag" data-action="insert-template-token" data-token="${token}">${escapeHtml(label)}</button>`).join("")}</div>
+        <label class="field"><span>Template markup</span><textarea name="template" data-campaign-template data-campaign-field rows="8" required>${escapeHtml(draft.template)}</textarea></label>
+        <section class="campaign-preview"><small>Preview for ${escapeHtml(previewDeal?.account || "no account")}</small><h4>${renderMergedTemplate(draft.subject, previewDeal)}</h4><p>${renderMergedTemplate(draft.template, previewDeal)}</p></section>
+        <div class="form-actions"><button type="button" class="button" data-action="reset-campaign-draft">Reset</button><span class="toolbar-spacer"></span><button class="button primary">Create campaign</button></div>
+      </form>
+    </section>`;
 }
 
 function renderAccountDetail(accountDeal, accountCount) {
@@ -867,6 +977,7 @@ function renderAccountDetail(accountDeal, accountCount) {
           <h2>${escapeHtml(accountDeal.account)}</h2>
           <p class="subcopy">${escapeHtml(accountDeal.note || "Relationship is active and ready for follow-up.")}</p>
           <div class="account-reason-chips">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
+          <div class="account-tag-editor"><span class="account-tags">${accountTags(accountDeal.account).map((tag) => `<button data-action="remove-account-tag" data-account="${escapeHtml(accountDeal.account)}" data-tag="${escapeHtml(tag)}" data-tooltip="Remove tag">${escapeHtml(tag)} ×</button>`).join("")}</span><select data-account-tag-select data-account="${escapeHtml(accountDeal.account)}"><option value="">Add tag...</option>${allAccountTags().filter((tag) => !accountTags(accountDeal.account).includes(tag)).map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join("")}<option value="__new__">+ New tag</option></select></div>
         </div>
         <div class="account-kpis">
           <span><small>Stage</small><strong>${escapeHtml(accountDeal.stage)}</strong></span>
@@ -1223,6 +1334,27 @@ document.addEventListener("click", async (event) => {
       ui.selectedContactEmail = "";
       ui.selectedCommunicationId = null;
     }
+    if (action === "insert-template-token") {
+      const token = `{{${actionElement.dataset.token}}}`;
+      const textarea = document.querySelector("[data-campaign-template]");
+      if (textarea) {
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        ui.campaignDraft.template = `${textarea.value.slice(0, start)}${token}${textarea.value.slice(end)}`;
+      }
+      render();
+      const nextTextarea = document.querySelector("[data-campaign-template]");
+      nextTextarea?.focus();
+      return;
+    }
+    if (action === "reset-campaign-draft") {
+      ui.campaignDraft = { name: "", audienceType: "tag", audienceValue: allAccountTags()[0] || "", subject: "", template: "" };
+    }
+    if (action === "remove-account-tag") {
+      const accountName = actionElement.dataset.account;
+      const tags = accountTags(accountName).filter((tag) => tag !== actionElement.dataset.tag);
+      setAccountTags(accountName, tags);
+    }
     if (action === "filter-activities") ui.activityFilter = actionElement.dataset.filter || "open";
     if (action === "reply-correspondence") {
       ui.replyingThread = actionElement.dataset.threadId;
@@ -1345,6 +1477,10 @@ document.addEventListener("input", (event) => {
     ui.selectedContactEmail = "";
     render();
     restoreSearchFocus("[data-contact-search]", cursor);
+    return;
+  }
+  if (event.target.matches("[data-campaign-field]")) {
+    ui.campaignDraft = { ...ui.campaignDraft, [event.target.name]: event.target.value };
   }
 });
 
@@ -1375,6 +1511,21 @@ document.addEventListener("change", (event) => {
   }
   if (event.target.matches("[data-stage-filter]")) {
     ui.stageFilter = event.target.value.startsWith("☰") ? "All" : event.target.value;
+    render();
+    return;
+  }
+  if (event.target.matches("[data-campaign-field]")) {
+    ui.campaignDraft = { ...ui.campaignDraft, [event.target.name]: event.target.value };
+    if (event.target.name === "audienceType") ui.campaignDraft.audienceValue = "";
+    render();
+    return;
+  }
+  if (event.target.matches("[data-account-tag-select]")) {
+    const account = event.target.dataset.account;
+    let tag = event.target.value;
+    if (!tag) return;
+    if (tag === "__new__") tag = prompt("New account tag")?.trim();
+    if (tag) setAccountTags(account, [...new Set([...accountTags(account), tag])].sort());
     render();
   }
 });
@@ -1463,7 +1614,7 @@ document.addEventListener("submit", async (event) => {
     if (ui.editingTenant) {
       try {
         const result = await updateTenantViaApi(ui.editingTenant.id, values);
-        data.tenants = data.tenants.map((tenant) => tenant.id === ui.editingTenant.id ? { ...tenant, ...result.tenant, users: result.tenant.users?.length ? result.tenant.users : tenant.users, deals: tenant.deals, tasks: tenant.tasks, communications: tenant.communications } : tenant);
+        data.tenants = data.tenants.map((tenant) => tenant.id === ui.editingTenant.id ? { ...tenant, ...result.tenant, users: result.tenant.users?.length ? result.tenant.users : tenant.users, deals: tenant.deals, tasks: tenant.tasks, communications: tenant.communications, campaigns: tenant.campaigns } : tenant);
         if (ui.tenantId === ui.editingTenant.id) ui.tenantId = ui.editingTenant.id;
       } catch (error) {
         ui.authError = error.message;
@@ -1508,6 +1659,21 @@ document.addEventListener("submit", async (event) => {
     render();
     return;
   }
+  if (event.target.matches("[data-campaign-form]")) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.target));
+    const tenant = currentTenant();
+    const campaign = {
+      id: Math.max(0, ...tenant.campaigns.map((item) => item.id)) + 1,
+      ...values,
+      status: "Draft",
+      createdAt: new Date().toISOString(),
+    };
+    setTenant({ ...tenant, campaigns: [campaign, ...tenant.campaigns] });
+    ui.campaignDraft = { ...ui.campaignDraft, name: "", subject: "", template: "" };
+    render();
+    return;
+  }
   if (event.target.matches("[data-task-form]")) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));
@@ -1524,7 +1690,7 @@ document.addEventListener("submit", async (event) => {
     const values = Object.fromEntries(new FormData(event.target));
     const tenant = currentTenant();
     const existing = ui.editing;
-    const deal = { ...existing, ...values, id: existing?.id || Math.max(0, ...tenant.deals.map((item) => item.id)) + 1, value: Number(values.value), updated: "Just now" };
+    const deal = { ...existing, ...values, id: existing?.id || Math.max(0, ...tenant.deals.map((item) => item.id)) + 1, value: Number(values.value), tags: existing?.tags || defaultAccountTags(values), updated: "Just now" };
     const deals = existing ? tenant.deals.map((item) => item.id === existing.id ? deal : item) : [deal, ...tenant.deals];
     const tasks = deal.stage === "Proposal" && existing?.stage !== "Proposal"
       ? [{ id: Math.max(0, ...tenant.tasks.map((task) => task.id)) + 1, dealId: deal.id, title: "Follow up on proposal", type: "Follow-up", owner: deal.owner, due: daysFromNow(3), priority: "Medium", completed: false }, ...tenant.tasks]
@@ -1587,7 +1753,7 @@ function importSampleRecords(source = "csv") {
   const nextId = Math.max(0, ...tenant.deals.map((deal) => deal.id)) + 1;
   const deals = imported
     .filter((deal) => !existingEmails.has(deal.email.toLowerCase()))
-    .map((deal, index) => ({ ...deal, id: nextId + index, updated: "Imported just now" }));
+    .map((deal, index) => ({ ...deal, id: nextId + index, tags: defaultAccountTags(deal), updated: "Imported just now" }));
   if (deals.length) setTenant({ ...tenant, deals: [...deals, ...tenant.deals] });
 }
 
