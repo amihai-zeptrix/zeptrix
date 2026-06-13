@@ -750,6 +750,10 @@ function renderAccountDetail(accountDeal, accountCount) {
         <h3>Correspondence</h3>
         <div class="thread-list">${threads.map(renderAccountThread).join("")}</div>
       </article>
+      <article class="account-panel moments-panel">
+        <h3>Relationship moments</h3>
+        <div class="moment-list">${relationshipMoments(accountDeal, contacts).map(renderRelationshipMoment).join("")}</div>
+      </article>
     </section>`;
 }
 
@@ -790,6 +794,34 @@ function facebookProfile(name, suffix = "") {
 
 function renderAccountContact(contact) {
   return `<div class="contact-card">${avatar(contact.name)}<div class="contact-main"><strong>${escapeHtml(contact.name)}</strong><small>${escapeHtml(contact.title)}</small></div><dl><dt>Email</dt><dd><a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a></dd><dt>Mobile</dt><dd><a href="tel:${escapeHtml(contact.mobile)}">${escapeHtml(contact.mobile)}</a></dd><dt>Twitter</dt><dd><a href="${escapeHtml(contact.twitter.url)}" target="_blank" rel="noreferrer">${escapeHtml(contact.twitter.label)}</a></dd><dt>Facebook</dt><dd><a href="${escapeHtml(contact.facebook.url)}" target="_blank" rel="noreferrer">${escapeHtml(contact.facebook.label)}</a></dd></dl></div>`;
+}
+
+function relationshipMoments(accountDeal, contacts) {
+  const birthdayMonth = (seed) => String(1 + [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 12).padStart(2, "0");
+  const birthdayDay = (seed) => String(1 + [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 27).padStart(2, "0");
+  const birthdays = contacts.map((contact) => ({
+    type: "Birthday",
+    date: `2026-${birthdayMonth(contact.name)}-${birthdayDay(contact.name)}`,
+    title: `${contact.name}'s birthday`,
+    detail: `${contact.title} · send a personal note`,
+  }));
+  const closeDate = new Date(`${accountDeal.close}T12:00:00`);
+  const daysBeforeClose = (days) => {
+    const date = new Date(closeDate);
+    date.setDate(date.getDate() - days);
+    return date.toISOString().slice(0, 10);
+  };
+  return [
+    ...birthdays,
+    { type: "QBR", date: daysBeforeClose(45), title: "Executive business review", detail: "Review ROI, success metrics, and expansion goals." },
+    { type: "Renewal", date: daysBeforeClose(90), title: "Renewal checkpoint", detail: "Start commercial alignment before the renewal window." },
+    { type: "Milestone", date: daysBeforeClose(20), title: "Launch readiness review", detail: "Confirm onboarding progress and open risks." },
+    { type: "Anniversary", date: "2026-05-24", title: "Customer anniversary", detail: "Celebrate the relationship and share wins." },
+  ].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function renderRelationshipMoment(moment) {
+  return `<div class="moment-row"><span class="moment-date">${formatMomentDate(moment.date)}</span><div><strong>${escapeHtml(moment.title)}</strong><small>${escapeHtml(moment.type)} · ${escapeHtml(moment.detail)}</small></div></div>`;
 }
 
 function accountCorrespondence(accountDeal, contacts) {
@@ -905,6 +937,10 @@ function formatDate(value) {
 
 function formatTimestamp(value) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+}
+
+function formatMomentDate(value) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(`${value}T12:00:00`));
 }
 
 function escapeHtml(value) {
