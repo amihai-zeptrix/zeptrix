@@ -802,9 +802,10 @@ function renderAccountDetail(accountDeal, accountCount) {
   const accountDeals = tenant.deals.filter((deal) => deal.account === accountDeal.account);
   const contacts = topAccountContacts(accountDeal);
   const threads = accountCorrespondence(accountDeal, contacts);
+  const reasons = accountAttentionReasons(accountDeal);
   return `
     ${renderPageHeader(accountDeal.account, `${accountDeals.length} active relationship ${accountDeals.length === 1 ? "record" : "records"} · ${money(total(accountDeals))} pipeline value`)}
-    <div class="account-focus-banner"><span class="account-mark">${initials(accountDeal.account)}</span><div><strong>Viewing account</strong><small>${escapeHtml(accountDeal.account)} · opened from account intelligence</small></div><button class="risk-jump-button" data-action="jump-risk-thread" data-tooltip="Jump to anger correspondence" aria-label="Jump to anger correspondence">!</button><button class="button small" data-action="clear-account-focus">Back to account list</button></div>
+    <div class="account-focus-banner"><span class="account-mark">${initials(accountDeal.account)}</span><div><strong>Viewing account</strong><small>${escapeHtml(accountDeal.account)} · opened from account intelligence</small></div><button class="button small" data-action="clear-account-focus">Back to account list</button></div>
     <div class="section-toolbar"><strong>Account intelligence</strong><span class="toolbar-spacer"></span><button class="button" data-action="clear-account-focus">Show all ${accountCount} accounts</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
     <section class="account-profile">
       <article class="account-panel account-summary-panel">
@@ -812,12 +813,14 @@ function renderAccountDetail(accountDeal, accountCount) {
         <div>
           <h2>${escapeHtml(accountDeal.account)}</h2>
           <p class="subcopy">${escapeHtml(accountDeal.note || "Relationship is active and ready for follow-up.")}</p>
+          <div class="account-reason-chips">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
         </div>
         <div class="account-kpis">
           <span><small>Stage</small><strong>${escapeHtml(accountDeal.stage)}</strong></span>
           <span><small>Owner</small><strong>${escapeHtml(accountDeal.owner)}</strong></span>
           <span><small>Close date</small><strong>${formatDate(accountDeal.close)}</strong></span>
         </div>
+        <div class="account-summary-actions"><button class="risk-jump-button" data-action="jump-risk-thread" data-tooltip="Jump to anger correspondence" aria-label="Jump to anger correspondence">!</button><span>Anger correspondence detected</span></div>
       </article>
       <article class="account-panel">
         <h3>Top contacts</h3>

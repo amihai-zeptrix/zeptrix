@@ -703,12 +703,11 @@ h3 { font-size: 14px; }
 .account-focus-banner strong,
 .account-focus-banner small { display: block; }
 .account-focus-banner small { color: var(--muted); }
-.account-focus-banner .button { margin-left: 0; }
+.account-focus-banner .button { margin-left: auto; }
 .risk-jump-button {
   display: grid;
   width: 34px;
   height: 34px;
-  margin-left: auto;
   place-items: center;
   border: 1px solid #f0b9b9;
   border-radius: 50%;
@@ -744,6 +743,20 @@ h3 { font-size: 14px; }
   align-items: center;
   gap: 13px;
 }
+.account-reason-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.account-reason-chips span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #8a3a19;
+  background: #fff0df;
+  font-size: 10px;
+  font-weight: 800;
+}
 .account-kpis {
   display: grid;
   grid-column: 1 / -1;
@@ -766,6 +779,18 @@ h3 { font-size: 14px; }
   text-transform: uppercase;
 }
 .account-kpis strong { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-summary-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 9px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: #a63232;
+  font-size: 11px;
+  font-weight: 800;
+}
 .contact-grid {
   display: grid;
   gap: 10px;
