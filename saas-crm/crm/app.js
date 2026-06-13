@@ -3,6 +3,7 @@ const SESSION_KEY = "zeptrix-saas-session-v1";
 const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
+const IS_DEMO_ROUTE = location.pathname.replace(/\/+$/, "") === "/crm/demo";
 
 const stages = ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"];
 const stageClass = {
@@ -110,6 +111,7 @@ let ui = {
 };
 
 loadStateFromApi();
+if (IS_DEMO_ROUTE) applyDemoSession();
 
 function loadData() {
   try {
@@ -148,7 +150,9 @@ function normalizeData(nextData) {
 
 function loadSession() {
   try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY));
+    const storedSession = JSON.parse(localStorage.getItem(SESSION_KEY));
+    if (storedSession?.role === "demo_user" && !IS_DEMO_ROUTE) return null;
+    return storedSession;
   } catch {
     return null;
   }
@@ -161,6 +165,20 @@ function saveData() {
 function saveSession() {
   if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   else localStorage.removeItem(SESSION_KEY);
+}
+
+function applyDemoSession() {
+  const demoTenant = data.tenants.find((tenant) => tenant.slug === "demo" || tenant.id === "demo");
+  session = {
+    email: "demo@zeptrix.io",
+    name: "Demo User",
+    role: "demo_user",
+    tenantId: demoTenant?.id || "demo",
+    forcePasswordChange: false,
+  };
+  ui.tenantId = session.tenantId;
+  ui.section = "pipeline";
+  ui.authError = "";
 }
 
 function currentTenant() {
@@ -203,6 +221,7 @@ async function loadStateFromApi() {
   try {
     const remote = await apiRequest("/api/state");
     data = { ...data, tenants: remote.tenants, inviteEmails: remote.inviteEmails };
+    if (IS_DEMO_ROUTE) applyDemoSession();
     if (!data.tenants.some((tenant) => tenant.id === ui.tenantId)) ui.tenantId = data.tenants[0]?.id || "admin";
     saveData();
     render();

@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const test = require("node:test");
-const { duplicateTenantEmailMessage, inviteEmailContent, normalizeTenantPayload, smtpInviteMessage, updateTenantWithClient } = require("../server");
+const { duplicateTenantEmailMessage, inviteEmailContent, normalizeTenantPayload, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient } = require("../server");
 
 function createTenantUpdateClient({ tenant, users, tenants = [tenant] }) {
   return {
@@ -134,4 +135,11 @@ test("SMTP invite message sends only to the tenant login recipient", () => {
 
   assert.equal(message.to, "owner@example.com");
   assert.equal("bcc" in message, false);
+});
+
+test("CRM demo route serves the CRM app shell", () => {
+  const crmIndex = path.join(__dirname, "..", "crm", "index.html");
+
+  assert.equal(staticFilePathForUrlPath("/crm/demo"), crmIndex);
+  assert.equal(staticFilePathForUrlPath("/crm/demo/"), crmIndex);
 });

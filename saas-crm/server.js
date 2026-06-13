@@ -801,9 +801,14 @@ async function handleApi(req, res) {
   json(res, 404, { error: "Not found" });
 }
 
+function staticFilePathForUrlPath(urlPath) {
+  if (urlPath === "/crm/demo" || urlPath === "/crm/demo/") return path.join(root, "crm/index.html");
+  return path.join(root, urlPath === "/" ? "index.html" : urlPath);
+}
+
 function serveStatic(req, res) {
   const urlPath = decodeURIComponent(new URL(req.url, `http://localhost:${port}`).pathname);
-  let filePath = path.join(root, urlPath === "/" ? "index.html" : urlPath);
+  let filePath = staticFilePathForUrlPath(urlPath);
   if (!filePath.startsWith(root)) {
     res.writeHead(403);
     res.end("Forbidden");
@@ -852,6 +857,7 @@ module.exports = {
   duplicateTenantEmailMessage,
   inviteEmailContent,
   normalizeTenantPayload,
+  staticFilePathForUrlPath,
   smtpInviteMessage,
   slugify,
   updateTenantWithClient,
