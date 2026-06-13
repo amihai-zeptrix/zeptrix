@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Zeptrix CRM turns every sales opportunity into a clear, timely next action." />
+    <title>Zeptrix CRM | A Sales Workspace That Drives Action</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet" />
+    <style>
+      :root { --ink:#142033; --muted:#657084; --blue:#3676e9; --navy:#101d31; --mint:#20a878; --line:#e5eaf1; --soft:#f5f8fc; }
+      * { box-sizing:border-box; }
+      body { margin:0; color:var(--ink); background:#fff; font:15px/1.65 Inter,system-ui,sans-serif; }
+      a { color:inherit; text-decoration:none; }
+      .wrap { width:min(1140px,calc(100% - 40px)); margin:auto; }
+      header { border-bottom:1px solid var(--line); background:#fff; }
+      nav { display:flex; height:70px; align-items:center; gap:22px; }
+      .brand { display:flex; align-items:center; gap:10px; margin-right:auto; font:800 18px Manrope,sans-serif; }
+      .mark { display:grid; width:34px; height:34px; place-items:center; border-radius:10px; color:#fff; background:linear-gradient(135deg,#55a3ff,#7961e7); }
+      .link { color:var(--muted); font-size:13px; font-weight:600; }
+      .button { display:inline-flex; align-items:center; justify-content:center; padding:11px 17px; border-radius:7px; color:#fff; background:var(--blue); font-weight:700; }
+      .ghost { color:var(--blue); border:1px solid #c7d9fa; background:#fff; }
+      .hero { position:relative; overflow:hidden; padding:84px 0 68px; background:#f4f8fd; }
+      .hero::before { position:absolute; inset:0; background:linear-gradient(90deg,rgba(248,251,255,.98) 0%,rgba(248,251,255,.94) 38%,rgba(244,248,253,.72) 62%,rgba(235,243,255,.42) 100%),url("/assets/crm-hero-background.png") center right/cover no-repeat; content:""; }
+      .hero-grid { position:relative; z-index:1; }
+      .hero-grid { display:grid; grid-template-columns:1.05fr .95fr; align-items:center; gap:52px; }
+      .eyebrow { color:var(--blue); font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+      h1 { max-width:780px; margin:12px 0 18px; font:800 clamp(42px,5vw,68px)/1.04 Manrope,sans-serif; letter-spacing:-.045em; }
+      h2 { margin:0 0 10px; font:800 34px/1.12 Manrope,sans-serif; letter-spacing:-.025em; }
+      h3 { margin:0 0 7px; font-size:17px; }
+      p { margin:0; color:var(--muted); }
+      .hero p { max-width:610px; font-size:18px; }
+      .actions { display:flex; gap:11px; margin-top:28px; }
+      .product { padding:16px; border:1px solid #dfe7f2; border-radius:14px; background:#fff; box-shadow:0 24px 55px rgba(32,62,104,.14); }
+      .window { display:flex; gap:7px; padding-bottom:13px; }
+      .dot { width:8px; height:8px; border-radius:50%; background:#d7dee8; }
+      .metric-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+      .metric { padding:13px; border-radius:8px; background:var(--soft); }
+      .metric small { display:block; color:var(--muted); font-size:11px; }
+      .metric strong { display:block; margin-top:4px; font:800 20px Manrope,sans-serif; }
+      .task { display:flex; align-items:center; gap:9px; margin-top:9px; padding:11px; border:1px solid var(--line); border-radius:7px; font-size:12px; font-weight:700; }
+      .check { display:grid; width:20px; height:20px; place-items:center; border-radius:50%; color:#fff; background:var(--mint); }
+      section { padding:76px 0; }
+      .intro { max-width:700px; margin-bottom:32px; }
+      .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:15px; }
+      .card { padding:22px; border:1px solid var(--line); border-radius:11px; background:#fff; }
+      .card b { display:inline-grid; width:34px; height:34px; margin-bottom:16px; place-items:center; border-radius:9px; color:var(--blue); background:#eaf2ff; }
+      .wide { grid-column:span 2; }
+      .value { background:var(--navy); color:#fff; }
+      .value p { color:#abb8ca; }
+      .band { color:#fff; background:linear-gradient(135deg,#172946,#214f8b); }
+      .band-grid { display:grid; grid-template-columns:1fr auto; align-items:center; gap:30px; }
+      .band p { color:#c2d5ee; }
+      footer { padding:25px 0; border-top:1px solid var(--line); color:var(--muted); font-size:13px; }
+      @media(max-width:800px) { .hero-grid,.band-grid { grid-template-columns:1fr; } .grid { grid-template-columns:1fr; } .wide { grid-column:auto; } .link { display:none; } }
+    </style>
+  </head>
+  <body>
+    <header><nav class="wrap"><a class="brand" href="/"><span class="mark">Z</span>Zeptrix CRM</a><a class="link" href="#capabilities">Capabilities</a><a class="link" href="#value">Business value</a><a class="button" href="/your-new-crm/">Explore the CRM</a></nav></header>
+    <main>
+      <div class="hero"><div class="wrap hero-grid">
+        <div><span class="eyebrow">Sales execution, simplified</span><h1>Turn every opportunity into the right next action.</h1><p>Zeptrix CRM combines pipeline clarity, follow-up discipline, communication context, data quality, and credible forecasting in one focused workspace.</p><div class="actions"><a class="button" href="/your-new-crm/">Open interactive CRM</a><a class="button ghost" href="#capabilities">See capabilities</a></div></div>
+        <div class="product"><div class="window"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="metric-grid"><div class="metric"><small>WEIGHTED FORECAST</small><strong>$285,490</strong></div><div class="metric"><small>OPEN TASKS</small><strong>5</strong></div></div><div class="task"><span class="check">✓</span> Confirm procurement timeline</div><div class="task"><span class="check">✓</span> Review proposal feedback</div><div class="task"><span class="check">✓</span> Send migration timeline</div></div>
+      </div>
+      <section id="capabilities"><div class="wrap"><div class="intro"><span class="eyebrow">Five connected capabilities</span><h2>Less administration. Better follow-through.</h2><p>Each capability solves a recurring CRM failure point and becomes more valuable when used with the others.</p></div><div class="grid">
+        <article class="card wide"><b>1</b><h3>Automatic follow-ups and activity management</h3><p>Create calls, meetings, emails, and tasks with owners and due dates. Overdue work is visible immediately. Moving a deal into Proposal automatically creates the next follow-up.</p></article>
+        <article class="card value"><b>2</b><h3>Communication timeline</h3><p>Log inbound and outbound email against the right opportunity so everyone sees the latest customer context before acting.</p></article>
+        <article class="card"><b>3</b><h3>Data hygiene and CSV import</h3><p>Bulk-import opportunities, identify duplicate email records, merge them, and carry linked tasks and communication forward automatically.</p></article>
+        <article class="card"><b>4</b><h3>Forecasting that explains itself</h3><p>Use editable stage confidence, live win rate, pipeline-by-stage, and closing-soon indicators instead of a fixed headline number.</p></article>
+        <article class="card"><b>5</b><h3>No-code sales workspace</h3><p>Tailor visible columns, custom fields, saved views, stage confidence, and deal stage movement with drag-and-drop Kanban.</p></article>
+      </div></div></section>
+      <section id="value" class="band"><div class="wrap band-grid"><div><span class="eyebrow">Built for practical sales teams</span><h2>Know what needs attention before revenue slips.</h2><p>Zeptrix CRM keeps sales data usable and next steps visible without the setup burden of an enterprise platform.</p></div><a class="button" href="/your-new-crm/">Try the interactive workspace</a></div></section>
+    </main>
+    <footer><div class="wrap">Zeptrix CRM · Focused sales execution for growing teams.</div></footer>
+  </body>
+</html>

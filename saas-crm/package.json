@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check crm/app.js && node --check internal-crm/app.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.600.0",
+    "nodemailer": "^8.0.11",
+    "pg": "^8.21.0"
+  }
+}
