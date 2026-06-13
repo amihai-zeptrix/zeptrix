@@ -592,7 +592,7 @@ function renderHome() {
     <section class="admin-grid">
       <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(({ account, primaryDeal, count, value, reasons }) => `<button class="metric-row attention-row" data-open-account="${escapeHtml(account)}"><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">High</span></button>`).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
       <article class="widget"><h3>Today's focus</h3><button class="summary-card focus-card" data-action="open-activities"><span class="summary-icon" style="background:var(--orange-soft);color:var(--orange)">◴</span><div><small>Open tasks</small><strong>${tasks.length}</strong></div><span class="summary-trend">Open</span></button></article>
-      <article class="widget wide"><div class="panel-head"><h3>Correspondence needing attention</h3><button class="icon-button small" data-action="open-inbox" data-tooltip="Open inbox" aria-label="Open inbox">↗</button></div><div class="home-thread-list">${homeCorrespondenceNeedingAttention(tenant).map(renderHomeAttentionThread).join("") || `<p class="empty-state compact">No correspondence needs attention.</p>`}</div></article>
+      <article class="widget wide"><div class="panel-head"><h3>Correspondence needing attention</h3><span class="thread-actions"><button class="risk-jump-button small" data-action="jump-home-risk-thread" data-tooltip="Jump to red correspondence" aria-label="Jump to red correspondence">!</button><button class="icon-button small" data-action="open-inbox" data-tooltip="Open inbox" aria-label="Open inbox">↗</button></span></div><div class="home-thread-list">${homeCorrespondenceNeedingAttention(tenant).map(renderHomeAttentionThread).join("") || `<p class="empty-state compact">No correspondence needs attention.</p>`}</div></article>
       <article class="widget wide"><div class="panel-head"><h3>Relationship events</h3><button class="icon-button small" data-action="open-activities" data-tooltip="Open activities" aria-label="Open activities">↗</button></div><div class="home-event-list">${homeEvents(tenant).map(renderHomeEvent).join("")}</div></article>
     </section>`;
 }
@@ -1159,6 +1159,13 @@ document.addEventListener("click", async (event) => {
       document.querySelector(".risk-thread")?.scrollIntoView({ behavior: "smooth", block: "center" });
       document.querySelector(".risk-thread")?.classList.add("is-highlighted");
       setTimeout(() => document.querySelector(".risk-thread")?.classList.remove("is-highlighted"), 1400);
+      return;
+    }
+    if (action === "jump-home-risk-thread") {
+      const riskThread = document.querySelector(".home-thread-list .risk-thread");
+      riskThread?.scrollIntoView({ behavior: "smooth", block: "center" });
+      riskThread?.classList.add("is-highlighted");
+      setTimeout(() => riskThread?.classList.remove("is-highlighted"), 1400);
       return;
     }
     if (action === "new-correspondence") {

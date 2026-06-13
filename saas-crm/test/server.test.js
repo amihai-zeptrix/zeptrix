@@ -154,6 +154,7 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
 
   assert.match(renderHomeSource, /Correspondence needing attention/);
   assert.match(renderHomeSource, /Relationship events/);
+  assert.match(renderHomeSource, /jump-home-risk-thread/);
   assert.match(app, /Anger detected/);
   assert.match(app, /risk-thread/);
 });

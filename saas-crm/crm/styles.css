@@ -741,6 +741,11 @@ h3 { font-size: 14px; }
   background: #fde1e1;
   font: 900 18px Manrope, sans-serif;
 }
+.risk-jump-button.small {
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+}
 .risk-jump-button:hover { background: #fbd1d1; }
 
 .account-profile {
