@@ -592,7 +592,7 @@ function renderHome() {
     <section class="admin-grid">
       <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(({ account, primaryDeal, count, value, reasons }) => `<button class="metric-row attention-row" data-open-account="${escapeHtml(account)}"><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">High</span></button>`).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
       <article class="widget"><h3>Today's focus</h3><button class="summary-card focus-card" data-action="open-activities"><span class="summary-icon" style="background:var(--orange-soft);color:var(--orange)">◴</span><div><small>Open tasks</small><strong>${tasks.length}</strong></div><span class="summary-trend">Open</span></button></article>
-      <article class="widget wide"><div class="panel-head"><h3>Correspondence needing attention</h3><span class="thread-actions"><button class="risk-jump-button small" data-action="jump-home-risk-thread" data-tooltip="Jump to red correspondence" aria-label="Jump to red correspondence">!</button><button class="icon-button small" data-action="open-inbox" data-tooltip="Open inbox" aria-label="Open inbox">↗</button></span></div><div class="home-thread-list">${homeCorrespondenceNeedingAttention(tenant).map(renderHomeAttentionThread).join("") || `<p class="empty-state compact">No correspondence needs attention.</p>`}</div></article>
+      <article class="widget"><div class="panel-head"><h3>Correspondence needing attention</h3><span class="thread-actions"><button class="risk-jump-button small" data-action="jump-home-risk-thread" data-tooltip="Jump to red correspondence" aria-label="Jump to red correspondence">!</button><button class="icon-button small" data-action="open-inbox" data-tooltip="Open inbox" aria-label="Open inbox">↗</button></span></div><div class="home-thread-list">${homeCorrespondenceNeedingAttention(tenant).map(renderHomeAttentionThread).join("") || `<p class="empty-state compact">No correspondence needs attention.</p>`}</div></article>
       <article class="widget wide"><div class="panel-head"><h3>Relationship events</h3><button class="icon-button small" data-action="open-activities" data-tooltip="Open activities" aria-label="Open activities">↗</button></div><div class="home-event-list">${homeEvents(tenant).map(renderHomeEvent).join("")}</div></article>
     </section>`;
 }
@@ -603,9 +603,8 @@ function homeCorrespondenceNeedingAttention(tenant = currentTenant()) {
     const contacts = topAccountContacts(deal);
     return accountCorrespondence(deal, contacts)
       .filter((thread) => thread.risk || /approval|timeline|launch|renew/i.test(thread.subject))
-      .slice(0, 2)
       .map((thread) => ({ ...thread, account: deal.account, dealId: deal.id }));
-  }).slice(0, 4);
+  }).sort((a, b) => Number(b.risk) - Number(a.risk)).slice(0, 1);
 }
 
 function renderHomeAttentionThread(thread) {
@@ -613,17 +612,38 @@ function renderHomeAttentionThread(thread) {
 }
 
 function homeEvents(tenant = currentTenant()) {
-  const dueTasks = openTasks(tenant).slice(0, 3).map((task) => ({ date: task.due, title: task.title, detail: `${task.type} · ${task.owner}`, type: "Task" }));
+  const dealById = new Map(tenant.deals.map((deal) => [String(deal.id), deal]));
+  const dueTasks = openTasks(tenant).slice(0, 3).map((task) => {
+    const deal = dealById.get(String(task.dealId));
+    return { date: task.due, title: task.title, detail: `${task.type} · ${task.owner}`, type: "Task", account: deal?.account || "Unassigned account" };
+  });
   const closeDates = tenant.deals
     .filter((deal) => !["Won", "Lost"].includes(deal.stage))
     .sort((a, b) => a.close.localeCompare(b.close))
     .slice(0, 3)
-    .map((deal) => ({ date: deal.close, title: `${deal.account} close date`, detail: `${deal.name} · ${money(deal.value)}`, type: "Deal" }));
-  return [...dueTasks, ...closeDates].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
+    .map((deal) => ({ date: deal.close, title: "Target close date", detail: `${deal.name} · ${money(deal.value)}`, type: "Deal", account: deal.account }));
+  const seenContacts = new Set();
+  const birthdays = tenant.deals
+    .filter((deal) => {
+      const key = deal.email || deal.contact;
+      if (!deal.contact || seenContacts.has(key)) return false;
+      seenContacts.add(key);
+      return true;
+    })
+    .slice(0, 5)
+    .map((deal) => ({ date: birthdayDate(deal.contact), title: `${deal.contact}'s birthday`, detail: "Send a personal note", type: "Birthday", account: deal.account }));
+  return [...dueTasks, ...closeDates, ...birthdays].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 7);
 }
 
 function renderHomeEvent(event) {
-  return `<div class="moment-row home-event-row"><span class="moment-date">${formatMomentDate(event.date)}</span><div><strong>${escapeHtml(event.title)}</strong><small>${escapeHtml(event.type)} · ${escapeHtml(event.detail)}</small></div></div>`;
+  return `<div class="moment-row home-event-row"><span class="moment-date">${formatMomentDate(event.date)}</span><div><strong>${escapeHtml(event.title)}</strong><small><span class="event-account">${escapeHtml(event.account)}</span>${escapeHtml(event.type)} · ${escapeHtml(event.detail)}</small></div></div>`;
+}
+
+function birthdayDate(seed) {
+  const charTotal = [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const month = String(1 + charTotal % 12).padStart(2, "0");
+  const day = String(1 + charTotal % 27).padStart(2, "0");
+  return `2026-${month}-${day}`;
 }
 
 function accountsNeedingAttention(tenant = currentTenant()) {

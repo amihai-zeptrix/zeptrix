@@ -697,7 +697,7 @@ h3 { font-size: 14px; }
 .empty-state.compact { padding: 18px; }
 .home-thread-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 .home-thread-card {
@@ -713,6 +713,15 @@ h3 { font-size: 14px; }
 }
 .home-event-row {
   min-height: 66px;
+}
+.event-account {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #2762b4;
+  background: #eaf2ff;
+  font-weight: 900;
 }
 
 .account-focus-banner {
