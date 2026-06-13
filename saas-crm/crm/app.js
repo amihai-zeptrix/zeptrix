@@ -111,6 +111,7 @@ let ui = {
   emailDealId: null,
   collapsed: [],
   accountFocus: "",
+  selectedContactEmail: "",
 };
 
 loadStateFromApi();
@@ -482,8 +483,8 @@ function renderSidebar() {
       ${sideLink("home", "⌂", "Home")}
       <p class="side-label">Workspace</p>
       ${sideLink("pipeline", "▦", "Sales pipeline")}
-      ${sideLink("contacts", "♙", "Contacts", uniqueBy("email").length)}
       ${sideLink("accounts", "▣", "Accounts", uniqueBy("account").length)}
+      ${sideLink("contacts", "♙", "Contacts", uniqueBy("email").length)}
       ${sideLink("activities", "✓", "Activities", openTasks().length)}
       ${sideLink("inbox", "✉", "Inbox", tenant.communications.length)}
       ${sideLink("reports", "◴", "Reports")}
@@ -708,16 +709,52 @@ function renderDashboard() {
 
 function renderContacts() {
   const contacts = uniqueBy("email");
-  return `${renderPageHeader("Contacts", "Keep the people behind every opportunity organized.")}<div class="section-toolbar"><strong>${contacts.length} contacts</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-deal">＋ Add contact</button></div><section class="list-card">${contacts.map((deal) => `<div class="list-row contact-row">${avatar(deal.owner)}<button class="activity-main" data-open-deal="${deal.id}"><span class="list-primary">${escapeHtml(deal.contact)}<small>${escapeHtml(deal.email)}</small></span></button><span>${escapeHtml(deal.account)}</span><span class="muted">Owner: ${escapeHtml(deal.owner)}</span><button class="button small danger" data-action="delete-contact" data-email="${escapeHtml(deal.email)}">Delete</button></div>`).join("") || `<p class="empty-state">No contacts yet.</p>`}</section>`;
+  return `${renderPageHeader("Contacts", "Keep the people behind every opportunity organized.")}<div class="section-toolbar"><strong>${contacts.length} contacts</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-deal">＋ Add contact</button></div><section class="list-card">${contacts.map(renderContactRow).join("") || `<p class="empty-state">No contacts yet.</p>`}</section>`;
+}
+
+function renderContactRow(deal) {
+  const isOpen = ui.selectedContactEmail === deal.email;
+  return `<div class="list-row contact-row ${isOpen ? "is-open" : ""}">${avatar(deal.owner)}<button class="activity-main" data-open-contact="${escapeHtml(deal.email)}"><span class="list-primary">${escapeHtml(deal.contact)}<small>${escapeHtml(deal.email)}</small></span></button><button class="inline-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button><span class="muted">Owner: ${escapeHtml(deal.owner)}</span><button class="button small danger" data-action="delete-contact" data-email="${escapeHtml(deal.email)}">Delete</button></div>${isOpen ? renderContactDetail(deal) : ""}`;
+}
+
+function renderContactDetail(deal) {
+  const profile = contactProfile(deal);
+  return `<div class="contact-detail-row">
+    <div class="contact-detail-head">${avatar(deal.contact, "large")}<div><h3>${escapeHtml(deal.contact)}</h3><p class="subcopy">${escapeHtml(profile.role)} · <button class="text-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button></p></div></div>
+    <div class="contact-insight-grid">
+      ${contactInsight("Buying role", profile.buyingRole, "How this person affects the deal")}
+      ${contactInsight("Engagement", profile.engagement, "Recent email, meeting, and reply signal")}
+      ${contactInsight("Preference", profile.preference, "Best channel and cadence")}
+      ${contactInsight("Sentiment", profile.sentiment, "Relationship health")}
+      ${contactInsight("Next best action", profile.nextAction, "Recommended seller move")}
+      ${contactInsight("Personal context", profile.personalContext, "Useful for thoughtful outreach")}
+    </div>
+  </div>`;
+}
+
+function contactProfile(deal) {
+  const days = Math.max(1, Math.abs(daysUntil(deal.close)));
+  const isHigh = deal.priority === "High";
+  return {
+    role: deal.stage === "Negotiation" ? "Economic buyer" : deal.stage === "Proposal" ? "Champion" : "Primary stakeholder",
+    buyingRole: isHigh ? "Decision maker with budget influence" : "Influencer in the buying committee",
+    engagement: `${deal.updated}; ${isHigh ? "high intent" : "steady interest"} across ${deal.stage.toLowerCase()} stage`,
+    preference: deal.email ? `Email first, mobile for urgent close-date items` : "Confirm preferred channel",
+    sentiment: isHigh ? "Positive, but time-sensitive" : "Healthy relationship",
+    nextAction: days <= 14 ? "Confirm blockers and buying committee sign-off" : "Share tailored success plan and timeline",
+    personalContext: `Birthday and relationship moments tracked for thoughtful follow-up`,
+  };
+}
+
+function contactInsight(label, value, hint) {
+  return `<div class="contact-insight"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong><span>${escapeHtml(hint)}</span></div>`;
 }
 
 function renderAccounts() {
   const allAccounts = uniqueBy("account");
   const accounts = ui.accountFocus ? allAccounts.filter((deal) => deal.account === ui.accountFocus) : allAccounts;
   if (ui.accountFocus) return renderAccountDetail(accounts[0], allAccounts.length);
-  const title = ui.accountFocus ? `Account: ${ui.accountFocus}` : "Accounts";
-  const copy = ui.accountFocus ? "Focused from accounts that need attention." : "Track customers and prospects at the company level.";
-  return `${renderPageHeader(title, copy)}<div class="section-toolbar"><strong>${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}</strong><span class="toolbar-spacer"></span>${ui.accountFocus ? `<button class="button" data-action="clear-account-focus">Show all accounts</button>` : ""}<button class="button primary" data-action="add-deal">＋ Add account</button></div><section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-deal="${deal.id}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
+  return `${renderPageHeader("Accounts", "Track customers and prospects at the company level.")}<div class="section-toolbar"><strong>${accounts.length} accounts</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-deal">＋ Add account</button></div><section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-account="${escapeHtml(deal.account)}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
 }
 
 function renderAccountDetail(accountDeal, accountCount) {
@@ -816,6 +853,10 @@ function relationshipMoments(accountDeal, contacts) {
     { type: "QBR", date: daysBeforeClose(45), title: "Executive business review", detail: "Review ROI, success metrics, and expansion goals." },
     { type: "Renewal", date: daysBeforeClose(90), title: "Renewal checkpoint", detail: "Start commercial alignment before the renewal window." },
     { type: "Milestone", date: daysBeforeClose(20), title: "Launch readiness review", detail: "Confirm onboarding progress and open risks." },
+    { type: "Champion", date: daysBeforeClose(35), title: "Champion enablement", detail: "Send internal business-case deck and talk track." },
+    { type: "Budget", date: daysBeforeClose(60), title: "Budget planning window", detail: "Align purchase timing with finance planning." },
+    { type: "Risk", date: daysBeforeClose(12), title: "Security and legal checkpoint", detail: "Confirm approvals before close date pressure." },
+    { type: "Workshop", date: daysBeforeClose(25), title: "Stakeholder workshop", detail: "Map success criteria with the buying committee." },
     { type: "Anniversary", date: "2026-05-24", title: "Customer anniversary", detail: "Celebrate the relationship and share wins." },
   ].sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -953,20 +994,29 @@ document.addEventListener("click", async (event) => {
   const actionElement = event.target.closest("[data-action]");
   const dealId = event.target.closest("[data-open-deal]")?.dataset.openDeal;
   const account = event.target.closest("[data-open-account]")?.dataset.openAccount;
+  const contactEmail = event.target.closest("[data-open-contact]")?.dataset.openContact;
   const collapse = event.target.closest("[data-collapse]")?.dataset.collapse;
   const column = event.target.closest("[data-column]")?.dataset.column;
 
-  if (!section && !view && !dealId && !account && !collapse && !column && !actionElement) return;
+  if (!section && !view && !dealId && !account && !contactEmail && !collapse && !column && !actionElement) return;
 
   if (section) {
     ui.section = section;
-    if (section !== "accounts") ui.accountFocus = "";
+    ui.selectedContactEmail = "";
+    ui.selected = null;
+    ui.accountFocus = "";
   }
   if (view) ui.view = view;
   if (dealId) ui.selected = Number(dealId);
   if (account) {
     ui.section = "accounts";
     ui.accountFocus = account;
+    ui.selectedContactEmail = "";
+    ui.selected = null;
+  }
+  if (contactEmail) {
+    ui.section = "contacts";
+    ui.selectedContactEmail = ui.selectedContactEmail === contactEmail ? "" : contactEmail;
     ui.selected = null;
   }
   if (collapse) ui.collapsed = ui.collapsed.includes(collapse) ? ui.collapsed.filter((item) => item !== collapse) : [...ui.collapsed, collapse];
