@@ -604,7 +604,7 @@ function homeCorrespondenceNeedingAttention(tenant = currentTenant()) {
     return accountCorrespondence(deal, contacts)
       .filter((thread) => thread.risk || /approval|timeline|launch|renew/i.test(thread.subject))
       .map((thread) => ({ ...thread, account: deal.account, dealId: deal.id }));
-  }).sort((a, b) => Number(b.risk) - Number(a.risk)).slice(0, 1);
+  }).sort((a, b) => Number(b.risk) - Number(a.risk)).slice(0, 3);
 }
 
 function renderHomeAttentionThread(thread) {
@@ -636,7 +636,7 @@ function homeEvents(tenant = currentTenant()) {
 }
 
 function renderHomeEvent(event) {
-  return `<div class="moment-row home-event-row"><span class="moment-date">${formatMomentDate(event.date)}</span><div><strong>${escapeHtml(event.title)}</strong><small><span class="event-account">${escapeHtml(event.account)}</span>${escapeHtml(event.type)} · ${escapeHtml(event.detail)}</small></div></div>`;
+  return `<div class="moment-row home-event-row"><span class="moment-date">${formatMomentDate(event.date)}</span><div><strong>${escapeHtml(event.title)}</strong><small><button class="event-account" data-open-account="${escapeHtml(event.account)}">${escapeHtml(event.account)}</button>${escapeHtml(event.type)} · ${escapeHtml(event.detail)}</small></div></div>`;
 }
 
 function birthdayDate(seed) {
@@ -1315,17 +1315,25 @@ document.addEventListener("click", async (event) => {
 document.addEventListener("input", (event) => {
   if (event.target.matches("[data-search]")) {
     ui.search = event.target.value;
+    const cursor = event.target.selectionStart;
     render();
-    document.querySelector("[data-search]")?.focus();
+    restoreSearchFocus("[data-search]", cursor);
     return;
   }
   if (event.target.matches("[data-contact-search]")) {
     ui.contactSearch = event.target.value;
+    const cursor = event.target.selectionStart;
     ui.selectedContactEmail = "";
     render();
-    document.querySelector("[data-contact-search]")?.focus();
+    restoreSearchFocus("[data-contact-search]", cursor);
   }
 });
+
+function restoreSearchFocus(selector, cursor) {
+  const input = document.querySelector(selector);
+  input?.focus();
+  if (typeof cursor === "number") input?.setSelectionRange(cursor, cursor);
+}
 
 document.addEventListener("change", (event) => {
   if (event.target.matches("[data-tenant-select]")) {

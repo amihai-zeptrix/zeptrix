@@ -718,11 +718,15 @@ h3 { font-size: 14px; }
   display: inline-block;
   margin-right: 6px;
   padding: 2px 7px;
+  border: 0;
   border-radius: 999px;
   color: #2762b4;
   background: #eaf2ff;
   font-weight: 900;
+  cursor: pointer;
+  font: inherit;
 }
+.event-account:hover { background: #dcecff; }
 
 .account-focus-banner {
   display: flex;
