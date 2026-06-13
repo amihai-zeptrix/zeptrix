@@ -302,7 +302,7 @@ function authenticate(email, password) {
 async function apiRequest(path, options = {}) {
   const response = await fetch(path, {
     ...options,
-    headers: { "content-type": "application/json", ...(options.headers || {}) },
+    headers: { "content-type": "application/json", ...(session?.apiToken ? { authorization: `Bearer ${session.apiToken}` } : {}), ...(options.headers || {}) },
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || body.detail || "Request failed.");
@@ -1818,6 +1818,7 @@ document.addEventListener("submit", async (event) => {
         role: result.user.role,
         tenantId: result.user.tenantId,
         mustChangePassword: result.user.mustChangePassword,
+        apiToken: result.token,
       };
     } catch {
       const user = authenticate(values.email, values.password);
@@ -1846,12 +1847,13 @@ document.addEventListener("submit", async (event) => {
       render();
       return;
     }
-    session = { email: ui.pendingUser.email, name: ui.pendingUser.name, role: ui.pendingUser.role, tenantId: ui.pendingUser.tenantId, forcePasswordChange: !!ui.pendingUser.mustChangePassword };
+    session = { email: ui.pendingUser.email, name: ui.pendingUser.name, role: ui.pendingUser.role, tenantId: ui.pendingUser.tenantId, forcePasswordChange: !!ui.pendingUser.mustChangePassword, apiToken: ui.pendingUser.apiToken || "" };
     ui.tenantId = session.tenantId;
     ui.section = isPlatformAdmin() ? "admin" : "home";
     ui.authError = "";
     ui.authStep = "password";
     saveSession();
+    await loadStateFromApi();
     render();
     return;
   }

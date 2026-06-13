@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { decryptToken, duplicateTenantEmailMessage, encryptToken, gmailAuthUrl, inviteEmailContent, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient } = require("../server");
+const { decryptToken, duplicateTenantEmailMessage, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -173,6 +173,7 @@ test("Gmail settings normalization clamps scan thresholds and defaults detection
 test("Gmail OAuth URL uses readonly scope and tenant state", () => {
   const authUrl = new URL(gmailAuthUrl({
     tenantId: "tenant-123",
+    userId: "user-123",
     clientId: "client-123",
     redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
     accountEmail: "user@gmail.com",
@@ -184,8 +185,9 @@ test("Gmail OAuth URL uses readonly scope and tenant state", () => {
   assert.equal(authUrl.searchParams.get("scope"), "https://www.googleapis.com/auth/gmail.readonly");
   assert.equal(authUrl.searchParams.get("access_type"), "offline");
   assert.equal(authUrl.searchParams.get("login_hint"), "user@gmail.com");
-  const state = JSON.parse(Buffer.from(authUrl.searchParams.get("state"), "base64url").toString("utf8"));
+  const state = verifySignedPayload(authUrl.searchParams.get("state"));
   assert.equal(state.tenantId, "tenant-123");
+  assert.equal(state.userId, "user-123");
 });
 
 test("Gmail helpers parse addresses and encrypt tokens", () => {
@@ -196,6 +198,18 @@ test("Gmail helpers parse addresses and encrypt tokens", () => {
   const encrypted = encryptToken("refresh-token-value");
   assert.notEqual(encrypted, "refresh-token-value");
   assert.equal(decryptToken(encrypted), "refresh-token-value");
+});
+
+test("API auth tokens and Gmail labels are signed and bounded", () => {
+  const token = signAuthToken({ id: "user-123", tenantId: "tenant-123", role: "tenant_admin" });
+  const auth = verifySignedPayload(token);
+
+  assert.equal(auth.userId, "user-123");
+  assert.equal(auth.tenantId, "tenant-123");
+  assert.equal(auth.role, "tenant_admin");
+  assert.equal(verifySignedPayload(`${token}tampered`), null);
+  assert.equal(gmailLabelQuery("Inbox, Sales Follow Up, Sent"), "{in:inbox label:sales-follow-up}");
+  assert.equal(gmailLabelQuery("Sent"), "in:anywhere");
 });
 
 test("CRM demo route serves the CRM app shell", () => {

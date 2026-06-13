@@ -103,11 +103,47 @@ create table communications (
   occurred_at timestamptz not null default now()
 );
 
+create table gmail_integrations (
+  tenant_id uuid primary key references tenants(id) on delete cascade,
+  account_email citext,
+  workspace_domain text,
+  client_id text,
+  redirect_uri text,
+  labels text not null default 'Inbox, Sent',
+  stale_months integer not null default 3 check (stale_months > 0 and stale_months <= 36),
+  detect_new_contacts boolean not null default true,
+  detect_dormant_contacts boolean not null default true,
+  enabled boolean not null default false,
+  status text not null default 'Not connected',
+  access_token_enc text,
+  refresh_token_enc text,
+  token_expiry timestamptz,
+  last_scan_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table gmail_contact_signals (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  signal_type text not null check (signal_type in ('new_contact', 'dormant_contact')),
+  email citext not null,
+  name text,
+  account text,
+  source text,
+  months integer,
+  message_id text,
+  last_seen_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique(tenant_id, signal_type, email)
+);
+
 create index deals_tenant_stage_idx on deals(tenant_id, stage);
 create index deals_tenant_owner_idx on deals(tenant_id, owner_id);
 create index activities_tenant_due_idx on activities(tenant_id, due_date, completed);
 create index communications_tenant_deal_idx on communications(tenant_id, deal_id, occurred_at desc);
 create index invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc);
+create index gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc);
 
 insert into tenants (slug, name, plan, status, region, seats, billing_email)
 values
