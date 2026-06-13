@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { duplicateTenantEmailMessage, inviteEmailContent, normalizeTenantPayload, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient } = require("../server");
@@ -143,4 +144,14 @@ test("CRM demo route serves the CRM app shell", () => {
   assert.equal(staticFilePathForUrlPath("/crm/demo"), crmIndex);
   assert.equal(staticFilePathForUrlPath("/crm/demo/"), crmIndex);
   assert.equal(staticFilePathForUrlPath("/crm/demo/ron"), crmIndex);
+});
+
+test("CRM home keeps correspondence and relationship event panels", () => {
+  const app = fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
+  const renderHomeStart = app.indexOf("function renderHome()");
+  const renderHomeEnd = app.indexOf("function homeCorrespondence", renderHomeStart);
+  const renderHomeSource = app.slice(renderHomeStart, renderHomeEnd);
+
+  assert.match(renderHomeSource, /Recent correspondence/);
+  assert.match(renderHomeSource, /Relationship events/);
 });

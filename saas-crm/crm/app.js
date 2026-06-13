@@ -101,6 +101,7 @@ let ui = {
   savedView: "All deals",
   search: "",
   contactSearch: "",
+  activityFilter: "open",
   stageFilter: "All",
   selected: null,
   modal: null,
@@ -590,8 +591,33 @@ function renderHome() {
     ${renderSummary()}
     <section class="admin-grid">
       <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(({ account, primaryDeal, count, value, reasons }) => `<button class="metric-row attention-row" data-open-account="${escapeHtml(account)}"><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">High</span></button>`).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
-      <article class="widget"><h3>Today's focus</h3><div class="summary-card"><span class="summary-icon" style="background:var(--orange-soft);color:var(--orange)">◴</span><div><small>Open tasks</small><strong>${tasks.length}</strong></div></div></article>
+      <article class="widget"><h3>Today's focus</h3><button class="summary-card focus-card" data-action="open-activities"><span class="summary-icon" style="background:var(--orange-soft);color:var(--orange)">◴</span><div><small>Open tasks</small><strong>${tasks.length}</strong></div><span class="summary-trend">Open</span></button></article>
+      <article class="widget"><div class="panel-head"><h3>Recent correspondence</h3><button class="icon-button small" data-action="open-inbox" data-tooltip="Open inbox" aria-label="Open inbox">↗</button></div>${homeCorrespondence(tenant).map(renderHomeCorrespondence).join("") || `<p class="empty-state compact">No correspondence yet.</p>`}</article>
+      <article class="widget wide"><div class="panel-head"><h3>Relationship events</h3><button class="icon-button small" data-action="open-activities" data-tooltip="Open activities" aria-label="Open activities">↗</button></div><div class="home-event-list">${homeEvents(tenant).map(renderHomeEvent).join("")}</div></article>
     </section>`;
+}
+
+function homeCorrespondence(tenant = currentTenant()) {
+  return [...tenant.communications].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+}
+
+function renderHomeCorrespondence(item) {
+  const deal = currentTenant().deals.find((candidate) => candidate.id === item.dealId);
+  return `<button class="home-message-row" data-open-deal="${item.dealId}"><span class="activity-symbol">${item.type === "Meeting" ? "◴" : "✉"}</span><span class="list-primary">${escapeHtml(item.subject)}<small>${escapeHtml(deal?.account || "Unlinked account")} · ${formatTimestamp(item.date)}</small></span></button>`;
+}
+
+function homeEvents(tenant = currentTenant()) {
+  const dueTasks = openTasks(tenant).slice(0, 3).map((task) => ({ date: task.due, title: task.title, detail: `${task.type} · ${task.owner}`, type: "Task" }));
+  const closeDates = tenant.deals
+    .filter((deal) => !["Won", "Lost"].includes(deal.stage))
+    .sort((a, b) => a.close.localeCompare(b.close))
+    .slice(0, 3)
+    .map((deal) => ({ date: deal.close, title: `${deal.account} close date`, detail: `${deal.name} · ${money(deal.value)}`, type: "Deal" }));
+  return [...dueTasks, ...closeDates].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
+}
+
+function renderHomeEvent(event) {
+  return `<div class="moment-row home-event-row"><span class="moment-date">${formatMomentDate(event.date)}</span><div><strong>${escapeHtml(event.title)}</strong><small>${escapeHtml(event.type)} · ${escapeHtml(event.detail)}</small></div></div>`;
 }
 
 function accountsNeedingAttention(tenant = currentTenant()) {
@@ -990,14 +1016,15 @@ function addCorrespondenceReply(threadId, body) {
 }
 
 function renderActivities() {
-  const tasks = [...currentTenant().tasks].sort((a, b) => Number(a.completed) - Number(b.completed) || a.due.localeCompare(b.due));
-  return `${renderPageHeader("Activities", "Stay on top of meetings, follow-ups, and deal updates.")}<div class="section-toolbar"><strong>${openTasks().length} open tasks</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-task">＋ New activity</button></div><section class="activity-card">${tasks.length ? tasks.map(renderTaskRow).join("") : `<p class="empty-state">No activities yet.</p>`}</section>`;
+  const allTasks = [...currentTenant().tasks].sort((a, b) => Number(a.completed) - Number(b.completed) || a.due.localeCompare(b.due));
+  const tasks = ui.activityFilter === "open" ? allTasks.filter((task) => !task.completed) : allTasks;
+  return `${renderPageHeader("Activities", "Stay on top of meetings, follow-ups, and deal updates.")}<div class="section-toolbar"><strong>${openTasks().length} open tasks</strong><span class="toolbar-spacer"></span><span class="segmented-control"><button class="${ui.activityFilter === "open" ? "active" : ""}" data-action="filter-activities" data-filter="open">Open</button><button class="${ui.activityFilter === "all" ? "active" : ""}" data-action="filter-activities" data-filter="all">All</button></span><button class="button primary" data-action="add-task">＋ New activity</button></div><section class="activity-card">${tasks.length ? tasks.map(renderTaskRow).join("") : `<p class="empty-state">${ui.activityFilter === "open" ? "No open activities." : "No activities yet."}</p>`}</section>`;
 }
 
 function renderTaskRow(task) {
   const deal = currentTenant().deals.find((item) => item.id === task.dealId);
   const [label, klass] = taskStatus(task);
-  return `<div class="activity-feed-row ${task.completed ? "completed" : ""}"><button class="task-check" data-action="toggle-task" data-id="${task.id}">${task.completed ? "✓" : ""}</button><button class="activity-main" data-open-deal="${task.dealId}"><span class="list-primary">${escapeHtml(task.title)}<small>${escapeHtml(task.type)} · ${escapeHtml(deal?.name || "Unlinked")} · ${escapeHtml(task.owner)}</small></span></button><span class="muted">${formatDate(task.due)}</span><span class="priority ${klass}">${label}</span><button class="button small danger" data-action="delete-task" data-id="${task.id}">Delete</button></div>`;
+  return `<div class="activity-feed-row ${task.completed ? "completed" : ""}"><button class="task-check" data-action="toggle-task" data-id="${task.id}" aria-label="${task.completed ? "Mark incomplete" : "Mark done"}">${task.completed ? "✓" : ""}</button><button class="activity-main" data-action="toggle-task" data-id="${task.id}"><span class="list-primary">${escapeHtml(task.title)}<small>${escapeHtml(task.type)} · ${escapeHtml(deal?.name || "Unlinked")} · ${escapeHtml(task.owner)}</small></span></button><span class="muted">${formatDate(task.due)}</span><span class="priority ${klass}">${label}</span><button class="button small danger" data-action="delete-task" data-id="${task.id}">Delete</button></div>`;
 }
 
 function renderInbox() {
@@ -1132,6 +1159,20 @@ document.addEventListener("click", async (event) => {
       addCorrespondenceThread();
       return;
     }
+    if (action === "open-activities") {
+      ui.section = "activities";
+      ui.activityFilter = "open";
+      ui.selected = null;
+      ui.accountFocus = "";
+      ui.selectedContactEmail = "";
+    }
+    if (action === "open-inbox") {
+      ui.section = "inbox";
+      ui.selected = null;
+      ui.accountFocus = "";
+      ui.selectedContactEmail = "";
+    }
+    if (action === "filter-activities") ui.activityFilter = actionElement.dataset.filter || "open";
     if (action === "reply-correspondence") {
       ui.replyingThread = actionElement.dataset.threadId;
       render();
