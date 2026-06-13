@@ -558,6 +558,49 @@ h3 { font-size: 14px; }
 .list-row:last-child, .activity-feed-row:last-child, .tenant-row:last-child { border-bottom: 0; }
 .list-row:hover, .activity-feed-row:hover, .tenant-row:hover { background: #f8faff; }
 .contact-row.is-open { background: #f8faff; }
+.inline-contact-row {
+  background: #f8faff;
+}
+.inline-contact-row:hover {
+  background: #f8faff;
+}
+.inline-field-stack {
+  display: grid;
+  gap: 6px;
+}
+.inline-add-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.1fr) minmax(140px, 1fr) minmax(120px, .9fr) minmax(150px, 1fr) minmax(120px, .85fr) minmax(110px, .75fr) minmax(88px, .65fr) minmax(118px, .8fr) minmax(96px, .7fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0;
+}
+.inline-add-form input,
+.inline-add-form select,
+.inline-contact-row input,
+.inline-contact-row select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 9px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+.inline-add-form input:focus,
+.inline-add-form select:focus,
+.inline-contact-row input:focus,
+.inline-contact-row select:focus {
+  outline: 2px solid #c8dcff;
+  border-color: #7aa7ef;
+}
+.inline-deal-row td {
+  background: #f8faff;
+  border-bottom: 1px solid var(--line);
+}
 .list-primary { display: block; color: #293548; font-weight: 800; }
 .list-primary small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .inline-link, .text-link {
@@ -1301,4 +1344,11 @@ h3 { font-size: 14px; }
   .auth-panel { padding: 24px; }
   .sidebar { min-height: auto; }
   .page { padding: 18px; }
+  .inline-add-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .inline-add-form .row-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
 }

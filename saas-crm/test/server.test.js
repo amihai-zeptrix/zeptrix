@@ -219,6 +219,61 @@ test("CRM accounts keep account detail intelligence and correspondence controls"
   assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
 });
 
+test("CRM contacts add with an inline row instead of a dialog", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderContactsSource = functionSource(app, "renderContacts", "filteredContacts");
+  const renderInlineContactRowSource = functionSource(app, "renderInlineContactRow", "filteredContacts");
+  const renderModalSource = functionSource(app, "renderModal", "renderTenantForm");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+
+  assert.match(renderContactsSource, /data-action="add-contact"/);
+  assert.match(renderContactsSource, /ui\.inlineContactOpen \? renderInlineContactRow\(\) : ""/);
+  assert.doesNotMatch(renderContactsSource, /data-action="add-deal">＋ Add contact/);
+  assert.doesNotMatch(renderModalSource, /ui\.modal === "contact"/);
+  assert.doesNotMatch(app, /data-contact-form/);
+  assert.match(renderInlineContactRowSource, /data-inline-contact-form/);
+  assert.match(renderInlineContactRowSource, /inline-contact-row/);
+  assert.match(renderInlineContactRowSource, /Contact name/);
+  assert.match(renderInlineContactRowSource, /Save/);
+  assert.match(clickHandlerSource, /action === "add-contact"/);
+  assert.match(clickHandlerSource, /ui\.inlineContactOpen = true/);
+  assert.match(clickHandlerSource, /action === "cancel-inline-add"/);
+  assert.doesNotMatch(clickHandlerSource, /ui\.modal = "contact"/);
+  assert.match(submitHandlerSource, /data-inline-contact-form/);
+  assert.match(submitHandlerSource, /Contact added directly from Contacts/);
+  assert.match(submitHandlerSource, /ui\.inlineContactOpen = false/);
+  assert.match(styles, /\.inline-contact-row/);
+});
+
+test("CRM deals add with an inline table row instead of a create dialog", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderGroupSource = functionSource(app, "renderGroup", "renderInlineDealRow");
+  const renderInlineDealRowSource = functionSource(app, "renderInlineDealRow", "columnHeading");
+  const renderModalSource = functionSource(app, "renderModal", "renderTenantForm");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+
+  assert.match(renderGroupSource, /ui\.inlineDealGroup === key \? renderInlineDealRow\(key\) : ""/);
+  assert.match(renderGroupSource, /data-action="add-deal"/);
+  assert.match(renderInlineDealRowSource, /data-inline-deal-form/);
+  assert.match(renderInlineDealRowSource, /deal-inline-form/);
+  assert.match(renderInlineDealRowSource, /Deal name/);
+  assert.match(renderInlineDealRowSource, /Save/);
+  assert.match(renderModalSource, /ui\.modal === "deal"/);
+  assert.match(clickHandlerSource, /action === "add-deal"/);
+  assert.match(clickHandlerSource, /ui\.inlineDealGroup = group \|\| "active"/);
+  assert.match(clickHandlerSource, /ui\.view = "table"/);
+  assert.doesNotMatch(clickHandlerSource, /action === "add-deal"\) \{ ui\.modal = "deal"/);
+  assert.match(submitHandlerSource, /data-inline-deal-form/);
+  assert.match(submitHandlerSource, /Deal added inline from the pipeline/);
+  assert.match(submitHandlerSource, /ui\.inlineDealGroup = null/);
+  assert.match(styles, /\.inline-add-form/);
+  assert.match(styles, /\.inline-deal-row td/);
+});
+
 test("CRM campaigns support account tags, audience targeting, and merge tokens", () => {
   const app = crmAppSource();
   const styles = crmStylesSource();

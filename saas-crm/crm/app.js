@@ -135,6 +135,8 @@ let ui = {
   editingTenant: null,
   adminNotice: "",
   newGroup: "active",
+  inlineDealGroup: null,
+  inlineContactOpen: false,
   taskDealId: null,
   emailDealId: null,
   collapsed: [],
@@ -786,8 +788,12 @@ function renderGroup(key, label, color, deals) {
   return `
     <section class="group" style="--group-color:${color}">
       <header class="group-heading"><button data-collapse="${key}">${isCollapsed ? "▸" : "▾"}</button><h3>${label}</h3><small>${deals.length} deals</small><span class="group-total">${money(total(deals))}</span></header>
-      ${isCollapsed ? "" : `<table class="crm-table"><thead><tr><th class="select-col"><input type="checkbox" /></th><th class="deal-col">Deal name</th>${data.visibleColumns.map(columnHeading).join("")}<th class="more-col"></th></tr></thead><tbody>${deals.length ? deals.map(renderRow).join("") : `<tr><td colspan="10" class="empty-state">No deals match this view.</td></tr>`}<tr class="add-row"><td></td><td colspan="8"><button class="add-item" data-action="add-deal" data-group="${key}">＋ Add deal</button></td></tr></tbody></table>`}
+      ${isCollapsed ? "" : `<table class="crm-table"><thead><tr><th class="select-col"><input type="checkbox" /></th><th class="deal-col">Deal name</th>${data.visibleColumns.map(columnHeading).join("")}<th class="more-col"></th></tr></thead><tbody>${deals.length ? deals.map(renderRow).join("") : `<tr><td colspan="10" class="empty-state">No deals match this view.</td></tr>`}${ui.inlineDealGroup === key ? renderInlineDealRow(key) : ""}<tr class="add-row"><td></td><td colspan="8"><button class="add-item" data-action="add-deal" data-group="${key}">＋ Add deal</button></td></tr></tbody></table>`}
     </section>`;
+}
+
+function renderInlineDealRow(group = "active") {
+  return `<tr class="inline-deal-row"><td></td><td colspan="8"><form class="inline-add-form deal-inline-form" data-inline-deal-form data-group="${escapeHtml(group)}"><input name="name" placeholder="Deal name" required /><input name="account" placeholder="Account" required /><input name="contact" placeholder="Contact" /><input name="email" type="email" placeholder="Email" /><select name="owner">${Object.keys(owners).map((owner) => `<option>${escapeHtml(owner)}</option>`).join("")}</select><select name="stage">${stages.map((stage) => `<option ${stage === "Lead" ? "selected" : ""}>${stage}</option>`).join("")}</select><input name="value" type="number" min="0" placeholder="Value" value="0" /><input name="close" type="date" value="${daysFromNow(30)}" /><select name="priority"><option>Medium</option><option>High</option><option>Low</option></select><span class="row-actions"><button class="button small primary">Save</button><button type="button" class="button small" data-action="cancel-inline-add">Cancel</button></span></form></td></tr>`;
 }
 
 function columnHeading(column) {
@@ -838,7 +844,11 @@ function renderContacts() {
   const allContacts = uniqueBy("email");
   const contacts = filteredContacts(allContacts);
   const query = ui.contactSearch.trim();
-  return `${renderPageHeader("Contacts", "Keep the people behind every opportunity organized.")}<div class="section-toolbar"><strong>${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"}</strong><span class="toolbar-spacer"></span><button class="button" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ Add contact</button></div><div class="contact-search-bar"><label class="table-search contact-search"><span>⌕</span><input data-contact-search value="${escapeHtml(ui.contactSearch)}" placeholder="Search contacts, accounts, email, owner, deal, stage..." /></label>${query ? `<button class="button small" data-action="clear-contact-search">Clear</button>` : ""}</div>${renderImportStrip()}<section class="list-card">${contacts.map(renderContactRow).join("") || `<p class="empty-state">${query ? `No contacts match "${escapeHtml(query)}".` : "No contacts yet."}</p>`}</section>`;
+  return `${renderPageHeader("Contacts", "Keep the people behind every opportunity organized.")}<div class="section-toolbar"><strong>${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"}</strong><span class="toolbar-spacer"></span><button class="button" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-contact">＋ Add contact</button></div><div class="contact-search-bar"><label class="table-search contact-search"><span>⌕</span><input data-contact-search value="${escapeHtml(ui.contactSearch)}" placeholder="Search contacts, accounts, email, owner, deal, stage..." /></label>${query ? `<button class="button small" data-action="clear-contact-search">Clear</button>` : ""}</div>${renderImportStrip()}<section class="list-card">${ui.inlineContactOpen ? renderInlineContactRow() : ""}${contacts.map(renderContactRow).join("") || (!ui.inlineContactOpen ? `<p class="empty-state">${query ? `No contacts match "${escapeHtml(query)}".` : "No contacts yet."}</p>` : "")}</section>`;
+}
+
+function renderInlineContactRow() {
+  return `<form class="list-row contact-row inline-contact-row" data-inline-contact-form><span class="activity-symbol">＋</span><span class="inline-field-stack"><input name="contact" placeholder="Contact name" required /><input name="email" type="email" placeholder="Email" required /></span><input name="account" placeholder="Account" required /><select name="owner">${Object.keys(owners).map((owner) => `<option ${owner === currentUser().name ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select><span class="row-actions"><button class="button small primary">Save</button><button type="button" class="button small" data-action="cancel-inline-add">Cancel</button></span></form>`;
 }
 
 function filteredContacts(contacts = uniqueBy("email")) {
@@ -1428,7 +1438,24 @@ document.addEventListener("click", async (event) => {
     if (action === "logout") { session = null; saveSession(); ui.authStep = "password"; }
     if (action === "open-tenant") { ui.tenantId = id; ui.section = "pipeline"; session.tenantId = id; saveSession(); }
     if (action === "add-tenant") { ui.editingTenant = null; ui.authError = ""; ui.adminNotice = ""; ui.modal = "tenant"; }
-    if (action === "add-deal") { ui.modal = "deal"; ui.editing = null; ui.newGroup = group || "active"; ui.selected = null; }
+    if (action === "add-deal") {
+      ui.section = "pipeline";
+      ui.view = "table";
+      ui.modal = null;
+      ui.editing = null;
+      ui.inlineDealGroup = group || "active";
+      ui.selected = null;
+    }
+    if (action === "add-contact") {
+      ui.section = "contacts";
+      ui.modal = null;
+      ui.inlineContactOpen = true;
+      ui.selected = null;
+    }
+    if (action === "cancel-inline-add") {
+      ui.inlineDealGroup = null;
+      ui.inlineContactOpen = false;
+    }
     if (action === "add-task") { ui.modal = "task"; ui.taskDealId = taskDealId ? Number(taskDealId) : null; ui.selected = null; }
     if (action === "compose-email") { ui.modal = "email"; ui.emailDealId = taskDealId ? Number(taskDealId) : null; ui.selected = null; }
     if (action === "open-import") ui.modal = "import";
@@ -1475,7 +1502,7 @@ document.addEventListener("click", async (event) => {
         }
       }
     }
-    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.taskDealId = null; ui.emailDealId = null; ui.authError = ""; ui.adminNotice = ""; }
+    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.taskDealId = null; ui.emailDealId = null; ui.authError = ""; ui.adminNotice = ""; }
     if (action === "edit-deal") { ui.selected = null; ui.editing = currentTenant().deals.find((deal) => deal.id === Number(id)); ui.modal = "deal"; }
     if (action === "toggle-task") {
       const tenant = currentTenant();
@@ -1733,6 +1760,57 @@ document.addEventListener("submit", async (event) => {
     setTenant({ ...tenant, campaigns: [campaign, ...campaigns] });
     ui.campaignDraft = { ...ui.campaignDraft, name: "", recurrence: "one-time", subject: "", template: "" };
     ui.selectedCampaignId = campaign.id;
+    render();
+    return;
+  }
+  if (event.target.matches("[data-inline-contact-form]")) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.target));
+    const tenant = currentTenant();
+    const contact = {
+      id: Math.max(0, ...tenant.deals.map((item) => item.id)) + 1,
+      name: `${values.account} relationship`,
+      account: values.account,
+      contact: values.contact,
+      email: values.email,
+      owner: values.owner,
+      stage: "Lead",
+      value: 0,
+      close: daysFromNow(30),
+      priority: "Medium",
+      group: "active",
+      tags: ["Pilot"],
+      note: "Contact added directly from Contacts.",
+      updated: "Just now",
+    };
+    setTenant({ ...tenant, deals: [contact, ...tenant.deals] });
+    ui.inlineContactOpen = false;
+    ui.section = "contacts";
+    ui.selectedContactEmail = contact.email;
+    render();
+    return;
+  }
+  if (event.target.matches("[data-inline-deal-form]")) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.target));
+    const tenant = currentTenant();
+    const group = event.target.dataset.group || "active";
+    const deal = {
+      ...values,
+      id: Math.max(0, ...tenant.deals.map((item) => item.id)) + 1,
+      value: Number(values.value || 0),
+      close: values.close || daysFromNow(30),
+      group,
+      tags: defaultAccountTags(values),
+      note: "Deal added inline from the pipeline.",
+      updated: "Just now",
+    };
+    const tasks = deal.stage === "Proposal"
+      ? [{ id: Math.max(0, ...tenant.tasks.map((task) => task.id)) + 1, dealId: deal.id, title: "Follow up on proposal", type: "Follow-up", owner: deal.owner, due: daysFromNow(3), priority: "Medium", completed: false }, ...tenant.tasks]
+      : tenant.tasks;
+    setTenant({ ...tenant, deals: [deal, ...tenant.deals], tasks });
+    ui.inlineDealGroup = null;
+    ui.selected = null;
     render();
     return;
   }
