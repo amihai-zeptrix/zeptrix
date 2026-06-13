@@ -4,6 +4,22 @@ const path = require("node:path");
 const test = require("node:test");
 const { duplicateTenantEmailMessage, inviteEmailContent, normalizeTenantPayload, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient } = require("../server");
 
+function crmAppSource() {
+  return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
+}
+
+function crmStylesSource() {
+  return fs.readFileSync(path.join(__dirname, "..", "crm", "styles.css"), "utf8");
+}
+
+function functionSource(source, name, nextName) {
+  const start = source.indexOf(`function ${name}(`);
+  const end = nextName ? source.indexOf(`function ${nextName}(`, start) : source.length;
+  assert.notEqual(start, -1, `${name} should exist`);
+  assert.notEqual(end, -1, `${nextName} should exist after ${name}`);
+  return source.slice(start, end);
+}
+
 function createTenantUpdateClient({ tenant, users, tenants = [tenant] }) {
   return {
     async query(sql, params) {
@@ -147,32 +163,87 @@ test("CRM demo route serves the CRM app shell", () => {
 });
 
 test("CRM home keeps attention correspondence and relationship event panels", () => {
-  const app = fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
-  const renderHomeStart = app.indexOf("function renderHome()");
-  const renderHomeEnd = app.indexOf("function homeCorrespondenceNeedingAttention", renderHomeStart);
-  const renderHomeSource = app.slice(renderHomeStart, renderHomeEnd);
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderHomeSource = functionSource(app, "renderHome", "homeCorrespondenceNeedingAttention");
+  const homeAttentionSource = functionSource(app, "homeCorrespondenceNeedingAttention", "renderHomeAttentionThread");
+  const renderHomeEventSource = functionSource(app, "renderHomeEvent", "birthdayDate");
 
+  assert.match(renderHomeSource, /Accounts that need attention/);
+  assert.match(renderHomeSource, /Today's focus/);
   assert.match(renderHomeSource, /Correspondence needing attention/);
   assert.match(renderHomeSource, /Relationship events/);
   assert.match(renderHomeSource, /jump-home-risk-thread/);
   assert.match(renderHomeSource, /<article class="widget"><div class="panel-head"><h3>Correspondence needing attention/);
-  assert.match(app, /slice\(0, 3\)/);
-  assert.match(app, /Birthday/);
-  assert.match(app, /class="event-account" data-open-account/);
-  assert.match(app, /restoreSearchFocus\("\[data-contact-search\]", cursor\)/);
-  assert.match(fs.readFileSync(path.join(__dirname, "..", "crm", "styles.css"), "utf8"), /\.message-bubble \{\s+max-width: 100%;/);
+  assert.match(homeAttentionSource, /sort\(\(a, b\) => Number\(b\.risk\) - Number\(a\.risk\)\)\.slice\(0, 3\)/);
+  assert.match(renderHomeEventSource, /class="event-account" data-open-account/);
+  assert.match(styles, /\.home-thread-list \{\s+display: grid;\s+grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
+});
+
+test("CRM home relationship events include birthdays and account navigation", () => {
+  const app = crmAppSource();
+  const homeEventsSource = functionSource(app, "homeEvents", "renderHomeEvent");
+  const renderHomeEventSource = functionSource(app, "renderHomeEvent", "birthdayDate");
+
+  assert.match(homeEventsSource, /type: "Birthday"/);
+  assert.match(homeEventsSource, /account: deal\.account/);
+  assert.match(homeEventsSource, /Target close date/);
+  assert.match(homeEventsSource, /Task/);
+  assert.match(renderHomeEventSource, /data-open-account="\$\{escapeHtml\(event\.account\)\}"/);
+});
+
+test("CRM accounts keep account detail intelligence and correspondence controls", () => {
+  const app = crmAppSource();
+  const renderAccountsSource = functionSource(app, "renderAccounts", "renderAccountDetail");
+  const renderAccountDetailSource = functionSource(app, "renderAccountDetail", "topAccountContacts");
+  const renderAccountThreadSource = functionSource(app, "renderAccountThread", "renderReplyComposer");
+  const accountCorrespondenceSource = functionSource(app, "accountCorrespondence", "renderAccountThread");
+  const styles = crmStylesSource();
+
+  assert.match(renderAccountsSource, /data-open-account/);
+  assert.match(renderAccountDetailSource, /Top contacts/);
+  assert.match(renderAccountDetailSource, /Correspondence/);
+  assert.match(renderAccountDetailSource, /Relationship moments/);
+  assert.match(renderAccountDetailSource, /account-reason-chips/);
+  assert.match(renderAccountDetailSource, /data-action="jump-risk-thread"/);
+  assert.match(renderAccountDetailSource, /data-action="new-correspondence"/);
+  assert.match(renderAccountThreadSource, /data-action="reply-correspondence"/);
+  assert.match(renderAccountThreadSource, /risk-thread/);
+  assert.match(accountCorrespondenceSource, /Escalation: angry about delays/);
   assert.match(app, /Anger detected/);
-  assert.match(app, /risk-thread/);
+  assert.match(styles, /\.correspondence-panel/);
+  assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
 });
 
 test("CRM inbox expands communication rows into correspondence threads", () => {
-  const app = fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
-  const styles = fs.readFileSync(path.join(__dirname, "..", "crm", "styles.css"), "utf8");
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderInboxSource = functionSource(app, "renderInbox", "renderInboxThread");
+  const renderInboxThreadSource = functionSource(app, "renderInboxThread", "renderModal");
 
   assert.match(app, /selectedCommunicationId/);
-  assert.match(app, /data-open-communication/);
-  assert.match(app, /function renderInboxThread/);
-  assert.match(app, /class="inbox-thread-row"/);
-  assert.match(app, /data-open-account/);
+  assert.match(renderInboxSource, /data-open-communication/);
+  assert.match(renderInboxSource, /renderInboxThread\(item, deal\)/);
+  assert.match(renderInboxSource, /communication-row \$\{isOpen \? "is-open" : ""\}/);
+  assert.match(renderInboxThreadSource, /class="inbox-thread-row"/);
+  assert.match(renderInboxThreadSource, /class="message-bubble customer"/);
+  assert.match(renderInboxThreadSource, /class="message-bubble team"/);
+  assert.match(renderInboxThreadSource, /data-open-account/);
   assert.match(styles, /\.inbox-thread-row/);
+  assert.match(styles, /\.communication-row\.is-open/);
+});
+
+test("CRM click handling preserves account, inbox, and search interactions", () => {
+  const app = crmAppSource();
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const inputHandlerSource = app.slice(app.indexOf("document.addEventListener(\"input\""), app.indexOf("document.addEventListener(\"change\""));
+
+  assert.match(clickHandlerSource, /data-open-account/);
+  assert.match(clickHandlerSource, /ui\.section = "accounts"/);
+  assert.match(clickHandlerSource, /ui\.accountFocus = account/);
+  assert.match(clickHandlerSource, /data-open-communication/);
+  assert.match(clickHandlerSource, /ui\.section = "inbox"/);
+  assert.match(clickHandlerSource, /ui\.selectedCommunicationId = ui\.selectedCommunicationId === Number\(communicationId\) \? null : Number\(communicationId\)/);
+  assert.match(inputHandlerSource, /restoreSearchFocus\("\[data-contact-search\]", cursor\)/);
 });
