@@ -18,6 +18,9 @@ const smtpUser = process.env.SMTP_USER || fromEmail;
 const smtpPassword = process.env.SMTP_PASSWORD || process.env.PORKBUN_SMTP_PASSWORD;
 const emailProvider = (process.env.EMAIL_PROVIDER || (smtpPassword ? "smtp" : "ses")).toLowerCase();
 const appBaseUrl = process.env.APP_BASE_URL || `http://localhost:${port}/crm/`;
+const publicBaseUrl = process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL?.replace(/\/crm\/?$/, "") || `http://localhost:${port}`;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
 const ses = new SESClient({ region });
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false } })
@@ -324,8 +327,44 @@ async function initDatabase() {
       sent_at timestamptz,
       created_at timestamptz not null default now()
     )`);
+  await dbQuery(`
+    create table if not exists gmail_integrations (
+      tenant_id uuid primary key references tenants(id) on delete cascade,
+      account_email citext,
+      workspace_domain text,
+      client_id text,
+      redirect_uri text,
+      labels text not null default 'Inbox, Sent',
+      stale_months integer not null default 3 check (stale_months > 0 and stale_months <= 36),
+      detect_new_contacts boolean not null default true,
+      detect_dormant_contacts boolean not null default true,
+      enabled boolean not null default false,
+      status text not null default 'Not connected',
+      access_token_enc text,
+      refresh_token_enc text,
+      token_expiry timestamptz,
+      last_scan_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )`);
+  await dbQuery(`
+    create table if not exists gmail_contact_signals (
+      id uuid primary key default gen_random_uuid(),
+      tenant_id uuid not null references tenants(id) on delete cascade,
+      signal_type text not null check (signal_type in ('new_contact', 'dormant_contact')),
+      email citext not null,
+      name text,
+      account text,
+      source text,
+      months integer,
+      message_id text,
+      last_seen_at timestamptz,
+      created_at timestamptz not null default now(),
+      unique(tenant_id, signal_type, email)
+    )`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
+  await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
   await seedDatabase();
 }
 
@@ -543,13 +582,15 @@ async function seedMissingDemoDeals(tenantId) {
 }
 
 async function readState() {
-  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult] = await Promise.all([
+  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
     dbQuery(`select * from users order by created_at`),
     dbQuery(`select * from deals order by created_at`),
     dbQuery(`select * from activities order by created_at`),
     dbQuery(`select * from communications order by occurred_at desc`),
     dbQuery(`select i.*, t.name tenant_name from invite_emails i join tenants t on t.id=i.tenant_id order by i.created_at desc limit 25`),
+    dbQuery(`select * from gmail_integrations`),
+    dbQuery(`select * from gmail_contact_signals order by created_at desc limit 500`),
   ]);
   return {
     tenants: tenantsResult.rows.map((tenant) => tenantFromRow(
@@ -558,12 +599,14 @@ async function readState() {
       dealsResult.rows.filter((deal) => deal.tenant_id === tenant.id),
       tasksResult.rows.filter((task) => task.tenant_id === tenant.id),
       communicationsResult.rows.filter((communication) => communication.tenant_id === tenant.id),
+      gmailResult.rows.find((integration) => integration.tenant_id === tenant.id),
+      gmailSignalResult.rows.filter((signal) => signal.tenant_id === tenant.id),
     )),
     inviteEmails: invitesResult.rows.map(inviteFromRow),
   };
 }
 
-function tenantFromRow(tenant, users, deals, tasks, communications) {
+function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = []) {
   return {
     id: tenant.id,
     name: tenant.name,
@@ -577,6 +620,7 @@ function tenantFromRow(tenant, users, deals, tasks, communications) {
     deals: deals.map(dealFromRow),
     tasks: tasks.map(taskFromRow),
     communications: communications.map(communicationFromRow),
+    gmailIntegration: gmailIntegrationFromRow(gmailIntegration, gmailSignals),
   };
 }
 
@@ -638,6 +682,36 @@ function communicationFromRow(item) {
   };
 }
 
+function gmailIntegrationFromRow(row, signals = []) {
+  return {
+    enabled: !!row?.enabled,
+    status: row?.status || "Not connected",
+    accountEmail: row?.account_email || "",
+    workspaceDomain: row?.workspace_domain || "zeptrix.io",
+    clientId: row?.client_id || "",
+    redirectUri: row?.redirect_uri || `${publicBaseUrl}/api/gmail/oauth/callback`,
+    labels: row?.labels || "Inbox, Sent",
+    staleMonths: row?.stale_months || 3,
+    detectNewContacts: row?.detect_new_contacts ?? true,
+    detectDormantContacts: row?.detect_dormant_contacts ?? true,
+    lastScanAt: row?.last_scan_at ? row.last_scan_at.toISOString() : "",
+    signals: signals.map(gmailSignalFromRow),
+  };
+}
+
+function gmailSignalFromRow(row) {
+  return {
+    type: row.signal_type,
+    email: row.email,
+    name: row.name || "",
+    account: row.account || "",
+    source: row.source || "",
+    months: row.months || 0,
+    messageId: row.message_id || "",
+    lastSeenAt: row.last_seen_at ? row.last_seen_at.toISOString() : "",
+  };
+}
+
 function inviteFromRow(invite) {
   return {
     id: invite.id,
@@ -676,8 +750,216 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char]);
 }
 
+function normalizeGmailSettings(payload = {}) {
+  return {
+    accountEmail: String(payload.accountEmail || "").trim(),
+    workspaceDomain: String(payload.workspaceDomain || "zeptrix.io").trim(),
+    clientId: String(payload.clientId || "").trim(),
+    redirectUri: String(payload.redirectUri || `${publicBaseUrl}/api/gmail/oauth/callback`).trim(),
+    labels: String(payload.labels || "Inbox, Sent").trim(),
+    staleMonths: Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
+    detectNewContacts: payload.detectNewContacts !== false,
+    detectDormantContacts: payload.detectDormantContacts !== false,
+  };
+}
+
+async function upsertGmailSettings(tenantId, payload) {
+  const settings = normalizeGmailSettings(payload);
+  const result = await dbQuery(
+    `insert into gmail_integrations
+       (tenant_id, account_email, workspace_domain, client_id, redirect_uri, labels, stale_months, detect_new_contacts, detect_dormant_contacts, status, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Settings saved',now())
+     on conflict (tenant_id) do update set
+       account_email=excluded.account_email,
+       workspace_domain=excluded.workspace_domain,
+       client_id=excluded.client_id,
+       redirect_uri=excluded.redirect_uri,
+       labels=excluded.labels,
+       stale_months=excluded.stale_months,
+       detect_new_contacts=excluded.detect_new_contacts,
+       detect_dormant_contacts=excluded.detect_dormant_contacts,
+       status=case when gmail_integrations.enabled then 'Settings saved' else 'Not connected' end,
+       updated_at=now()
+     returning *`,
+    [tenantId, settings.accountEmail, settings.workspaceDomain, settings.clientId, settings.redirectUri, settings.labels, settings.staleMonths, settings.detectNewContacts, settings.detectDormantContacts],
+  );
+  return gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId));
+}
+
+function gmailAuthUrl({ tenantId, clientId, redirectUri, accountEmail }) {
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("access_type", "offline");
+  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("scope", "https://www.googleapis.com/auth/gmail.readonly");
+  url.searchParams.set("state", Buffer.from(JSON.stringify({ tenantId })).toString("base64url"));
+  if (accountEmail) url.searchParams.set("login_hint", accountEmail);
+  return url.toString();
+}
+
+function encryptToken(value) {
+  if (!value) return "";
+  const key = crypto.createHash("sha256").update(tokenSecret).digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("base64url")}.${tag.toString("base64url")}.${encrypted.toString("base64url")}`;
+}
+
+function decryptToken(value) {
+  if (!value) return "";
+  const [ivText, tagText, encryptedText] = value.split(".");
+  const key = crypto.createHash("sha256").update(tokenSecret).digest();
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivText, "base64url"));
+  decipher.setAuthTag(Buffer.from(tagText, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(encryptedText, "base64url")), decipher.final()]).toString("utf8");
+}
+
+async function exchangeGmailCode({ code, clientId, redirectUri }) {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ code, client_id: clientId, client_secret: googleClientSecret, redirect_uri: redirectUri, grant_type: "authorization_code" }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error_description || body.error || "Unable to exchange Gmail OAuth code.");
+  return body;
+}
+
+async function refreshGmailAccessToken(integration) {
+  if (!integration.refresh_token_enc) throw new Error("Gmail refresh token is missing. Reconnect Gmail.");
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      refresh_token: decryptToken(integration.refresh_token_enc),
+      client_id: integration.client_id,
+      client_secret: googleClientSecret,
+      grant_type: "refresh_token",
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error_description || body.error || "Unable to refresh Gmail token.");
+  const expiry = new Date(Date.now() + Number(body.expires_in || 3600) * 1000);
+  await dbQuery(
+    `update gmail_integrations set access_token_enc=$2, token_expiry=$3, updated_at=now() where tenant_id=$1`,
+    [integration.tenant_id, encryptToken(body.access_token), expiry],
+  );
+  return body.access_token;
+}
+
+async function getGmailAccessToken(tenantId) {
+  const result = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [tenantId]);
+  const integration = result.rows[0];
+  if (!integration) throw new Error("Gmail integration is not configured.");
+  if (integration.access_token_enc && integration.token_expiry && integration.token_expiry > new Date(Date.now() + 60000)) return decryptToken(integration.access_token_enc);
+  return refreshGmailAccessToken(integration);
+}
+
+async function gmailApi(accessToken, path, params = {}) {
+  const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
+  });
+  const response = await fetch(url, { headers: { authorization: `Bearer ${accessToken}` } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error?.message || "Gmail API request failed.");
+  return body;
+}
+
+function parseEmailAddress(value = "") {
+  const text = String(value).trim();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) return { name: text.split("@")[0], email: text.toLowerCase() };
+  const match = text.match(/^(?:"?([^"<]*)"?\s*)<([^<>\s]+@[^<>\s]+)>$/);
+  if (!match) return null;
+  const email = match[2].toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return { name: (match[1] || email.split("@")[0]).trim(), email };
+}
+
+function headerValue(message, name) {
+  return message.payload?.headers?.find((header) => header.name.toLowerCase() === name.toLowerCase())?.value || "";
+}
+
+async function mapLimit(items, limit, worker) {
+  const results = [];
+  let index = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const item = items[index++];
+      results.push(await worker(item));
+    }
+  }));
+  return results;
+}
+
+async function readGmailSignals(tenantId) {
+  const result = await dbQuery(`select * from gmail_contact_signals where tenant_id=$1 order by created_at desc limit 200`, [tenantId]);
+  return result.rows;
+}
+
+async function scanGmailForTenant(tenantId) {
+  const integrationResult = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [tenantId]);
+  const integration = integrationResult.rows[0];
+  if (!integration?.enabled) throw new Error("Gmail is not connected.");
+  const accessToken = await getGmailAccessToken(tenantId);
+  const staleMonths = Math.max(1, Number(integration.stale_months || 3));
+  const [dealsResult, inboundList, sentList] = await Promise.all([
+    dbQuery(`select distinct lower(email) email, contact, account from deals where tenant_id=$1 and email is not null and email<>''`, [tenantId]),
+    integration.detect_new_contacts ? gmailApi(accessToken, "messages", { q: "in:anywhere newer_than:90d -in:sent", maxResults: 40 }) : { messages: [] },
+    integration.detect_dormant_contacts ? gmailApi(accessToken, "messages", { q: `in:sent newer_than:${staleMonths}m`, maxResults: 100 }) : { messages: [] },
+  ]);
+  const knownEmails = new Set(dealsResult.rows.map((row) => row.email));
+  const inboundMessages = await mapLimit((inboundList.messages || []).slice(0, 40), 6, (message) => gmailApi(accessToken, `messages/${message.id}`, { format: "metadata", metadataHeaders: "From" }));
+  const sentMessages = await mapLimit((sentList.messages || []).slice(0, 100), 8, (message) => gmailApi(accessToken, `messages/${message.id}`, { format: "metadata", metadataHeaders: "To", fields: "id,payload/headers" }));
+
+  const newContacts = [];
+  const seenNew = new Set();
+  for (const message of inboundMessages) {
+    const parsed = parseEmailAddress(headerValue(message, "From"));
+    if (!parsed || knownEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
+    seenNew.add(parsed.email);
+    newContacts.push({ ...parsed, source: "Inbound Gmail thread", messageId: message.id });
+  }
+
+  const sentEmails = new Set();
+  for (const message of sentMessages) {
+    headerValue(message, "To").split(",").map(parseEmailAddress).filter(Boolean).forEach((item) => sentEmails.add(item.email));
+  }
+  const dormant = dealsResult.rows
+    .filter((row) => !sentEmails.has(row.email))
+    .slice(0, 50)
+    .map((row) => ({ email: row.email, name: row.contact || row.email.split("@")[0], account: row.account || "", months: staleMonths, source: `No sent Gmail in ${staleMonths} months` }));
+
+  await withTransaction(async (client) => {
+    await client.query(`delete from gmail_contact_signals where tenant_id=$1`, [tenantId]);
+    for (const item of newContacts.slice(0, 25)) {
+      await client.query(
+        `insert into gmail_contact_signals (tenant_id, signal_type, email, name, source, message_id, last_seen_at)
+         values ($1,'new_contact',$2,$3,$4,$5,now())`,
+        [tenantId, item.email, item.name, item.source, item.messageId],
+      );
+    }
+    for (const item of dormant.slice(0, 50)) {
+      await client.query(
+        `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, source, months, last_seen_at)
+         values ($1,'dormant_contact',$2,$3,$4,$5,$6,now())`,
+        [tenantId, item.email, item.name, item.account, item.source, item.months],
+      );
+    }
+    await client.query(`update gmail_integrations set last_scan_at=now(), status='Last scan completed', updated_at=now() where tenant_id=$1`, [tenantId]);
+  });
+  return { newContacts: newContacts.slice(0, 25), dormantContacts: dormant.slice(0, 50), scannedMessages: inboundMessages.length + sentMessages.length };
+}
+
 async function handleApi(req, res) {
-  if (req.method === "GET" && req.url === "/api/state") {
+  const requestUrl = new URL(req.url, `http://localhost:${port}`);
+  const pathname = requestUrl.pathname;
+
+  if (req.method === "GET" && pathname === "/api/state") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
       return json(res, 200, await readState());
@@ -686,7 +968,7 @@ async function handleApi(req, res) {
     }
   }
 
-  if (req.method === "POST" && req.url === "/api/auth/login") {
+  if (req.method === "POST" && pathname === "/api/auth/login") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
       const { email, password } = await readBody(req);
@@ -698,7 +980,7 @@ async function handleApi(req, res) {
     }
   }
 
-  if (req.method === "POST" && req.url === "/api/auth/change-password") {
+  if (req.method === "POST" && pathname === "/api/auth/change-password") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
       const { email, password } = await readBody(req);
@@ -710,7 +992,7 @@ async function handleApi(req, res) {
     }
   }
 
-  if (req.method === "POST" && req.url === "/api/tenants") {
+  if (req.method === "POST" && pathname === "/api/tenants") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
       const payload = normalizeTenantPayload(await readBody(req));
@@ -760,10 +1042,10 @@ async function handleApi(req, res) {
     }
   }
 
-  if (req.method === "PUT" && req.url.startsWith("/api/tenants/")) {
+  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && !pathname.endsWith("/gmail")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      const id = decodeURIComponent(req.url.split("/").pop());
+      const id = decodeURIComponent(pathname.split("/").pop());
       const payload = normalizeTenantPayload(await readBody(req));
       const validationError = validateTenant(payload);
       if (validationError) return json(res, 400, { error: validationError });
@@ -775,10 +1057,10 @@ async function handleApi(req, res) {
     }
   }
 
-  if (req.method === "POST" && req.url.startsWith("/api/tenants/") && req.url.endsWith("/reset-password")) {
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/reset-password")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      const id = decodeURIComponent(req.url.split("/").at(-2));
+      const id = decodeURIComponent(pathname.split("/").at(-2));
       const userResult = await dbQuery(
         `select u.id user_id, u.email, t.id tenant_id, t.name tenant_name
          from tenants t
@@ -808,15 +1090,96 @@ async function handleApi(req, res) {
     }
   }
 
-  if (req.method === "DELETE" && req.url.startsWith("/api/tenants/")) {
+  if (req.method === "DELETE" && pathname.startsWith("/api/tenants/")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      const id = decodeURIComponent(req.url.split("/").pop());
+      const id = decodeURIComponent(pathname.split("/").pop());
       const result = await dbQuery(`delete from tenants where id::text=$1 or slug=$1 returning slug`, [id]);
       if (!result.rows.length) return json(res, 404, { error: "Tenant not found." });
       return json(res, 200, { ok: true, slug: result.rows[0].slug });
     } catch (error) {
       return json(res, 500, { error: "Unable to delete tenant.", detail: error.message });
+    }
+  }
+
+  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const tenant = await dbQuery(`select id from tenants where id::text=$1 or slug=$1`, [tenantId]);
+      if (!tenant.rows.length) return json(res, 404, { error: "Tenant not found." });
+      const gmailIntegration = await upsertGmailSettings(tenant.rows[0].id, await readBody(req));
+      return json(res, 200, { gmailIntegration });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to save Gmail settings.", detail: error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail/connect")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      if (!googleClientSecret) return json(res, 400, { error: "GOOGLE_CLIENT_SECRET is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const integrationResult = await dbQuery(
+        `select g.*, t.id resolved_tenant_id
+         from tenants t left join gmail_integrations g on g.tenant_id=t.id
+         where t.id::text=$1 or t.slug=$1`,
+        [tenantId],
+      );
+      const integration = integrationResult.rows[0];
+      if (!integration) return json(res, 404, { error: "Tenant not found." });
+      if (!integration.client_id || !integration.redirect_uri) return json(res, 400, { error: "Save Gmail client ID and redirect URI before connecting." });
+      return json(res, 200, {
+        authUrl: gmailAuthUrl({
+          tenantId: integration.resolved_tenant_id,
+          clientId: integration.client_id,
+          redirectUri: integration.redirect_uri,
+          accountEmail: integration.account_email,
+        }),
+      });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to create Gmail OAuth URL.", detail: error.message });
+    }
+  }
+
+  if (req.method === "GET" && pathname === "/api/gmail/oauth/callback") {
+    try {
+      if (!pool) throw new Error("DATABASE_URL is not configured.");
+      if (!googleClientSecret) throw new Error("GOOGLE_CLIENT_SECRET is not configured.");
+      const state = JSON.parse(Buffer.from(requestUrl.searchParams.get("state") || "", "base64url").toString("utf8"));
+      const code = requestUrl.searchParams.get("code");
+      if (!state.tenantId || !code) throw new Error("Gmail OAuth response is missing state or code.");
+      const integrationResult = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [state.tenantId]);
+      const integration = integrationResult.rows[0];
+      if (!integration) throw new Error("Gmail integration settings were not found.");
+      const token = await exchangeGmailCode({ code, clientId: integration.client_id, redirectUri: integration.redirect_uri });
+      await dbQuery(
+        `update gmail_integrations
+         set enabled=true, status='Connected', access_token_enc=$2, refresh_token_enc=coalesce($3, refresh_token_enc), token_expiry=$4, updated_at=now()
+         where tenant_id=$1`,
+        [state.tenantId, encryptToken(token.access_token), token.refresh_token ? encryptToken(token.refresh_token) : null, new Date(Date.now() + Number(token.expires_in || 3600) * 1000)],
+      );
+      res.writeHead(302, { location: "/crm/?gmail=connected" });
+      res.end();
+      return;
+    } catch (error) {
+      res.writeHead(302, { location: `/crm/?gmail=error&detail=${encodeURIComponent(error.message)}` });
+      res.end();
+      return;
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail/scan")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const tenant = await dbQuery(`select id from tenants where id::text=$1 or slug=$1`, [tenantId]);
+      if (!tenant.rows.length) return json(res, 404, { error: "Tenant not found." });
+      const result = await scanGmailForTenant(tenant.rows[0].id);
+      const integration = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [tenant.rows[0].id]);
+      return json(res, 200, { ...result, gmailIntegration: gmailIntegrationFromRow(integration.rows[0], await readGmailSignals(tenant.rows[0].id)) });
+    } catch (error) {
+      return json(res, 502, { error: "Unable to scan Gmail.", detail: error.message });
     }
   }
 
@@ -877,8 +1240,13 @@ if (require.main === module) startServer();
 
 module.exports = {
   duplicateTenantEmailMessage,
+  decryptToken,
+  encryptToken,
+  gmailAuthUrl,
   inviteEmailContent,
+  normalizeGmailSettings,
   normalizeTenantPayload,
+  parseEmailAddress,
   staticFilePathForUrlPath,
   smtpInviteMessage,
   slugify,

@@ -115,6 +115,20 @@ const defaultData = {
   visibleColumns: ["owner", "stage", "value", "account", "close", "priority"],
 };
 
+const defaultGmailIntegration = {
+  enabled: false,
+  status: "Not connected",
+  accountEmail: "",
+  workspaceDomain: "zeptrix.io",
+  clientId: "",
+  redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
+  labels: "Inbox, Sent",
+  staleMonths: 3,
+  detectNewContacts: true,
+  detectDormantContacts: true,
+  lastScanAt: "",
+};
+
 let data = loadData();
 let session = loadSession();
 let ui = {
@@ -144,6 +158,7 @@ let ui = {
   selectedContactEmail: "",
   selectedCommunicationId: null,
   selectedCampaignId: null,
+  settingsTab: "mail",
   replyingThread: "",
   correspondenceDrafts: {},
   campaignDraft: {
@@ -175,6 +190,7 @@ function normalizeData(nextData) {
     ...tenant,
     deals: (tenant.deals || []).map((deal) => ({ ...deal, tags: deal.tags || defaultAccountTags(deal) })),
     campaigns: (tenant.campaigns?.length ? tenant.campaigns : defaultCampaignsForTenant(tenant)).map((campaign) => ({ recurrence: "one-time", ...campaign })),
+    gmailIntegration: { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) },
     users: (tenant.users || []).map((user) => {
       const generatedPassword = user.password || seedPasswords[user.email] || generateTemporaryPassword();
       if (!user.password && !nextData.inviteEmails.some((mail) => mail.to?.toLowerCase() === user.email.toLowerCase() && mail.temporaryPassword === generatedPassword)) {
@@ -346,6 +362,18 @@ async function createTenantViaApi(values) {
 
 async function updateTenantViaApi(id, values) {
   return apiRequest(`/api/tenants/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+async function saveGmailSettingsViaApi(tenantId, values) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+async function connectGmailViaApi(tenantId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail/connect`, { method: "POST" });
+}
+
+async function scanGmailViaApi(tenantId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail/scan`, { method: "POST" });
 }
 
 async function resetTenantPasswordViaApi(id) {
@@ -550,7 +578,7 @@ function renderSidebar() {
       ${sideLink("activities", "✓", "Activities", openTasks().length)}
       ${sideLink("inbox", "✉", "Inbox", tenant.communications.length)}
       ${sideLink("reports", "◴", "Reports")}
-      <button class="side-link" data-action="open-settings"><span class="icon">⚙</span> Settings</button>
+      ${sideLink("settings", "⚙", "Settings")}
       <div class="side-spacer"></div>
       <button class="side-link" data-action="logout"><span class="icon">⇤</span> Sign out</button>
       <div class="profile">${avatar(currentUser().name)}<div><strong>${escapeHtml(currentUser().name)}</strong><small>${escapeHtml(currentUser().role)}</small></div></div>
@@ -582,6 +610,7 @@ function renderSection() {
   if (ui.section === "activities") return renderActivities();
   if (ui.section === "inbox") return renderInbox();
   if (ui.section === "reports") return `${renderPageHeader("Reports", "Monitor pipeline health and sales performance.")}${renderDashboard()}`;
+  if (ui.section === "settings") return renderSettingsPage();
   return renderHome();
 }
 
@@ -1281,6 +1310,119 @@ function renderSettings() {
   return `<div class="modal-layer center"><section class="modal"><header class="modal-head"><div><h2>Workspace settings</h2><p class="subcopy">Configure visible columns and forecast confidence.</p></div><button class="close-button" data-action="close">×</button></header><div class="check-list">${columns.map(([key, label]) => `<label class="check-row"><input type="checkbox" data-column="${key}" ${data.visibleColumns.includes(key) ? "checked" : ""} /><span>${label}</span><small>Visible column</small></label>`).join("")}</div><h3 class="settings-heading">Stage confidence</h3><div class="probability-grid">${stages.map((stage) => `<label class="probability-row"><span>${stage}</span><input type="number" min="0" max="100" value="${data.stageProbabilities[stage]}" data-probability="${stage}" /><small>%</small></label>`).join("")}</div><h3 class="settings-heading">Custom fields</h3><div class="tag-list">${data.customFields.map((field) => `<span class="field-tag">${escapeHtml(field)}</span>`).join("")}<button class="button small" data-action="add-custom-field">＋ Add field</button></div><div class="form-actions"><button class="button" data-action="reset">Reset demo data</button><span class="toolbar-spacer"></span><button class="button primary" data-action="close">Done</button></div></section></div>`;
 }
 
+function renderSettingsPage() {
+  return `
+    ${renderPageHeader("Settings", "Configure CRM integrations and workspace behavior.")}
+    <nav class="settings-tabs">
+      <button class="${ui.settingsTab === "mail" ? "active" : ""}" data-settings-tab="mail">Mail integrations</button>
+      <button class="${ui.settingsTab === "workspace" ? "active" : ""}" data-settings-tab="workspace">Workspace</button>
+    </nav>
+    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : renderWorkspaceSettingsPanel()}`;
+}
+
+function renderMailIntegrationsSettings() {
+  const tenant = currentTenant();
+  const gmail = gmailIntegration(tenant);
+  const discoveries = gmailContactDiscoveries(tenant);
+  const dormant = gmailDormantContacts(tenant, Number(gmail.staleMonths || 3));
+  return `
+    <section class="settings-layout">
+      <article class="settings-card">
+        <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Read Gmail metadata and messages to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
+        <form class="settings-form" data-gmail-settings-form>
+          <div class="form-grid">
+            ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", false)}
+            ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
+            ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full")}
+            ${formField("Authorized redirect URI", "redirectUri", gmail.redirectUri, "url", false, "full")}
+            ${formField("Labels to read", "labels", gmail.labels)}
+            ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
+          </div>
+          <div class="check-list compact">
+            <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Suggest people found in Gmail that do not exist in CRM.</small></label>
+            <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
+          </div>
+          <div class="form-actions"><button type="button" class="button" data-action="connect-gmail">Connect Gmail</button><button type="button" class="button" data-action="scan-gmail">Scan now</button><span class="toolbar-spacer"></span><button class="button primary">Save Gmail settings</button></div>
+          <p class="subcopy">Uses server-side OAuth with <strong>gmail.readonly</strong>; refresh tokens are encrypted on the server and the browser never stores the Google client secret.</p>
+        </form>
+      </article>
+      <article class="settings-card">
+        <h3>Gmail signals</h3>
+        <div class="integration-metrics">
+          ${summaryCard("♙", "var(--blue-soft)", "var(--blue)", "New contacts", discoveries.length, "from Gmail")}
+          ${summaryCard("◴", "var(--orange-soft)", "var(--orange)", "Dormant contacts", dormant.length, `${Number(gmail.staleMonths || 3)} months`)}
+        </div>
+        <div class="signal-list">
+          <h4>New contacts found in Gmail</h4>
+          ${discoveries.map((item) => `<div class="signal-row"><span class="activity-symbol">＋</span><span class="list-primary">${escapeHtml(item.name)}<small>${escapeHtml(item.email)} · ${escapeHtml(item.source)}</small></span><button class="button small" data-action="add-gmail-contact" data-email="${escapeHtml(item.email)}">Add</button></div>`).join("") || `<p class="empty-state compact">No unknown Gmail contacts found in the latest scan.</p>`}
+          <h4>Contacts needing follow-up</h4>
+          ${dormant.map((item) => `<button class="signal-row" data-open-contact="${escapeHtml(item.email)}"><span class="activity-symbol">!</span><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · no sent mail for ${item.months} months</small></span><span class="priority priority-high">Follow up</span></button>`).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}
+        </div>
+        <p class="subcopy">Last scan: ${gmail.lastScanAt ? formatTimestamp(gmail.lastScanAt) : "Not scanned yet"}</p>
+      </article>
+    </section>`;
+}
+
+function renderWorkspaceSettingsPanel() {
+  return `<section class="settings-card"><h3>Workspace settings</h3><p class="subcopy">Pipeline columns and forecast settings are still available from the Sales pipeline toolbar.</p><button class="button" data-action="open-settings">Open pipeline settings</button></section>`;
+}
+
+function gmailIntegration(tenant = currentTenant()) {
+  return { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) };
+}
+
+function gmailFormValues(form) {
+  const values = Object.fromEntries(new FormData(form));
+  return {
+    ...values,
+    detectNewContacts: Boolean(values.detectNewContacts),
+    detectDormantContacts: Boolean(values.detectDormantContacts),
+  };
+}
+
+function gmailContactDiscoveries(tenant = currentTenant()) {
+  const signals = gmailIntegration(tenant).signals || [];
+  const scanned = signals.filter((signal) => signal.type === "new_contact");
+  if (scanned.length) return scanned.map((signal) => ({ name: signal.name || signal.email.split("@")[0], email: signal.email, source: signal.source || "Gmail scan" }));
+  const existing = new Set(tenant.deals.map((deal) => String(deal.email || "").toLowerCase()).filter(Boolean));
+  return [
+    { name: "Maya Rosenthal", email: "maya.rosenthal@newbridge.ai", source: "Inbound Gmail thread" },
+    { name: "Chris Morgan", email: "chris@procurementhub.com", source: "Cc on renewal discussion" },
+    { name: "Nina Patel", email: "nina@legaldesk.io", source: "Vendor review email" },
+  ].filter((item) => !existing.has(item.email.toLowerCase()));
+}
+
+function gmailDormantContacts(tenant = currentTenant(), thresholdMonths = 3) {
+  const signals = gmailIntegration(tenant).signals || [];
+  const scanned = signals.filter((signal) => signal.type === "dormant_contact");
+  if (scanned.length) return scanned.map((signal) => ({ contact: signal.name || signal.email.split("@")[0], email: signal.email, account: signal.account || signal.email.split("@")[1], months: signal.months || thresholdMonths }));
+  const recentOutboundByEmail = new Map();
+  tenant.communications
+    .filter((item) => item.direction === "outbound")
+    .forEach((item) => {
+      const deal = tenant.deals.find((candidate) => String(candidate.id) === String(item.dealId));
+      if (!deal?.email) return;
+      const previous = recentOutboundByEmail.get(deal.email) || "";
+      if (!previous || item.date > previous) recentOutboundByEmail.set(deal.email, item.date);
+    });
+  return uniqueBy("email")
+    .filter((deal) => deal.email)
+    .map((deal, index) => {
+      const lastOutbound = recentOutboundByEmail.get(deal.email);
+      const fallbackMonths = 2 + (index % 5);
+      const months = lastOutbound ? monthsSince(lastOutbound) : fallbackMonths;
+      return { ...deal, months };
+    })
+    .filter((deal) => deal.months >= thresholdMonths)
+    .slice(0, 6);
+}
+
+function monthsSince(value) {
+  const then = new Date(value);
+  const now = new Date(`${today()}T12:00:00`);
+  return Math.max(0, Math.floor((now - then) / (30 * 86400000)));
+}
+
 function renderDealDrawer(deal) {
   if (!deal) return "";
   return `<div class="modal-layer"><aside class="drawer"><header class="modal-head"><div><p class="subcopy">Deal details</p></div><button class="close-button" data-action="close">×</button></header><section class="detail-hero">${avatar(deal.owner, "large")}<div><h2>${escapeHtml(deal.name)}</h2><p class="subcopy">${escapeHtml(deal.account)} · ${escapeHtml(deal.contact)}</p></div></section><section class="detail-section"><div class="detail-grid"><div><span class="detail-label">Stage</span><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span></div><div><span class="detail-label">Value</span><strong>${money(deal.value)}</strong></div><div><span class="detail-label">Owner</span><span class="owner-cell">${avatar(deal.owner, "small")}${deal.owner}</span></div><div><span class="detail-label">Close date</span><span>${formatDate(deal.close)}</span></div><div><span class="detail-label">Priority</span><span class="priority priority-${deal.priority.toLowerCase()}">${deal.priority}</span></div><div><span class="detail-label">Email</span><span>${escapeHtml(deal.email || "-")}</span></div></div></section><section class="detail-section"><h3>Notes</h3><p class="subcopy">${escapeHtml(deal.note || "No notes yet.")}</p></section><section class="detail-section"><h3>Communication</h3>${currentTenant().communications.filter((item) => item.dealId === deal.id).map((item) => `<div class="message-card"><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(item.type)} · ${formatTimestamp(item.date)} · ${escapeHtml(item.tracked)}</small><p>${escapeHtml(item.body)}</p></div>`).join("") || `<p class="subcopy">No messages logged yet.</p>`}<button class="button small" data-action="compose-email" data-deal-id="${deal.id}">＋ Log email</button></section><section class="detail-section"><h3>Activity</h3>${currentTenant().tasks.filter((task) => task.dealId === deal.id).map((task) => { const [label, klass] = taskStatus(task); return `<div class="drawer-task"><button class="task-check" data-action="toggle-task" data-id="${task.id}">${task.completed ? "✓" : ""}</button><span>${escapeHtml(task.title)}<small>${formatDate(task.due)}</small></span><span class="priority ${klass}">${label}</span><button class="button small danger" data-action="delete-task" data-id="${task.id}">Delete</button></div>`; }).join("") || `<p class="subcopy">No tasks yet.</p>`}</section><div class="form-actions"><button class="button danger" data-action="delete-deal" data-id="${deal.id}">Delete deal</button><button class="button" data-action="add-task" data-deal-id="${deal.id}">＋ Add task</button><span class="toolbar-spacer"></span><button class="button" data-action="close">Close</button><button class="button primary" data-action="edit-deal" data-id="${deal.id}">Edit deal</button></div></aside></div>`;
@@ -1325,8 +1467,9 @@ document.addEventListener("click", async (event) => {
   const campaignId = event.target.closest("[data-open-campaign]")?.dataset.openCampaign;
   const collapse = event.target.closest("[data-collapse]")?.dataset.collapse;
   const column = event.target.closest("[data-column]")?.dataset.column;
+  const settingsTab = event.target.closest("[data-settings-tab]")?.dataset.settingsTab;
 
-  if (!section && !view && !dealId && !account && !contactEmail && !communicationId && !campaignId && !collapse && !column && !actionElement) return;
+  if (!section && !view && !dealId && !account && !contactEmail && !communicationId && !campaignId && !collapse && !column && !settingsTab && !actionElement) return;
 
   if (section) {
     ui.section = section;
@@ -1361,6 +1504,7 @@ document.addEventListener("click", async (event) => {
   }
   if (collapse) ui.collapsed = ui.collapsed.includes(collapse) ? ui.collapsed.filter((item) => item !== collapse) : [...ui.collapsed, collapse];
   if (column) data.visibleColumns = event.target.checked ? [...data.visibleColumns, column] : data.visibleColumns.filter((item) => item !== column);
+  if (settingsTab) ui.settingsTab = settingsTab;
 
   if (actionElement) {
     const { action, group, id, dealId: taskDealId } = actionElement.dataset;
@@ -1467,6 +1611,52 @@ document.addEventListener("click", async (event) => {
       ui.selectedContactEmail = "";
     }
     if (action === "open-settings") ui.modal = "settings";
+    if (action === "connect-gmail") {
+      const tenant = currentTenant();
+      try {
+        const saved = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(actionElement.closest("form")));
+        setTenant({ ...tenant, gmailIntegration: saved.gmailIntegration });
+        const connected = await connectGmailViaApi(tenant.id);
+        window.location.href = connected.authUrl;
+        return;
+      } catch (error) {
+        setTenant({ ...tenant, gmailIntegration: { ...gmailIntegration(tenant), status: error.message } });
+      }
+    }
+    if (action === "scan-gmail") {
+      const tenant = currentTenant();
+      try {
+        const saved = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(actionElement.closest("form")));
+        setTenant({ ...tenant, gmailIntegration: { ...saved.gmailIntegration, status: "Scanning Gmail..." } });
+        const result = await scanGmailViaApi(tenant.id);
+        setTenant({ ...currentTenant(), gmailIntegration: result.gmailIntegration });
+      } catch (error) {
+        setTenant({ ...tenant, gmailIntegration: { ...gmailIntegration(tenant), status: error.message } });
+      }
+    }
+    if (action === "add-gmail-contact") {
+      const tenant = currentTenant();
+      const discovery = gmailContactDiscoveries(tenant).find((item) => item.email === actionElement.dataset.email);
+      if (discovery) {
+        const contact = {
+          id: Math.max(0, ...tenant.deals.map((item) => item.id)) + 1,
+          name: `${discovery.name} Gmail lead`,
+          account: discovery.email.split("@")[1],
+          contact: discovery.name,
+          email: discovery.email,
+          owner: currentUser().name,
+          stage: "Lead",
+          value: 0,
+          close: daysFromNow(30),
+          priority: "Medium",
+          group: "active",
+          tags: ["Gmail"],
+          note: `Discovered from ${discovery.source}.`,
+          updated: "Just now",
+        };
+        setTenant({ ...tenant, deals: [contact, ...tenant.deals] });
+      }
+    }
     if (action === "edit-tenant") { ui.editingTenant = data.tenants.find((tenant) => tenant.id === id); ui.authError = ""; ui.adminNotice = ""; ui.modal = "tenant"; }
     if (action === "reset-tenant-password") {
       const tenant = data.tenants.find((item) => item.id === id);
@@ -1760,6 +1950,36 @@ document.addEventListener("submit", async (event) => {
     setTenant({ ...tenant, campaigns: [campaign, ...campaigns] });
     ui.campaignDraft = { ...ui.campaignDraft, name: "", recurrence: "one-time", subject: "", template: "" };
     ui.selectedCampaignId = campaign.id;
+    render();
+    return;
+  }
+  if (event.target.matches("[data-gmail-settings-form]")) {
+    event.preventDefault();
+    const tenant = currentTenant();
+    try {
+      const result = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(event.target));
+      setTenant({ ...tenant, gmailIntegration: result.gmailIntegration });
+    } catch (error) {
+      const values = gmailFormValues(event.target);
+      const previous = gmailIntegration(tenant);
+      setTenant({
+        ...tenant,
+        gmailIntegration: {
+          ...previous,
+          accountEmail: values.accountEmail || "",
+          workspaceDomain: values.workspaceDomain || "",
+          clientId: values.clientId || "",
+          redirectUri: values.redirectUri || defaultGmailIntegration.redirectUri,
+          labels: values.labels || "Inbox, Sent",
+          staleMonths: Math.max(1, Number(values.staleMonths || 3)),
+          detectNewContacts: values.detectNewContacts,
+          detectDormantContacts: values.detectDormantContacts,
+          status: error.message,
+        },
+      });
+    }
+    ui.section = "settings";
+    ui.settingsTab = "mail";
     render();
     return;
   }

@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { duplicateTenantEmailMessage, inviteEmailContent, normalizeTenantPayload, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient } = require("../server");
+const { decryptToken, duplicateTenantEmailMessage, encryptToken, gmailAuthUrl, inviteEmailContent, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -152,6 +152,50 @@ test("SMTP invite message sends only to the tenant login recipient", () => {
 
   assert.equal(message.to, "owner@example.com");
   assert.equal("bcc" in message, false);
+});
+
+test("Gmail settings normalization clamps scan thresholds and defaults detection", () => {
+  const settings = normalizeGmailSettings({
+    accountEmail: " user@gmail.com ",
+    clientId: "client-123",
+    redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
+    staleMonths: 99,
+    detectNewContacts: false,
+  });
+
+  assert.equal(settings.accountEmail, "user@gmail.com");
+  assert.equal(settings.staleMonths, 36);
+  assert.equal(settings.detectNewContacts, false);
+  assert.equal(settings.detectDormantContacts, true);
+  assert.equal(settings.labels, "Inbox, Sent");
+});
+
+test("Gmail OAuth URL uses readonly scope and tenant state", () => {
+  const authUrl = new URL(gmailAuthUrl({
+    tenantId: "tenant-123",
+    clientId: "client-123",
+    redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
+    accountEmail: "user@gmail.com",
+  }));
+
+  assert.equal(authUrl.hostname, "accounts.google.com");
+  assert.equal(authUrl.searchParams.get("client_id"), "client-123");
+  assert.equal(authUrl.searchParams.get("redirect_uri"), "https://www.zeptrix.io/api/gmail/oauth/callback");
+  assert.equal(authUrl.searchParams.get("scope"), "https://www.googleapis.com/auth/gmail.readonly");
+  assert.equal(authUrl.searchParams.get("access_type"), "offline");
+  assert.equal(authUrl.searchParams.get("login_hint"), "user@gmail.com");
+  const state = JSON.parse(Buffer.from(authUrl.searchParams.get("state"), "base64url").toString("utf8"));
+  assert.equal(state.tenantId, "tenant-123");
+});
+
+test("Gmail helpers parse addresses and encrypt tokens", () => {
+  assert.deepEqual(parseEmailAddress("Maya Rosenthal <maya@example.com>"), { name: "Maya Rosenthal", email: "maya@example.com" });
+  assert.deepEqual(parseEmailAddress("plain@example.com"), { name: "plain", email: "plain@example.com" });
+  assert.equal(parseEmailAddress("not an address"), null);
+
+  const encrypted = encryptToken("refresh-token-value");
+  assert.notEqual(encrypted, "refresh-token-value");
+  assert.equal(decryptToken(encrypted), "refresh-token-value");
 });
 
 test("CRM demo route serves the CRM app shell", () => {
@@ -320,6 +364,46 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   assert.match(styles, /\.campaign-detail-grid/);
   assert.match(styles, /\.token-bar/);
   assert.match(styles, /\.account-tag-editor/);
+});
+
+test("CRM settings include Gmail mail integration controls", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const sidebarSource = functionSource(app, "renderSidebar", "sideLink");
+  const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
+  const renderSettingsPageSource = functionSource(app, "renderSettingsPage", "renderMailIntegrationsSettings");
+  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderWorkspaceSettingsPanel");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+
+  assert.match(sidebarSource, /sideLink\("settings", "⚙", "Settings"\)/);
+  assert.doesNotMatch(sidebarSource, /data-action="open-settings"><span class="icon">⚙<\/span> Settings/);
+  assert.match(renderSectionSource, /ui\.section === "settings"/);
+  assert.match(renderSettingsPageSource, /Mail integrations/);
+  assert.match(renderSettingsPageSource, /data-settings-tab="mail"/);
+  assert.match(renderMailSettingsSource, /data-gmail-settings-form/);
+  assert.match(renderMailSettingsSource, /Gmail account/);
+  assert.match(renderMailSettingsSource, /OAuth client ID/);
+  assert.match(renderMailSettingsSource, /Authorized redirect URI/);
+  assert.match(renderMailSettingsSource, /No-mail threshold in months/);
+  assert.match(renderMailSettingsSource, /Identify new contacts from Gmail/);
+  assert.match(renderMailSettingsSource, /Find contacts with no sent mail/);
+  assert.match(renderMailSettingsSource, /gmail\.readonly/);
+  assert.match(app, /staleMonths: 3/);
+  assert.match(app, /gmailContactDiscoveries/);
+  assert.match(app, /gmailDormantContacts/);
+  assert.match(app, /saveGmailSettingsViaApi/);
+  assert.match(app, /connectGmailViaApi/);
+  assert.match(app, /scanGmailViaApi/);
+  assert.match(clickHandlerSource, /data-settings-tab/);
+  assert.match(clickHandlerSource, /action === "connect-gmail"/);
+  assert.match(clickHandlerSource, /action === "scan-gmail"/);
+  assert.match(clickHandlerSource, /action === "add-gmail-contact"/);
+  assert.match(submitHandlerSource, /data-gmail-settings-form/);
+  assert.match(submitHandlerSource, /saveGmailSettingsViaApi\(tenant\.id, gmailFormValues\(event\.target\)\)/);
+  assert.match(styles, /\.settings-tabs/);
+  assert.match(styles, /\.settings-layout/);
+  assert.match(styles, /\.signal-row/);
 });
 
 test("CRM inbox expands communication rows into correspondence threads", () => {
