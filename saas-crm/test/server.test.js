@@ -227,17 +227,24 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   const renderCampaignsSource = functionSource(app, "renderCampaigns", "renderAccountDetail");
 
   assert.match(app, /const defaultTags =/);
+  assert.match(app, /const campaignRecurrences =/);
   assert.match(app, /const templateTokens =/);
   assert.match(app, /campaigns:/);
   assert.match(app, /function allAccountTags/);
   assert.match(app, /function campaignRecipients/);
   assert.match(app, /function renderMergedTemplate/);
+  assert.match(app, /function recurrenceLabel/);
+  assert.match(app, /data = normalizeData\(\{ \.\.\.data, tenants: remote\.tenants, inviteEmails: remote\.inviteEmails \}\)/);
   assert.match(sidebarSource, /sideLink\("campaigns", "◉", "Campaigns"/);
   assert.match(renderSectionSource, /ui\.section === "campaigns"/);
   assert.match(renderCampaignsSource, /data-campaign-form/);
+  assert.match(renderCampaignsSource, /const campaigns = tenant\.campaigns \|\| \[\]/);
   assert.match(renderCampaignsSource, /By tag/);
   assert.match(renderCampaignsSource, /By level/);
   assert.match(renderCampaignsSource, /By account name/);
+  assert.match(renderCampaignsSource, /Recurrence/);
+  assert.match(renderCampaignsSource, /campaignRecurrences\.map/);
+  assert.match(renderCampaignsSource, /recurrenceLabel\(campaign\.recurrence\)/);
   assert.match(renderCampaignsSource, /data-action="insert-template-token"/);
   assert.match(renderCampaignsSource, /data-campaign-template/);
   assert.match(styles, /\.campaign-layout/);
@@ -288,7 +295,9 @@ test("CRM form handling persists campaigns and account tags", () => {
   assert.match(changeHandlerSource, /data-account-tag-select/);
   assert.match(changeHandlerSource, /prompt\("New account tag"\)/);
   assert.match(submitHandlerSource, /data-campaign-form/);
-  assert.match(submitHandlerSource, /campaigns: \[campaign, \.\.\.tenant\.campaigns\]/);
+  assert.match(submitHandlerSource, /const campaigns = tenant\.campaigns \|\| \[\]/);
+  assert.match(submitHandlerSource, /campaigns: \[campaign, \.\.\.campaigns\]/);
   assert.match(submitHandlerSource, /status: "Draft"/);
+  assert.match(submitHandlerSource, /recurrence: "one-time"/);
   assert.match(submitHandlerSource, /campaigns: tenant\.campaigns/);
 });

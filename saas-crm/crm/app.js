@@ -24,6 +24,13 @@ const owners = {
   "Amihai Cohen": ["AC", "#24a978"],
 };
 const defaultTags = ["Enterprise", "Renewal", "Expansion", "At risk", "Pilot"];
+const campaignRecurrences = [
+  ["one-time", "One-time"],
+  ["weekly", "Weekly"],
+  ["monthly", "Monthly"],
+  ["quarterly", "Quarterly"],
+  ["renewal-window", "Renewal window"],
+];
 const templateTokens = [
   ["mainContactName", "Main contact name"],
   ["accountName", "Account name"],
@@ -60,7 +67,7 @@ const tenantSeed = [
       { id: 1, dealId: 1, type: "Email", direction: "outbound", subject: "Security review follow-up", body: "Sharing the final procurement checklist and next steps.", date: "2026-06-10T09:42:00", owner: "Noa Levi", tracked: "Opened twice" },
     ],
     campaigns: [
-      { id: 1, name: "Enterprise renewal readiness", audienceType: "tag", audienceValue: "Enterprise", subject: "Planning your next Zeptrix milestone", template: "Hi {{mainContactName}},\n\nAs {{accountName}} approaches the next milestone, {{ownerName}} prepared a short plan around {{dealName}} and the {{dealValue}} relationship.\n\nCan we review it before {{closeDate}}?", status: "Draft", createdAt: "2026-06-12T10:00:00" },
+      { id: 1, name: "Enterprise renewal readiness", audienceType: "tag", audienceValue: "Enterprise", recurrence: "renewal-window", subject: "Planning your next Zeptrix milestone", template: "Hi {{mainContactName}},\n\nAs {{accountName}} approaches the next milestone, {{ownerName}} prepared a short plan around {{dealName}} and the {{dealValue}} relationship.\n\nCan we review it before {{closeDate}}?", status: "Draft", createdAt: "2026-06-12T10:00:00" },
     ],
   },
   {
@@ -87,7 +94,7 @@ const tenantSeed = [
       { id: 1, dealId: 1, type: "Meeting", direction: "inbound", subject: "Pricing workshop", body: "Reviewed Growth plan and data migration needs.", date: "2026-06-11T15:30:00", owner: "Amihai Cohen", tracked: "45 min" },
     ],
     campaigns: [
-      { id: 1, name: "Expansion stakeholder note", audienceType: "tag", audienceValue: "Expansion", subject: "Next step for {{accountName}}", template: "Hi {{mainContactName}},\n\nFollowing {{dealName}}, I wanted to share a tailored rollout plan for {{accountName}}.\n\n{{ownerName}} can walk through it this week.", status: "Draft", createdAt: "2026-06-12T11:00:00" },
+      { id: 1, name: "Expansion stakeholder note", audienceType: "tag", audienceValue: "Expansion", recurrence: "monthly", subject: "Next step for {{accountName}}", template: "Hi {{mainContactName}},\n\nFollowing {{dealName}}, I wanted to share a tailored rollout plan for {{accountName}}.\n\n{{ownerName}} can walk through it this week.", status: "Draft", createdAt: "2026-06-12T11:00:00" },
     ],
   },
 ];
@@ -136,6 +143,7 @@ let ui = {
     name: "Renewal planning outreach",
     audienceType: "tag",
     audienceValue: "Enterprise",
+    recurrence: "one-time",
     subject: "Next step for {{accountName}}",
     template: "Hi {{mainContactName}},\n\nI prepared a short plan for {{accountName}} around {{dealName}}. {{ownerName}} can walk through the next step before {{closeDate}}.\n\nBest,\n{{ownerName}}",
   },
@@ -159,7 +167,7 @@ function normalizeData(nextData) {
   nextData.tenants = nextData.tenants.map((tenant) => ({
     ...tenant,
     deals: (tenant.deals || []).map((deal) => ({ ...deal, tags: deal.tags || defaultAccountTags(deal) })),
-    campaigns: tenant.campaigns || [],
+    campaigns: (tenant.campaigns || []).map((campaign) => ({ recurrence: "one-time", ...campaign })),
     users: (tenant.users || []).map((user) => {
       const generatedPassword = user.password || seedPasswords[user.email] || generateTemporaryPassword();
       if (!user.password && !nextData.inviteEmails.some((mail) => mail.to?.toLowerCase() === user.email.toLowerCase() && mail.temporaryPassword === generatedPassword)) {
@@ -271,7 +279,7 @@ async function apiRequest(path, options = {}) {
 async function loadStateFromApi() {
   try {
     const remote = await apiRequest("/api/state");
-    data = { ...data, tenants: remote.tenants, inviteEmails: remote.inviteEmails };
+    data = normalizeData({ ...data, tenants: remote.tenants, inviteEmails: remote.inviteEmails });
     if (IS_DEMO_ROUTE) applyDemoSession();
     if (!data.tenants.some((tenant) => tenant.id === ui.tenantId)) ui.tenantId = data.tenants[0]?.id || "admin";
     saveData();
@@ -925,6 +933,7 @@ function renderImportStrip() {
 
 function renderCampaigns() {
   const tenant = currentTenant();
+  const campaigns = tenant.campaigns || [];
   const draft = ui.campaignDraft;
   const tags = allAccountTags();
   const accounts = uniqueBy("account");
@@ -936,10 +945,10 @@ function renderCampaigns() {
   return `${renderPageHeader("Campaigns", "Segment customers, personalize outreach, and keep every campaign tied to account data.")}
     <section class="campaign-layout">
       <article class="widget">
-        <div class="panel-head"><h3>Existing campaigns</h3><span class="count">${tenant.campaigns.length}</span></div>
-        <div class="campaign-list">${tenant.campaigns.map((campaign) => {
+        <div class="panel-head"><h3>Existing campaigns</h3><span class="count">${campaigns.length}</span></div>
+        <div class="campaign-list">${campaigns.map((campaign) => {
           const recipients = campaignRecipients(campaign.audienceType, campaign.audienceValue);
-          return `<div class="campaign-card"><strong>${escapeHtml(campaign.name)}</strong><small>${escapeHtml(campaign.status)} · ${escapeHtml(campaign.audienceType)}: ${escapeHtml(campaign.audienceValue)} · ${recipients.length} accounts</small><p>${renderMergedTemplate(campaign.subject, recipients[0] || accounts[0])}</p></div>`;
+          return `<div class="campaign-card"><strong>${escapeHtml(campaign.name)}</strong><small>${escapeHtml(campaign.status)} · ${escapeHtml(recurrenceLabel(campaign.recurrence))} · ${escapeHtml(campaign.audienceType)}: ${escapeHtml(campaign.audienceValue)} · ${recipients.length} accounts</small><p>${renderMergedTemplate(campaign.subject, recipients[0] || accounts[0])}</p></div>`;
         }).join("") || `<p class="empty-state compact">No campaigns yet.</p>`}</div>
       </article>
       <form class="widget campaign-builder" data-campaign-form>
@@ -948,6 +957,7 @@ function renderCampaigns() {
           <label class="field"><span>Name</span><input name="name" value="${escapeHtml(draft.name)}" data-campaign-field required /></label>
           <label class="field"><span>Audience</span><select name="audienceType" data-campaign-field><option value="tag" ${draft.audienceType === "tag" ? "selected" : ""}>By tag</option><option value="level" ${draft.audienceType === "level" ? "selected" : ""}>By level</option><option value="name" ${draft.audienceType === "name" ? "selected" : ""}>By account name</option></select></label>
           <label class="field"><span>Selector</span><select name="audienceValue" data-campaign-field>${audienceOptions.map((option) => `<option value="${escapeHtml(option)}" ${option === audienceValue ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select></label>
+          <label class="field"><span>Recurrence</span><select name="recurrence" data-campaign-field>${campaignRecurrences.map(([value, label]) => `<option value="${value}" ${value === draft.recurrence ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
           <label class="field"><span>Subject</span><input name="subject" value="${escapeHtml(draft.subject)}" data-campaign-field required /></label>
         </div>
         <div class="recipient-preview"><strong>${recipients.length} selected accounts</strong><span>${recipients.map((deal) => escapeHtml(deal.account)).join(", ") || "No matching accounts"}</span></div>
@@ -957,6 +967,10 @@ function renderCampaigns() {
         <div class="form-actions"><button type="button" class="button" data-action="reset-campaign-draft">Reset</button><span class="toolbar-spacer"></span><button class="button primary">Create campaign</button></div>
       </form>
     </section>`;
+}
+
+function recurrenceLabel(value) {
+  return campaignRecurrences.find(([key]) => key === value)?.[1] || "One-time";
 }
 
 function renderAccountDetail(accountDeal, accountCount) {
@@ -1348,7 +1362,7 @@ document.addEventListener("click", async (event) => {
       return;
     }
     if (action === "reset-campaign-draft") {
-      ui.campaignDraft = { name: "", audienceType: "tag", audienceValue: allAccountTags()[0] || "", subject: "", template: "" };
+      ui.campaignDraft = { name: "", audienceType: "tag", audienceValue: allAccountTags()[0] || "", recurrence: "one-time", subject: "", template: "" };
     }
     if (action === "remove-account-tag") {
       const accountName = actionElement.dataset.account;
@@ -1663,14 +1677,16 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));
     const tenant = currentTenant();
+    const campaigns = tenant.campaigns || [];
     const campaign = {
-      id: Math.max(0, ...tenant.campaigns.map((item) => item.id)) + 1,
+      id: Math.max(0, ...campaigns.map((item) => item.id)) + 1,
+      recurrence: "one-time",
       ...values,
       status: "Draft",
       createdAt: new Date().toISOString(),
     };
-    setTenant({ ...tenant, campaigns: [campaign, ...tenant.campaigns] });
-    ui.campaignDraft = { ...ui.campaignDraft, name: "", subject: "", template: "" };
+    setTenant({ ...tenant, campaigns: [campaign, ...campaigns] });
+    ui.campaignDraft = { ...ui.campaignDraft, name: "", recurrence: "one-time", subject: "", template: "" };
     render();
     return;
   }
