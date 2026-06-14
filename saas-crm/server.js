@@ -827,13 +827,17 @@ function normalizeGmailSettings(payload = {}) {
   return {
     accountEmail,
     workspaceDomain: String(payload.workspaceDomain || "zeptrix.io").trim(),
-    clientId: String(payload.clientId || "").trim(),
+    clientId: normalizeOAuthClientId(payload.clientId),
     redirectUri: String(payload.redirectUri || `${publicBaseUrl}/api/gmail/oauth/callback`).trim(),
     labels: String(payload.labels || "Inbox, Sent").trim(),
     staleMonths: Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
     detectNewContacts: payload.detectNewContacts !== false,
     detectDormantContacts: payload.detectDormantContacts !== false,
   };
+}
+
+function normalizeOAuthClientId(value) {
+  return String(value || "").replace(/\s+/g, "");
 }
 
 async function upsertGmailSettings(tenantId, payload) {
@@ -861,7 +865,7 @@ async function upsertGmailSettings(tenantId, payload) {
 
 function gmailAuthUrl({ tenantId, userId, clientId, redirectUri, accountEmail }) {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("client_id", normalizeOAuthClientId(clientId));
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("access_type", "offline");

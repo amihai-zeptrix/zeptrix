@@ -161,13 +161,14 @@ test("SMTP invite message sends only to the tenant login recipient", () => {
 test("Gmail settings normalization clamps scan thresholds and defaults detection", () => {
   const settings = normalizeGmailSettings({
     accountEmail: " user@gmail.com ",
-    clientId: "client-123",
+    clientId: " 630303201111-\n etgcku1f78j31regvoc0lm2qdq6gqr5e.app\ns.googleusercontent.com ",
     redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
     staleMonths: 99,
     detectNewContacts: false,
   });
 
   assert.equal(settings.accountEmail, "user@gmail.com");
+  assert.equal(settings.clientId, "630303201111-etgcku1f78j31regvoc0lm2qdq6gqr5e.apps.googleusercontent.com");
   assert.equal(settings.staleMonths, 36);
   assert.equal(settings.detectNewContacts, false);
   assert.equal(settings.detectDormantContacts, true);
@@ -179,13 +180,13 @@ test("Gmail OAuth URL uses readonly scope and tenant state", () => {
   const authUrl = new URL(gmailAuthUrl({
     tenantId: "tenant-123",
     userId: "user-123",
-    clientId: "client-123",
+    clientId: " 630303201111-\n etgcku1f78j31regvoc0lm2qdq6gqr5e.app\ns.googleusercontent.com ",
     redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
     accountEmail: "user@gmail.com",
   }));
 
   assert.equal(authUrl.hostname, "accounts.google.com");
-  assert.equal(authUrl.searchParams.get("client_id"), "client-123");
+  assert.equal(authUrl.searchParams.get("client_id"), "630303201111-etgcku1f78j31regvoc0lm2qdq6gqr5e.apps.googleusercontent.com");
   assert.equal(authUrl.searchParams.get("redirect_uri"), "https://www.zeptrix.io/api/gmail/oauth/callback");
   assert.equal(authUrl.searchParams.get("scope"), "https://www.googleapis.com/auth/gmail.readonly");
   assert.equal(authUrl.searchParams.get("access_type"), "offline");
