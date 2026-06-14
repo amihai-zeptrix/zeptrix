@@ -434,6 +434,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /formField\("Gmail account", "accountEmail", gmail\.accountEmail, "email", true\)/);
   assert.match(renderMailSettingsSource, /gmailClientIdDiagnostic\(gmail\.clientId\)/);
   assert.match(renderMailSettingsSource, /gmail-diagnostic/);
+  assert.match(renderMailSettingsSource, /ui\.gmailNotice/);
   assert.match(renderMailSettingsSource, /canUseGmailBackend/);
   assert.match(renderMailSettingsSource, /Gmail connection requires signing in to a workspace at \/crm\./);
   assert.match(renderMailSettingsSource, /data-action="connect-gmail" \$\{actionDisabled\}/);
@@ -450,6 +451,13 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /saveGmailSettingsViaApi/);
   assert.match(app, /connectGmailViaApi/);
   assert.match(app, /scanGmailViaApi/);
+  assert.match(app, /handleGmailCallbackQuery/);
+  assert.match(app, /Gmail connected\. Refreshing integration status/);
+  assert.match(app, /setGmailStatus\("Saving Gmail settings\.\.\."/);
+  assert.match(app, /Preparing Google authorization/);
+  assert.match(app, /Redirecting to Google authorization/);
+  assert.match(app, /Scanning Gmail\.\.\./);
+  assert.match(app, /Gmail settings saved\./);
   assert.match(serverSource(), /if \(!integration\.account_email \|\| profile\.emailAddress\?\.toLowerCase\(\) !== String\(integration\.account_email\)\.toLowerCase\(\)\)/);
   assert.match(clickHandlerSource, /data-settings-tab/);
   assert.match(clickHandlerSource, /action === "connect-gmail"/);

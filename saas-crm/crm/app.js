@@ -161,6 +161,7 @@ let ui = {
   selectedCommunicationId: null,
   selectedCampaignId: null,
   settingsTab: "mail",
+  gmailNotice: "",
   replyingThread: "",
   correspondenceDrafts: {},
   campaignDraft: {
@@ -173,8 +174,25 @@ let ui = {
   },
 };
 
+handleGmailCallbackQuery();
 loadStateFromApi();
 if (IS_DEMO_ROUTE) applyDemoSession();
+
+function handleGmailCallbackQuery() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("gmail") === "connected") {
+    ui.section = "settings";
+    ui.settingsTab = "mail";
+    ui.gmailNotice = "Gmail connected. Refreshing integration status...";
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+  if (params.get("gmail") === "error") {
+    ui.section = "settings";
+    ui.settingsTab = "mail";
+    ui.gmailNotice = `Gmail connection failed: ${params.get("detail") || "Unknown error."}`;
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+}
 
 function loadData() {
   try {
@@ -304,6 +322,14 @@ function currentTenant() {
 function setTenant(nextTenant) {
   data.tenants = data.tenants.map((tenant) => tenant.id === nextTenant.id ? nextTenant : tenant);
   saveData();
+}
+
+function setGmailStatus(status, tenant = currentTenant()) {
+  const previous = gmailIntegration(tenant);
+  setTenant({ ...tenant, gmailIntegration: { ...previous, status } });
+  ui.section = "settings";
+  ui.settingsTab = "mail";
+  render();
 }
 
 function currentUser() {
@@ -1361,6 +1387,7 @@ function renderMailIntegrationsSettings() {
     <section class="settings-layout">
       <article class="settings-card">
         <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Read Gmail metadata and messages to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
+        ${ui.gmailNotice ? `<p class="admin-notice">${escapeHtml(ui.gmailNotice)}</p>` : ""}
         <form class="settings-form" data-gmail-settings-form>
           <div class="form-grid">
             ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
@@ -1666,24 +1693,30 @@ document.addEventListener("click", async (event) => {
     if (action === "connect-gmail") {
       const tenant = currentTenant();
       try {
+        setGmailStatus("Saving Gmail settings...", tenant);
         const saved = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(actionElement.closest("form")));
-        setTenant({ ...tenant, gmailIntegration: saved.gmailIntegration });
+        setTenant({ ...currentTenant(), gmailIntegration: { ...saved.gmailIntegration, status: "Preparing Google authorization..." } });
+        render();
         const connected = await connectGmailViaApi(tenant.id);
+        setGmailStatus("Redirecting to Google authorization...", currentTenant());
         window.location.href = connected.authUrl;
         return;
       } catch (error) {
-        setTenant({ ...tenant, gmailIntegration: { ...gmailIntegration(tenant), status: error.message } });
+        setGmailStatus(error.message, currentTenant());
       }
     }
     if (action === "scan-gmail") {
       const tenant = currentTenant();
       try {
+        setGmailStatus("Saving Gmail settings...", tenant);
         const saved = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(actionElement.closest("form")));
-        setTenant({ ...tenant, gmailIntegration: { ...saved.gmailIntegration, status: "Scanning Gmail..." } });
+        setTenant({ ...currentTenant(), gmailIntegration: { ...saved.gmailIntegration, status: "Scanning Gmail..." } });
+        render();
         const result = await scanGmailViaApi(tenant.id);
         setTenant({ ...currentTenant(), gmailIntegration: result.gmailIntegration });
+        render();
       } catch (error) {
-        setTenant({ ...tenant, gmailIntegration: { ...gmailIntegration(tenant), status: error.message } });
+        setGmailStatus(error.message, currentTenant());
       }
     }
     if (action === "add-gmail-contact") {
@@ -2011,8 +2044,9 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     const tenant = currentTenant();
     try {
+      setGmailStatus("Saving Gmail settings...", tenant);
       const result = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(event.target));
-      setTenant({ ...tenant, gmailIntegration: result.gmailIntegration });
+      setTenant({ ...currentTenant(), gmailIntegration: { ...result.gmailIntegration, status: "Gmail settings saved." } });
     } catch (error) {
       const values = gmailFormValues(event.target);
       const previous = gmailIntegration(tenant);
@@ -2034,6 +2068,7 @@ document.addEventListener("submit", async (event) => {
     }
     ui.section = "settings";
     ui.settingsTab = "mail";
+    ui.gmailNotice = "";
     render();
     return;
   }
