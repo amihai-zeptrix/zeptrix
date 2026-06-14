@@ -235,6 +235,7 @@ function loadSession() {
   try {
     const storedSession = JSON.parse(localStorage.getItem(SESSION_KEY));
     if (storedSession?.role === "demo_user" && !IS_DEMO_ROUTE) return null;
+    if (storedSession && storedSession.role !== "demo_user" && !storedSession.apiToken) return null;
     return storedSession;
   } catch {
     return null;
@@ -328,7 +329,13 @@ async function apiRequest(path, options = {}) {
     headers: { "content-type": "application/json", ...(session?.apiToken ? { authorization: `Bearer ${session.apiToken}` } : {}), ...(options.headers || {}) },
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || body.detail || "Request failed.");
+  if (!response.ok) {
+    if (response.status === 401 && session && !IS_DEMO_ROUTE) {
+      session = null;
+      saveSession();
+    }
+    throw new Error(body.error === "Authentication required." ? "Please sign in again to continue." : body.error || body.detail || "Request failed.");
+  }
   return body;
 }
 
@@ -1348,6 +1355,8 @@ function renderMailIntegrationsSettings() {
   const gmail = gmailIntegration(tenant);
   const discoveries = gmailContactDiscoveries(tenant);
   const dormant = gmailDormantContacts(tenant, Number(gmail.staleMonths || 3));
+  const canUseGmailBackend = !!session?.apiToken && session.role !== "demo_user";
+  const actionDisabled = canUseGmailBackend ? "" : "disabled";
   return `
     <section class="settings-layout">
       <article class="settings-card">
@@ -1365,7 +1374,8 @@ function renderMailIntegrationsSettings() {
             <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Suggest people found in Gmail that do not exist in CRM.</small></label>
             <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
           </div>
-          <div class="form-actions"><button type="button" class="button" data-action="connect-gmail">Connect Gmail</button><button type="button" class="button" data-action="scan-gmail">Scan now</button><span class="toolbar-spacer"></span><button class="button primary">Save Gmail settings</button></div>
+          ${canUseGmailBackend ? "" : `<p class="admin-notice">Gmail connection requires signing in to a workspace at /crm.</p>`}
+          <div class="form-actions"><button type="button" class="button" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button><span class="toolbar-spacer"></span><button class="button primary" ${actionDisabled}>Save Gmail settings</button></div>
           <p class="subcopy">Uses server-side OAuth with <strong>gmail.readonly</strong>; refresh tokens are encrypted on the server and the browser never stores the Google client secret.</p>
         </form>
       </article>

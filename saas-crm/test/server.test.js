@@ -427,6 +427,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSettingsPageSource, /data-settings-tab="mail"/);
   assert.match(renderMailSettingsSource, /data-gmail-settings-form/);
   assert.match(renderMailSettingsSource, /formField\("Gmail account", "accountEmail", gmail\.accountEmail, "email", true\)/);
+  assert.match(renderMailSettingsSource, /canUseGmailBackend/);
+  assert.match(renderMailSettingsSource, /Gmail connection requires signing in to a workspace at \/crm\./);
+  assert.match(renderMailSettingsSource, /data-action="connect-gmail" \$\{actionDisabled\}/);
   assert.match(renderMailSettingsSource, /OAuth client ID/);
   assert.match(renderMailSettingsSource, /Authorized redirect URI/);
   assert.match(renderMailSettingsSource, /No-mail threshold in months/);
@@ -450,6 +453,16 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(styles, /\.settings-tabs/);
   assert.match(styles, /\.settings-layout/);
   assert.match(styles, /\.signal-row/);
+});
+
+test("CRM clears stale sessions without API tokens before protected calls", () => {
+  const app = crmAppSource();
+  const loadSessionSource = functionSource(app, "loadSession", "saveData");
+  const apiRequestSource = functionSource(app, "apiRequest", "loadStateFromApi");
+
+  assert.match(loadSessionSource, /storedSession\.role !== "demo_user" && !storedSession\.apiToken/);
+  assert.match(apiRequestSource, /response\.status === 401/);
+  assert.match(apiRequestSource, /Please sign in again to continue/);
 });
 
 test("CRM inbox expands communication rows into correspondence threads", () => {
