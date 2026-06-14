@@ -433,6 +433,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /data-gmail-settings-form/);
   assert.match(renderMailSettingsSource, /formField\("Gmail account", "accountEmail", gmail\.accountEmail, "email", true\)/);
   assert.match(renderMailSettingsSource, /gmailClientIdDiagnostic\(gmail\.clientId\)/);
+  assert.match(renderMailSettingsSource, /gmail-diagnostic/);
   assert.match(renderMailSettingsSource, /canUseGmailBackend/);
   assert.match(renderMailSettingsSource, /Gmail connection requires signing in to a workspace at \/crm\./);
   assert.match(renderMailSettingsSource, /data-action="connect-gmail" \$\{actionDisabled\}/);
@@ -459,6 +460,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(styles, /\.settings-tabs/);
   assert.match(styles, /\.settings-layout/);
   assert.match(styles, /\.signal-row/);
+  assert.match(styles, /\.gmail-diagnostic code/);
 });
 
 test("CRM clears stale sessions without API tokens before protected calls", () => {
