@@ -1387,7 +1387,7 @@ function renderMailIntegrationsSettings() {
     <section class="settings-layout">
       <article class="settings-card">
         <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Read Gmail metadata and messages to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
-        ${ui.gmailNotice ? `<p class="admin-notice">${escapeHtml(ui.gmailNotice)}</p>` : ""}
+        ${ui.gmailNotice ? `<p class="admin-notice gmail-notice ${ui.gmailNotice.toLowerCase().includes("failed") ? "error" : ""}">${escapeHtml(ui.gmailNotice)}</p>` : ""}
         <form class="settings-form" data-gmail-settings-form>
           <div class="form-grid">
             ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
