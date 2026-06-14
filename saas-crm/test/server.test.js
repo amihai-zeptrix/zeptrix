@@ -233,6 +233,18 @@ test("CRM demo route serves the CRM app shell", () => {
   assert.equal(staticFilePathForUrlPath("/crm/demo"), crmIndex);
   assert.equal(staticFilePathForUrlPath("/crm/demo/"), crmIndex);
   assert.equal(staticFilePathForUrlPath("/crm/demo/ron"), crmIndex);
+  assert.equal(staticFilePathForUrlPath("/crm/ron"), crmIndex);
+  assert.notEqual(staticFilePathForUrlPath("/crm/app.js"), crmIndex);
+});
+
+test("CRM named demo routes use the demo tenant instead of admin", () => {
+  const app = crmAppSource();
+
+  assert.ok(app.includes('location.pathname.match(/^\\/crm(?:\\/demo(?:\\/([^/]+))?|\\/([^/.]+))\\/?$/)'));
+  assert.ok(app.includes("DEMO_ROUTE_MATCH?.[1] || DEMO_ROUTE_MATCH?.[2]"));
+  assert.match(app, /function ensureClientDemoTenant/);
+  assert.match(app, /name: "CRM Demo"/);
+  assert.match(app, /tenantId: demoTenant\?\.id \|\| "demo"/);
 });
 
 test("CRM home keeps attention correspondence and relationship event panels", () => {

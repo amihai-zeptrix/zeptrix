@@ -3,9 +3,9 @@ const SESSION_KEY = "zeptrix-saas-session-v1";
 const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
-const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm\/demo(?:\/([^/]+))?\/?$/);
+const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm(?:\/demo(?:\/([^/]+))?|\/([^/.]+))\/?$/);
 const IS_DEMO_ROUTE = !!DEMO_ROUTE_MATCH;
-const DEMO_USER_NAME = DEMO_ROUTE_MATCH?.[1] ? titleCase(DEMO_ROUTE_MATCH[1]) : "Demo User";
+const DEMO_USER_NAME = DEMO_ROUTE_MATCH?.[1] || DEMO_ROUTE_MATCH?.[2] ? titleCase(DEMO_ROUTE_MATCH[1] || DEMO_ROUTE_MATCH[2]) : "Demo User";
 
 const stages = ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"];
 const stageClass = {
@@ -260,6 +260,7 @@ function slugify(value) {
 }
 
 function applyDemoSession() {
+  ensureClientDemoTenant();
   const demoTenant = data.tenants.find((tenant) => tenant.slug === "demo" || tenant.id === "demo");
   session = {
     email: `${slugify(DEMO_USER_NAME)}@demo.zeptrix.io`,
@@ -271,6 +272,26 @@ function applyDemoSession() {
   ui.tenantId = session.tenantId;
   ui.section = "home";
   ui.authError = "";
+}
+
+function ensureClientDemoTenant() {
+  if (data.tenants.some((tenant) => tenant.slug === "demo" || tenant.id === "demo")) return;
+  const template = data.tenants.find((tenant) => tenant.slug === "admin") || data.tenants[0];
+  data.tenants = [
+    ...data.tenants,
+    {
+      ...structuredClone(template),
+      id: "demo",
+      name: "CRM Demo",
+      slug: "demo",
+      plan: "Enterprise",
+      status: "Active",
+      region: "US-East",
+      seats: 6,
+      billingEmail: "demo@zeptrix.io",
+      users: [],
+    },
+  ];
 }
 
 function currentTenant() {

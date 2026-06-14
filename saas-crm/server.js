@@ -1289,6 +1289,7 @@ async function handleApi(req, res) {
 
 function staticFilePathForUrlPath(urlPath) {
   if (urlPath === "/crm/demo" || urlPath === "/crm/demo/" || urlPath.startsWith("/crm/demo/")) return path.join(root, "crm/index.html");
+  if (/^\/crm\/[^/.]+\/?$/.test(urlPath)) return path.join(root, "crm/index.html");
   return path.join(root, urlPath === "/" ? "index.html" : urlPath);
 }
 
