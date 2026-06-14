@@ -1393,7 +1393,6 @@ function renderMailIntegrationsSettings() {
             ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
             ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
             ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full")}
-            <div class="gmail-diagnostic full-row">${gmailClientIdDiagnostic(gmail.clientId)}</div>
             ${formField("Authorized redirect URI", "redirectUri", gmail.redirectUri, "url", false, "full")}
             ${formField("Labels to read", "labels", gmail.labels)}
             ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
@@ -1434,15 +1433,6 @@ function gmailIntegration(tenant = currentTenant()) {
 
 function normalizedGmailClientId(value) {
   return String(value || "").replace(/\s+/g, "");
-}
-
-function gmailClientIdDiagnostic(value) {
-  const clientId = normalizedGmailClientId(value);
-  if (!clientId) return "Paste the Web application Client ID from Google Cloud. It ends with .apps.googleusercontent.com.";
-  const valid = /^\d+-[a-z0-9_-]+\.apps\.googleusercontent\.com$/i.test(clientId);
-  return valid
-    ? `<span>Client ID looks structurally valid (${clientId.length} chars).</span><code>${escapeHtml(clientId)}</code>`
-    : "This does not look like a Google Web application Client ID. Use the Client ID, not the client secret or redirect URI.";
 }
 
 function gmailFormValues(form) {

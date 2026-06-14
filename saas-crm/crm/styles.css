@@ -1226,23 +1226,6 @@ h3 { font-size: 14px; }
   display: grid;
   gap: 14px;
 }
-.gmail-diagnostic {
-  color: var(--muted);
-  display: grid;
-  font-size: 12px;
-  gap: 6px;
-}
-.gmail-diagnostic code {
-  background: var(--blue-soft);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--ink);
-  display: block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-  padding: 8px 10px;
-}
 .check-list.compact {
   gap: 7px;
 }
