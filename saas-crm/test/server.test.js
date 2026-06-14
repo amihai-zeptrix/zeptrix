@@ -174,6 +174,10 @@ test("Gmail settings normalization clamps scan thresholds and defaults detection
   assert.equal(settings.detectDormantContacts, true);
   assert.equal(settings.labels, "Inbox, Sent");
   assert.throws(() => normalizeGmailSettings({ accountEmail: "" }), /Gmail account is required/);
+  assert.throws(
+    () => normalizeGmailSettings({ accountEmail: "user@gmail.com", clientId: "https://www.zeptrix.io/api/gmail/oauth/callback" }),
+    /OAuth client ID must be the Web application Client ID/,
+  );
 });
 
 test("Gmail OAuth URL uses readonly scope and tenant state", () => {

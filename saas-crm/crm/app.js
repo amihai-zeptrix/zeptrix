@@ -1408,6 +1408,7 @@ function gmailFormValues(form) {
   const values = Object.fromEntries(new FormData(form));
   return {
     ...values,
+    clientId: String(values.clientId || "").replace(/\s+/g, ""),
     detectNewContacts: Boolean(values.detectNewContacts),
     detectDormantContacts: Boolean(values.detectDormantContacts),
   };

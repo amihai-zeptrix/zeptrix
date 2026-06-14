@@ -819,15 +819,21 @@ function escapeHtml(value) {
 
 function normalizeGmailSettings(payload = {}) {
   const accountEmail = String(payload.accountEmail || "").trim();
+  const clientId = normalizeOAuthClientId(payload.clientId);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
     const error = new Error("Gmail account is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (clientId && !isValidGoogleOAuthClientId(clientId)) {
+    const error = new Error("OAuth client ID must be the Web application Client ID ending in .apps.googleusercontent.com.");
     error.statusCode = 400;
     throw error;
   }
   return {
     accountEmail,
     workspaceDomain: String(payload.workspaceDomain || "zeptrix.io").trim(),
-    clientId: normalizeOAuthClientId(payload.clientId),
+    clientId,
     redirectUri: String(payload.redirectUri || `${publicBaseUrl}/api/gmail/oauth/callback`).trim(),
     labels: String(payload.labels || "Inbox, Sent").trim(),
     staleMonths: Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
@@ -838,6 +844,10 @@ function normalizeGmailSettings(payload = {}) {
 
 function normalizeOAuthClientId(value) {
   return String(value || "").replace(/\s+/g, "");
+}
+
+function isValidGoogleOAuthClientId(value) {
+  return /^\d+-[a-z0-9_-]+\.apps\.googleusercontent\.com$/i.test(value);
 }
 
 async function upsertGmailSettings(tenantId, payload) {
@@ -864,8 +874,12 @@ async function upsertGmailSettings(tenantId, payload) {
 }
 
 function gmailAuthUrl({ tenantId, userId, clientId, redirectUri, accountEmail }) {
+  const normalizedClientId = normalizeOAuthClientId(clientId);
+  if (!isValidGoogleOAuthClientId(normalizedClientId)) {
+    throw new Error("Saved OAuth client ID is not a valid Google Web application Client ID.");
+  }
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  url.searchParams.set("client_id", normalizeOAuthClientId(clientId));
+  url.searchParams.set("client_id", normalizedClientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("access_type", "offline");
