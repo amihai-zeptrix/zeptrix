@@ -3,7 +3,9 @@ const SESSION_KEY = "zeptrix-saas-session-v1";
 const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
-const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm(?:\/demo(?:\/([^/]+))?|\/([^/.]+))\/?$/);
+const CRM_NAMED_ROUTE_MATCH = location.pathname.match(/^\/crm\/([^/.]+)\/?$/);
+const CRM_SECTION_ROUTE = CRM_NAMED_ROUTE_MATCH && ["admin", "home", "pipeline", "accounts", "campaigns", "contacts", "activities", "inbox", "reports", "settings"].includes(CRM_NAMED_ROUTE_MATCH[1]) ? CRM_NAMED_ROUTE_MATCH[1] : "";
+const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm\/demo(?:\/([^/]+))?\/?$/) || (!CRM_SECTION_ROUTE ? CRM_NAMED_ROUTE_MATCH : null);
 const IS_DEMO_ROUTE = !!DEMO_ROUTE_MATCH;
 const DEMO_USER_NAME = DEMO_ROUTE_MATCH?.[1] || DEMO_ROUTE_MATCH?.[2] ? titleCase(DEMO_ROUTE_MATCH[1] || DEMO_ROUTE_MATCH[2]) : "Demo User";
 
@@ -136,7 +138,7 @@ let ui = {
   pendingUser: null,
   authError: "",
   tenantId: session?.tenantId || "admin",
-  section: "admin",
+  section: CRM_SECTION_ROUTE || "admin",
   view: "table",
   savedView: "All deals",
   search: "",
