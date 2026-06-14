@@ -432,6 +432,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSettingsPageSource, /data-settings-tab="mail"/);
   assert.match(renderMailSettingsSource, /data-gmail-settings-form/);
   assert.match(renderMailSettingsSource, /formField\("Gmail account", "accountEmail", gmail\.accountEmail, "email", true\)/);
+  assert.match(renderMailSettingsSource, /gmailClientIdDiagnostic\(gmail\.clientId\)/);
   assert.match(renderMailSettingsSource, /canUseGmailBackend/);
   assert.match(renderMailSettingsSource, /Gmail connection requires signing in to a workspace at \/crm\./);
   assert.match(renderMailSettingsSource, /data-action="connect-gmail" \$\{actionDisabled\}/);
