@@ -574,9 +574,13 @@ test("CRM shows an impressive whats new dialog after login", () => {
   assert.match(renderModalSource, /ui\.modal === "whats-new"/);
   assert.match(renderWhatsNewSource, /Gmail integration/);
   assert.match(renderWhatsNewSource, /Populate accounts/);
+  assert.match(renderWhatsNewSource, /whats-new-window-bar/);
+  assert.match(renderWhatsNewSource, /whats-new-frame/);
   assert.match(renderWhatsNewSource, /data-action="close-whats-new"/);
   assert.match(loginHandlerSource, /maybeShowWhatsNew\(\)/);
   assert.match(styles, /\.whats-new-modal/);
+  assert.match(styles, /\.whats-new-window-bar/);
+  assert.match(styles, /\.whats-new-frame/);
   assert.match(styles, /\.whats-new-hero/);
 });
 
