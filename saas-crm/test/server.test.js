@@ -514,6 +514,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /Authorized redirect URI/);
   assert.match(renderMailSettingsSource, /No-mail threshold in months/);
   assert.match(renderMailSettingsSource, /Identify new contacts from Gmail/);
+  assert.match(renderMailSettingsSource, /last \$\{GMAIL_DISCOVERY_LOOKBACK_DAYS\} days/);
+  assert.match(renderMailSettingsSource, /filters out contacts already in CRM/);
   assert.match(renderMailSettingsSource, /Find contacts with no sent mail/);
   assert.match(renderMailSettingsSource, /gmail\.readonly/);
   assert.match(app, /staleMonths: 3/);
@@ -524,6 +526,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /connectGmailViaApi/);
   assert.match(app, /scanGmailViaApi/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30/);
+  assert.match(app, /GMAIL_DISCOVERY_LOOKBACK_DAYS = 30/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_FULL_LIMIT = 250/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250/);
@@ -554,6 +557,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(styles, /\.settings-tabs/);
   assert.match(styles, /\.settings-layout/);
   assert.match(styles, /\.signal-row/);
+  assert.match(styles, /\.signal-scope/);
   assert.match(styles, /\.gmail-notice\.error/);
   assert.doesNotMatch(styles, /\.gmail-diagnostic/);
 });
@@ -565,6 +569,8 @@ test("CRM Gmail discovered contacts provide add feedback and disappear after add
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
 
   assert.match(renderMailSettingsSource, /New contacts found in Gmail/);
+  assert.match(renderMailSettingsSource, /Scope: last \$\{GMAIL_DISCOVERY_LOOKBACK_DAYS\} days/);
+  assert.match(renderMailSettingsSource, /non-sent Gmail/);
   assert.match(renderMailSettingsSource, /data-gmail-signal-email/);
   assert.match(renderMailSettingsSource, /\[item\.email, item\.phone, item\.source\]\.filter\(Boolean\)\.join/);
   assert.match(app, /GMAIL_DISCOVERY_PAGE_SIZE = 10/);

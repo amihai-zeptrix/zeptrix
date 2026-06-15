@@ -3,6 +3,7 @@ const SESSION_KEY = "zeptrix-saas-session-v1";
 const WHATS_NEW_KEY = "zeptrix-crm-whats-new-v1";
 const WHATS_NEW_VERSION = "gmail-import-2026-06";
 const GMAIL_DISCOVERY_PAGE_SIZE = 10;
+const GMAIL_DISCOVERY_LOOKBACK_DAYS = 30;
 const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
@@ -1445,12 +1446,13 @@ function renderMailIntegrationsSettings() {
             ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
           </div>
           <div class="check-list compact">
-            <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Suggest people found in Gmail that do not exist in CRM.</small></label>
+            <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Scans the last ${GMAIL_DISCOVERY_LOOKBACK_DAYS} days of non-sent Gmail and suggests people who do not exist in CRM.</small></label>
             <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
           </div>
           ${canUseGmailBackend ? "" : `<p class="admin-notice">Gmail connection requires signing in to a workspace at /crm.</p>`}
           <div class="form-actions"><button type="button" class="button" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button><span class="toolbar-spacer"></span><button class="button primary" ${actionDisabled}>Save Gmail settings</button></div>
           <p class="subcopy">Uses server-side OAuth with <strong>gmail.readonly</strong>; refresh tokens are encrypted on the server and the browser never stores the Google client secret.</p>
+          <p class="subcopy">New-contact discovery scans the last <strong>${GMAIL_DISCOVERY_LOOKBACK_DAYS} days</strong> of non-sent Gmail and filters out contacts already in CRM.</p>
         </form>
       </article>
       <article class="settings-card">
@@ -1461,6 +1463,7 @@ function renderMailIntegrationsSettings() {
         </div>
         <div class="signal-list">
           <h4>New contacts found in Gmail</h4>
+          <p class="signal-scope">Scope: last ${GMAIL_DISCOVERY_LOOKBACK_DAYS} days, non-sent Gmail, excluding existing CRM contacts.</p>
           ${visibleDiscoveries.map((item) => `<div class="signal-row" data-gmail-signal-email="${escapeHtml(item.email)}"><span class="activity-symbol">＋</span><span class="list-primary">${escapeHtml(item.name)}<small>${escapeHtml([item.email, item.phone, item.source].filter(Boolean).join(" · "))}</small></span><button class="button small" data-action="add-gmail-contact" data-email="${escapeHtml(item.email)}">Add</button></div>`).join("") || `<p class="empty-state compact">No unknown Gmail contacts found in the latest scan.</p>`}
           ${renderGmailDiscoveryPagination(discoveries.length, ui.gmailDiscoveryPage, totalDiscoveryPages)}
           <h4>Contacts needing follow-up</h4>

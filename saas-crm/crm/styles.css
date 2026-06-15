@@ -1395,6 +1395,12 @@ h3 { font-size: 14px; }
   font-size: 11px;
   text-transform: uppercase;
 }
+.signal-scope {
+  margin: -2px 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
 .signal-pagination {
   display: flex;
   align-items: center;
