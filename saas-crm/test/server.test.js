@@ -436,6 +436,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.doesNotMatch(renderMailSettingsSource, /gmail-diagnostic/);
   assert.match(renderMailSettingsSource, /ui\.gmailNotice/);
   assert.match(renderMailSettingsSource, /gmail-notice/);
+  assert.match(renderMailSettingsSource, /data-action="open-gmail-oauth-guide"/);
+  assert.match(renderMailSettingsSource, /Show me now/);
   assert.match(renderMailSettingsSource, /canUseGmailBackend/);
   assert.match(renderMailSettingsSource, /Gmail connection requires signing in to a workspace at \/crm\./);
   assert.match(renderMailSettingsSource, /data-action="connect-gmail" \$\{actionDisabled\}/);
@@ -459,6 +461,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /Redirecting to Google authorization/);
   assert.match(app, /Scanning Gmail\.\.\./);
   assert.match(app, /Gmail settings saved\./);
+  assert.match(app, /renderGmailOAuthGuide/);
+  assert.match(app, /ui\.modal === "gmail-oauth-guide"/);
+  assert.match(app, /Google Cloud Console/);
   assert.match(serverSource(), /if \(!integration\.account_email \|\| profile\.emailAddress\?\.toLowerCase\(\) !== String\(integration\.account_email\)\.toLowerCase\(\)\)/);
   assert.match(clickHandlerSource, /data-settings-tab/);
   assert.match(clickHandlerSource, /action === "connect-gmail"/);
@@ -471,6 +476,41 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(styles, /\.signal-row/);
   assert.match(styles, /\.gmail-notice\.error/);
   assert.doesNotMatch(styles, /\.gmail-diagnostic/);
+});
+
+test("CRM Gmail discovered contacts provide add feedback and disappear after add", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderWorkspaceSettingsPanel");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+
+  assert.match(renderMailSettingsSource, /New contacts found in Gmail/);
+  assert.match(renderMailSettingsSource, /data-gmail-signal-email/);
+  assert.match(renderMailSettingsSource, /!ui\.addedGmailContacts\.has\(item\.email\)/);
+  assert.match(clickHandlerSource, /action === "add-gmail-contact"/);
+  assert.match(clickHandlerSource, /ui\.addedGmailContacts\.add\(discovery\.email\)/);
+  assert.match(clickHandlerSource, /showToast\(`Added \$\{discovery\.name\} from Gmail`\)/);
+  assert.match(app, /function showToast/);
+  assert.match(styles, /\.toast-stack/);
+  assert.match(styles, /\.toast/);
+});
+
+test("CRM shows an impressive whats new dialog after login", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderModalSource = functionSource(app, "renderModal", "renderTenantForm");
+  const renderWhatsNewSource = functionSource(app, "renderWhatsNewDialog", "renderTenantForm");
+  const loginHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+
+  assert.match(app, /WHATS_NEW_VERSION/);
+  assert.match(app, /maybeShowWhatsNew/);
+  assert.match(renderModalSource, /ui\.modal === "whats-new"/);
+  assert.match(renderWhatsNewSource, /Gmail integration/);
+  assert.match(renderWhatsNewSource, /Populate accounts/);
+  assert.match(renderWhatsNewSource, /data-action="close-whats-new"/);
+  assert.match(loginHandlerSource, /maybeShowWhatsNew\(\)/);
+  assert.match(styles, /\.whats-new-modal/);
+  assert.match(styles, /\.whats-new-hero/);
 });
 
 test("CRM clears stale sessions without API tokens before protected calls", () => {

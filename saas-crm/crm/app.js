@@ -1,5 +1,7 @@
 const STORAGE_KEY = "zeptrix-saas-crm-v1";
 const SESSION_KEY = "zeptrix-saas-session-v1";
+const WHATS_NEW_KEY = "zeptrix-crm-whats-new-v1";
+const WHATS_NEW_VERSION = "gmail-import-2026-06";
 const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
@@ -162,6 +164,8 @@ let ui = {
   selectedCampaignId: null,
   settingsTab: "mail",
   gmailNotice: "",
+  addedGmailContacts: new Set(),
+  toasts: [],
   replyingThread: "",
   correspondenceDrafts: {},
   campaignDraft: {
@@ -330,6 +334,27 @@ function setGmailStatus(status, tenant = currentTenant()) {
   ui.section = "settings";
   ui.settingsTab = "mail";
   render();
+}
+
+function showToast(message) {
+  const toast = { id: Date.now(), message };
+  ui.toasts = [toast, ...ui.toasts].slice(0, 3);
+  render();
+  window.setTimeout(() => {
+    ui.toasts = ui.toasts.filter((item) => item.id !== toast.id);
+    render();
+  }, 2600);
+}
+
+function maybeShowWhatsNew() {
+  if (IS_DEMO_ROUTE || session?.forcePasswordChange) return;
+  if (localStorage.getItem(WHATS_NEW_KEY) === WHATS_NEW_VERSION) return;
+  ui.modal = "whats-new";
+}
+
+function dismissWhatsNew() {
+  localStorage.setItem(WHATS_NEW_KEY, WHATS_NEW_VERSION);
+  if (ui.modal === "whats-new") ui.modal = null;
 }
 
 function currentUser() {
@@ -613,8 +638,13 @@ function renderApp() {
         ${renderTopbar()}
         <section class="page">${renderSection()}</section>
       </main>
+      ${renderToasts()}
       ${renderModal()}
     </div>`;
+}
+
+function renderToasts() {
+  return `<div class="toast-stack" aria-live="polite">${ui.toasts.map((toast) => `<div class="toast">${escapeHtml(toast.message)}</div>`).join("")}</div>`;
 }
 
 function renderSidebar() {
@@ -1326,6 +1356,8 @@ function renderInboxThread(item, deal) {
 }
 
 function renderModal() {
+  if (ui.modal === "whats-new") return renderWhatsNewDialog();
+  if (ui.modal === "gmail-oauth-guide") return renderGmailOAuthGuide();
   if (ui.modal === "tenant") return renderTenantForm();
   if (ui.modal === "deal") return renderDealForm();
   if (ui.modal === "task") return renderTaskForm();
@@ -1334,6 +1366,14 @@ function renderModal() {
   if (ui.modal === "settings") return renderSettings();
   if (ui.selected) return renderDealDrawer(currentTenant().deals.find((deal) => deal.id === ui.selected));
   return "";
+}
+
+function renderWhatsNewDialog() {
+  return `<div class="modal-layer center"><section class="modal whats-new-modal"><header class="modal-head"><div><p class="eyebrow">What's new</p><h2>Gmail integration</h2></div><button class="close-button" data-action="close-whats-new">×</button></header><div class="whats-new-hero"><div><strong>Populate accounts from Gmail</strong><p>Connect Gmail to discover new contacts, turn them into account leads, and spot relationships that need follow-up without manual spreadsheet work.</p></div><span>✉</span></div><div class="whats-new-grid"><article><strong>New contacts</strong><small>Find people from recent Gmail threads and add them to CRM with one click.</small></article><article><strong>Relationship health</strong><small>See contacts that have not received outbound mail in your configured time window.</small></article><article><strong>Account context</strong><small>Use imported conversations to keep accounts and next steps easier to populate.</small></article></div><div class="form-actions"><button class="button" data-action="close-whats-new">Later</button><button class="button primary" data-action="open-gmail-settings">Open Gmail integration</button></div></section></div>`;
+}
+
+function renderGmailOAuthGuide() {
+  return `<div class="modal-layer center"><section class="modal gmail-guide-modal"><header class="modal-head"><div><h2>Configure Gmail OAuth</h2><p class="subcopy">Follow these steps in Google Cloud Console for your Google Workspace project.</p></div><button class="close-button" data-action="close">×</button></header><ol class="guide-steps"><li><strong>Open Google Cloud Console</strong><span>Go to APIs & Services, then OAuth consent screen and Clients.</span></li><li><strong>Create a Web application client</strong><span>Choose application type Web application. Do not use Desktop or Android.</span></li><li><strong>Add the JavaScript origin</strong><code>https://www.zeptrix.io</code></li><li><strong>Add the redirect URI</strong><code>https://www.zeptrix.io/api/gmail/oauth/callback</code></li><li><strong>Publish or add test users</strong><span>In Testing mode, add every Gmail account that will authorize the CRM.</span></li><li><strong>Copy the Client ID</strong><span>Paste the Client ID into this field. The client secret stays on the server.</span></li></ol><div class="form-actions"><button class="button" data-action="close">Done</button><a class="button primary" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Open Google Cloud Console</a></div></section></div>`;
 }
 
 function renderTenantForm() {
@@ -1379,7 +1419,7 @@ function renderSettingsPage() {
 function renderMailIntegrationsSettings() {
   const tenant = currentTenant();
   const gmail = gmailIntegration(tenant);
-  const discoveries = gmailContactDiscoveries(tenant);
+  const discoveries = gmailContactDiscoveries(tenant).filter((item) => !ui.addedGmailContacts.has(item.email));
   const dormant = gmailDormantContacts(tenant, Number(gmail.staleMonths || 3));
   const canUseGmailBackend = !!session?.apiToken && session.role !== "demo_user";
   const actionDisabled = canUseGmailBackend ? "" : "disabled";
@@ -1393,6 +1433,7 @@ function renderMailIntegrationsSettings() {
             ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
             ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
             ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full")}
+            <div class="field full oauth-help-row"><span></span><button type="button" class="button small" data-action="open-gmail-oauth-guide">Show me now</button></div>
             ${formField("Authorized redirect URI", "redirectUri", gmail.redirectUri, "url", false, "full")}
             ${formField("Labels to read", "labels", gmail.labels)}
             ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
@@ -1414,7 +1455,7 @@ function renderMailIntegrationsSettings() {
         </div>
         <div class="signal-list">
           <h4>New contacts found in Gmail</h4>
-          ${discoveries.map((item) => `<div class="signal-row"><span class="activity-symbol">＋</span><span class="list-primary">${escapeHtml(item.name)}<small>${escapeHtml(item.email)} · ${escapeHtml(item.source)}</small></span><button class="button small" data-action="add-gmail-contact" data-email="${escapeHtml(item.email)}">Add</button></div>`).join("") || `<p class="empty-state compact">No unknown Gmail contacts found in the latest scan.</p>`}
+          ${discoveries.map((item) => `<div class="signal-row" data-gmail-signal-email="${escapeHtml(item.email)}"><span class="activity-symbol">＋</span><span class="list-primary">${escapeHtml(item.name)}<small>${escapeHtml(item.email)} · ${escapeHtml(item.source)}</small></span><button class="button small" data-action="add-gmail-contact" data-email="${escapeHtml(item.email)}">Add</button></div>`).join("") || `<p class="empty-state compact">No unknown Gmail contacts found in the latest scan.</p>`}
           <h4>Contacts needing follow-up</h4>
           ${dormant.map((item) => `<button class="signal-row" data-open-contact="${escapeHtml(item.email)}"><span class="activity-symbol">!</span><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · no sent mail for ${item.months} months</small></span><span class="priority priority-high">Follow up</span></button>`).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}
         </div>
@@ -1680,6 +1721,19 @@ document.addEventListener("click", async (event) => {
       ui.selectedContactEmail = "";
     }
     if (action === "open-settings") ui.modal = "settings";
+    if (action === "open-gmail-oauth-guide") ui.modal = "gmail-oauth-guide";
+    if (action === "close-whats-new") {
+      dismissWhatsNew();
+      render();
+      return;
+    }
+    if (action === "open-gmail-settings") {
+      dismissWhatsNew();
+      ui.section = "settings";
+      ui.settingsTab = "mail";
+      render();
+      return;
+    }
     if (action === "connect-gmail") {
       const tenant = currentTenant();
       try {
@@ -1730,6 +1784,9 @@ document.addEventListener("click", async (event) => {
           updated: "Just now",
         };
         setTenant({ ...tenant, deals: [contact, ...tenant.deals] });
+        ui.addedGmailContacts.add(discovery.email);
+        showToast(`Added ${discovery.name} from Gmail`);
+        return;
       }
     }
     if (action === "edit-tenant") { ui.editingTenant = data.tenants.find((tenant) => tenant.id === id); ui.authError = ""; ui.adminNotice = ""; ui.modal = "tenant"; }
@@ -1929,6 +1986,7 @@ document.addEventListener("submit", async (event) => {
     ui.authStep = "password";
     saveSession();
     await loadStateFromApi();
+    maybeShowWhatsNew();
     render();
     return;
   }
@@ -1957,6 +2015,7 @@ document.addEventListener("submit", async (event) => {
     session.forcePasswordChange = false;
     ui.authError = "";
     saveSession();
+    maybeShowWhatsNew();
     render();
     return;
   }
