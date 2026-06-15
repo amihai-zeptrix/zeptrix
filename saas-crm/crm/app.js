@@ -1490,7 +1490,7 @@ function gmailContactDiscoveries(tenant = currentTenant()) {
   const gmail = gmailIntegration(tenant);
   const signals = gmail.signals || [];
   const scanned = signals.filter((signal) => signal.type === "new_contact");
-  if (scanned.length) return scanned.map((signal) => ({ name: signal.name || signal.email.split("@")[0], email: signal.email, source: signal.source || "Gmail scan" }));
+  if (scanned.length) return scanned.map((signal) => ({ name: signal.name || signal.email.split("@")[0], email: signal.email, account: signal.account || "", source: signal.source || "Gmail scan" }));
   if (gmail.lastScanAt) return [];
   const existing = new Set(tenant.deals.map((deal) => String(deal.email || "").toLowerCase()).filter(Boolean));
   return [
@@ -1770,7 +1770,7 @@ document.addEventListener("click", async (event) => {
         const contact = {
           id: Math.max(0, ...tenant.deals.map((item) => item.id)) + 1,
           name: `${discovery.name} Gmail lead`,
-          account: discovery.email.split("@")[1],
+          account: discovery.account || discovery.email.split("@")[1],
           contact: discovery.name,
           email: discovery.email,
           owner: currentUser().name,
@@ -1780,7 +1780,7 @@ document.addEventListener("click", async (event) => {
           priority: "Medium",
           group: "active",
           tags: ["Gmail"],
-          note: `Discovered from ${discovery.source}.`,
+          note: `Discovered from ${discovery.source}${discovery.account ? ` for ${discovery.account}` : ""}.`,
           updated: "Just now",
         };
         setTenant({ ...tenant, deals: [contact, ...tenant.deals] });

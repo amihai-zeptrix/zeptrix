@@ -985,6 +985,131 @@ function parseEmailAddress(value = "") {
   return { name: (match[1] || email.split("@")[0]).trim(), email };
 }
 
+function decodeGmailBody(data = "") {
+  if (!data) return "";
+  try {
+    return Buffer.from(String(data), "base64url").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function htmlToText(html = "") {
+  return String(html)
+    .replace(/<(br|\/p|\/div|\/li)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;|&apos;/gi, "'")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function collectGmailBodyParts(part, collected = { plain: [], html: [] }) {
+  if (!part) return collected;
+  if (Array.isArray(part.parts)) part.parts.forEach((child) => collectGmailBodyParts(child, collected));
+  if (part.filename) return collected;
+  const data = part.body?.data;
+  if (!data) return collected;
+  if (part.mimeType === "text/plain") collected.plain.push(decodeGmailBody(data));
+  if (part.mimeType === "text/html") collected.html.push(decodeGmailBody(data));
+  return collected;
+}
+
+function extractGmailMessageText(message = {}) {
+  const collected = collectGmailBodyParts(message.payload);
+  const plain = collected.plain.map((part) => part.trim()).filter(Boolean).join("\n");
+  if (plain) return plain;
+  return collected.html.map(htmlToText).map((part) => part.trim()).filter(Boolean).join("\n");
+}
+
+function stripQuotedReplies(text = "") {
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  const stopIndex = lines.findIndex((line) => {
+    const trimmed = line.trim();
+    return trimmed.startsWith(">")
+      || /^On .+ wrote:$/i.test(trimmed)
+      || /^From:\s/i.test(trimmed)
+      || /^-{2,}\s*Original Message\s*-{2,}$/i.test(trimmed);
+  });
+  return (stopIndex >= 0 ? lines.slice(0, stopIndex) : lines).join("\n");
+}
+
+function normalizeSignatureLine(line = "") {
+  return String(line).replace(/\s+/g, " ").replace(/^[|*-]+\s*/, "").trim();
+}
+
+function isSignatureNoise(line = "") {
+  const value = normalizeSignatureLine(line);
+  return !value
+    || value.length > 90
+    || /^sent from my /i.test(value)
+    || /\b(confidential|privileged|unsubscribe|privacy policy|calendar|book a meeting)\b/i.test(value)
+    || /^(twitter|facebook|linkedin|instagram)\b/i.test(value)
+    || /^https?:\/\//i.test(value)
+    || /^www\./i.test(value)
+    || /^[-_=]{2,}$/.test(value);
+}
+
+function signatureCandidateLines(text = "") {
+  const cleanedLines = stripQuotedReplies(text).replace(/\r\n?/g, "\n").split("\n");
+  const delimiterIndex = cleanedLines.findLastIndex((line) => line.trim() === "--");
+  const signoffIndex = cleanedLines.findLastIndex((line) => /^(thanks|thank you|best|regards|best regards|kind regards|sincerely|cheers)[,!.\s-]*$/i.test(line.trim()));
+  const startIndex = Math.max(delimiterIndex, signoffIndex);
+  const rawLines = (startIndex >= 0 ? cleanedLines.slice(startIndex + 1) : cleanedLines.slice(-10))
+    .map(normalizeSignatureLine)
+    .filter((line) => !isSignatureNoise(line))
+    .slice(0, 14);
+  return rawLines;
+}
+
+function looksLikePersonName(line = "") {
+  const value = normalizeSignatureLine(line);
+  if (!value || /[@\d:/]/.test(value) || /\b(inc|llc|ltd|corp|company|group|labs|systems|technologies|studio|software)\b/i.test(value)) return false;
+  const words = value.split(/\s+/);
+  if (words.length < 2 || words.length > 4) return false;
+  return words.every((word) => /^[A-Z][A-Za-z'.-]+$/.test(word));
+}
+
+function looksLikeTitle(line = "") {
+  return /\b(ceo|cto|coo|cfo|founder|co-founder|president|vp|vice president|director|manager|head|lead|principal|partner|consultant|engineer|engineering|sales|marketing|operations|product|success|support|revops|account executive)\b/i.test(normalizeSignatureLine(line));
+}
+
+function looksLikeCompany(line = "") {
+  const value = normalizeSignatureLine(line);
+  if (!value || /[@:]/.test(value) || looksLikeTitle(value) || looksLikePersonName(value)) return false;
+  const words = value.split(/\s+/);
+  return words.length <= 5 && (/\b(inc|llc|ltd|corp|company|group|labs|systems|technologies|studio|software|ai)\b/i.test(value) || /^[A-Z][A-Za-z0-9&'. -]+$/.test(value));
+}
+
+function extractPhone(line = "") {
+  const match = normalizeSignatureLine(line).match(/(?:m|mobile|phone|tel|t)?:?\s*((?:\+?\d[\d ().-]{7,}\d))/i);
+  return match ? match[1].replace(/\s+/g, " ").trim() : "";
+}
+
+function isWeakHeaderName(name = "", email = "") {
+  const localPart = String(email).split("@")[0].toLowerCase();
+  const normalizedName = String(name).trim().toLowerCase();
+  return !normalizedName || normalizedName === localPart || !/\s/.test(normalizedName);
+}
+
+function enrichGmailContactFromSignature(contact = {}, messageText = "") {
+  const lines = signatureCandidateLines(messageText);
+  const enriched = { ...contact, title: "", account: "", phone: "", source: "Inbound Gmail thread" };
+  const nameLine = lines.find(looksLikePersonName);
+  if (nameLine && isWeakHeaderName(enriched.name, enriched.email)) enriched.name = nameLine;
+  enriched.title = lines.find(looksLikeTitle) || "";
+  enriched.account = lines.find((line) => looksLikeCompany(line) && line !== enriched.title && line !== enriched.name) || "";
+  enriched.phone = lines.map(extractPhone).find(Boolean) || "";
+  if (nameLine || enriched.title || enriched.account || enriched.phone) enriched.source = "Inbound Gmail signature";
+  return enriched;
+}
+
 function headerValue(message, name) {
   return message.payload?.headers?.find((header) => header.name.toLowerCase() === name.toLowerCase())?.value || "";
 }
@@ -1006,6 +1131,11 @@ async function readGmailSignals(tenantId) {
   return result.rows;
 }
 
+function gmailContactSignalSource(item = {}) {
+  const details = [item.title, item.phone].filter(Boolean).join(" - ");
+  return details ? `${item.source} - ${details}` : item.source;
+}
+
 async function scanGmailForTenant(tenantId) {
   const integrationResult = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [tenantId]);
   const integration = integrationResult.rows[0];
@@ -1017,7 +1147,7 @@ async function scanGmailForTenant(tenantId) {
     integration.detect_new_contacts ? gmailApi(accessToken, "messages", { q: `${gmailLabelQuery(integration.labels)} newer_than:90d -in:sent`, maxResults: 40 }) : { messages: [] },
   ]);
   const knownEmails = new Set(dealsResult.rows.map((row) => row.email));
-  const inboundMessages = await mapLimit((inboundList.messages || []).slice(0, 40), 6, (message) => gmailApi(accessToken, `messages/${message.id}`, { format: "metadata", metadataHeaders: "From" }));
+  const inboundMessages = await mapLimit((inboundList.messages || []).slice(0, 40), 6, (message) => gmailApi(accessToken, `messages/${message.id}`, { format: "full" }));
 
   const newContacts = [];
   const seenNew = new Set();
@@ -1025,7 +1155,7 @@ async function scanGmailForTenant(tenantId) {
     const parsed = parseEmailAddress(headerValue(message, "From"));
     if (!parsed || knownEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
     seenNew.add(parsed.email);
-    newContacts.push({ ...parsed, source: "Inbound Gmail thread", messageId: message.id });
+    newContacts.push({ ...enrichGmailContactFromSignature(parsed, extractGmailMessageText(message)), messageId: message.id });
   }
 
   const dormantChecks = integration.detect_dormant_contacts
@@ -1040,9 +1170,9 @@ async function scanGmailForTenant(tenantId) {
     await client.query(`delete from gmail_contact_signals where tenant_id=$1`, [tenantId]);
     for (const item of newContacts.slice(0, 25)) {
       await client.query(
-        `insert into gmail_contact_signals (tenant_id, signal_type, email, name, source, message_id, last_seen_at)
-         values ($1,'new_contact',$2,$3,$4,$5,now())`,
-        [tenantId, item.email, item.name, item.source, item.messageId],
+        `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, source, message_id, last_seen_at)
+         values ($1,'new_contact',$2,$3,$4,$5,$6,now())`,
+        [tenantId, item.email, item.name, item.account || "", gmailContactSignalSource(item), item.messageId],
       );
     }
     for (const item of dormant.slice(0, 50)) {
@@ -1362,6 +1492,8 @@ module.exports = {
   duplicateTenantEmailMessage,
   decryptToken,
   encryptToken,
+  enrichGmailContactFromSignature,
+  extractGmailMessageText,
   gmailAuthUrl,
   gmailLabelQuery,
   inviteEmailContent,

@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { decryptToken, duplicateTenantEmailMessage, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
+const { decryptToken, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -208,6 +208,51 @@ test("Gmail helpers parse addresses and encrypt tokens", () => {
   const encrypted = encryptToken("refresh-token-value");
   assert.notEqual(encrypted, "refresh-token-value");
   assert.equal(decryptToken(encrypted), "refresh-token-value");
+});
+
+test("Gmail signature parsing enriches contact candidates conservatively", () => {
+  const messageText = [
+    "Hi team,",
+    "",
+    "Can we discuss the rollout next week?",
+    "",
+    "Best regards,",
+    "Maya Hart",
+    "VP Operations",
+    "Nimbus Labs",
+    "m: +1 415 555 0144",
+    "https://nimbuslabs.io",
+    "",
+    "On Tue, Liam wrote:",
+    "> old quoted text",
+  ].join("\n");
+
+  const enriched = enrichGmailContactFromSignature(
+    { name: "maya", email: "maya@nimbuslabs.io" },
+    messageText,
+  );
+
+  assert.equal(enriched.name, "Maya Hart");
+  assert.equal(enriched.title, "VP Operations");
+  assert.equal(enriched.account, "Nimbus Labs");
+  assert.equal(enriched.phone, "+1 415 555 0144");
+  assert.equal(enriched.source, "Inbound Gmail signature");
+
+  const disclaimerOnly = enrichGmailContactFromSignature(
+    { name: "support", email: "support@example.com" },
+    "Thanks\n\nThis email and any attachments are confidential. Unsubscribe here.",
+  );
+  assert.equal(disclaimerOnly.name, "support");
+  assert.equal(disclaimerOnly.title, "");
+  assert.equal(disclaimerOnly.account, "");
+});
+
+test("Gmail message text extraction prefers plain text and falls back to html", () => {
+  const plain = Buffer.from("Plain body\n-- \nRon Levi\nCTO\nAcme").toString("base64url");
+  const html = Buffer.from("<div>HTML body</div><br><strong>Ignored</strong>").toString("base64url");
+
+  assert.equal(extractGmailMessageText({ payload: { parts: [{ mimeType: "text/html", body: { data: html } }, { mimeType: "text/plain", body: { data: plain } }] } }), "Plain body\n-- \nRon Levi\nCTO\nAcme");
+  assert.equal(extractGmailMessageText({ payload: { mimeType: "text/html", body: { data: html } } }), "HTML body\nIgnored");
 });
 
 test("API auth tokens and Gmail labels are signed and bounded", () => {
