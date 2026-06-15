@@ -247,6 +247,19 @@ test("Gmail signature parsing enriches contact candidates conservatively", () =>
   assert.equal(mobileVariant.account, "Acme Software");
   assert.equal(mobileVariant.phone, "(415) 555-0199");
 
+  [
+    ["Mobile: +972-544-1234567", "+972-544-1234567"],
+    ["Phone: +972-54-1234567", "+972-54-1234567"],
+    ["M: 052-1234567", "052-1234567"],
+    ["Tel: 03-7654321", "03-7654321"],
+  ].forEach(([line, expectedPhone]) => {
+    const israeliPhone = enrichGmailContactFromSignature(
+      { name: "idan", email: "idan@zeptrix.io" },
+      `Thanks\nIdan Yuval\nVP Sales\nZeptrix\n${line}`,
+    );
+    assert.equal(israeliPhone.phone, expectedPhone);
+  });
+
   const disclaimerOnly = enrichGmailContactFromSignature(
     { name: "support", email: "support@example.com" },
     "Thanks\n\nThis email and any attachments are confidential. Unsubscribe here.",
