@@ -1077,7 +1077,7 @@ function looksLikePersonName(line = "") {
 }
 
 function looksLikeTitle(line = "") {
-  return /\b(ceo|cto|coo|cfo|founder|co-founder|president|vp|vice president|director|manager|head|lead|principal|partner|consultant|engineer|engineering|sales|marketing|operations|product|success|support|revops|account executive)\b/i.test(normalizeSignatureLine(line));
+  return /\b(ceo|cto|coo|cfo|founder|co-founder|president|vp|vice president|chief|officer|director|manager|head|lead|principal|partner|consultant|engineer|engineering|technology|sales|marketing|operations|product|success|support|revops|account executive)\b/i.test(normalizeSignatureLine(line));
 }
 
 function looksLikeCompany(line = "") {
@@ -1088,7 +1088,7 @@ function looksLikeCompany(line = "") {
 }
 
 function extractPhone(line = "") {
-  const match = normalizeSignatureLine(line).match(/(?:m|mobile|phone|tel|t)?:?\s*((?:\+?\d[\d ().-]{7,}\d))/i);
+  const match = normalizeSignatureLine(line).match(/(?:m|mobile|phone|tel|t)?:?\s*((?:\+?\d|\(\d{2,4}\))[\d ().-]{6,}\d)/i);
   return match ? match[1].replace(/\s+/g, " ").trim() : "";
 }
 

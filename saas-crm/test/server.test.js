@@ -238,6 +238,15 @@ test("Gmail signature parsing enriches contact candidates conservatively", () =>
   assert.equal(enriched.phone, "+1 415 555 0144");
   assert.equal(enriched.source, "Inbound Gmail signature");
 
+  const mobileVariant = enrichGmailContactFromSignature(
+    { name: "ron", email: "ron@acme.com" },
+    "Regards\nRon Levi\nChief Technology Officer\nAcme Software\nMobile: (415) 555-0199",
+  );
+  assert.equal(mobileVariant.name, "Ron Levi");
+  assert.equal(mobileVariant.title, "Chief Technology Officer");
+  assert.equal(mobileVariant.account, "Acme Software");
+  assert.equal(mobileVariant.phone, "(415) 555-0199");
+
   const disclaimerOnly = enrichGmailContactFromSignature(
     { name: "support", email: "support@example.com" },
     "Thanks\n\nThis email and any attachments are confidential. Unsubscribe here.",
