@@ -22,6 +22,10 @@ const publicBaseUrl = process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL?.r
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
 const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
 const authTokenSecret = process.env.CRM_AUTH_SECRET || tokenSecret;
+const GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30;
+const GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000;
+const GMAIL_NEW_CONTACT_FULL_LIMIT = 250;
+const GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250;
 const ses = new SESClient({ region });
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false } })
@@ -356,6 +360,7 @@ async function initDatabase() {
       email citext not null,
       name text,
       account text,
+      phone text,
       source text,
       months integer,
       message_id text,
@@ -363,6 +368,7 @@ async function initDatabase() {
       created_at timestamptz not null default now(),
       unique(tenant_id, signal_type, email)
     )`);
+  await dbQuery(`alter table gmail_contact_signals add column if not exists phone text`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
@@ -707,6 +713,7 @@ function gmailSignalFromRow(row) {
     email: row.email,
     name: row.name || "",
     account: row.account || "",
+    phone: row.phone || extractPhone(row.source || ""),
     source: row.source || "",
     months: row.months || 0,
     messageId: row.message_id || "",
@@ -961,6 +968,18 @@ async function gmailApi(accessToken, path, params = {}) {
   return body;
 }
 
+async function listGmailMessages(accessToken, params = {}, limit = GMAIL_NEW_CONTACT_METADATA_LIMIT) {
+  const messages = [];
+  let pageToken = "";
+  while (messages.length < limit) {
+    const page = await gmailApi(accessToken, "messages", { ...params, maxResults: Math.min(500, limit - messages.length), pageToken });
+    messages.push(...(page.messages || []));
+    pageToken = page.nextPageToken || "";
+    if (!pageToken) break;
+  }
+  return { messages };
+}
+
 function gmailLabelQuery(labels = "") {
   const parts = String(labels || "")
     .split(",")
@@ -973,6 +992,16 @@ function gmailLabelQuery(labels = "") {
     });
   if (!parts.length) return "in:anywhere";
   return parts.length === 1 ? parts[0] : `{${parts.join(" ")}}`;
+}
+
+function gmailNewContactScope(labels = "") {
+  const parts = String(labels || "")
+    .split(",")
+    .map((label) => label.trim().toLowerCase())
+    .filter(Boolean)
+    .filter((label) => label !== "sent");
+  if (!parts.length || (parts.length === 1 && parts[0] === "inbox")) return "in:anywhere";
+  return gmailLabelQuery(labels);
 }
 
 function parseEmailAddress(value = "") {
@@ -1127,12 +1156,12 @@ async function mapLimit(items, limit, worker) {
 }
 
 async function readGmailSignals(tenantId) {
-  const result = await dbQuery(`select * from gmail_contact_signals where tenant_id=$1 order by created_at desc limit 200`, [tenantId]);
+  const result = await dbQuery(`select * from gmail_contact_signals where tenant_id=$1 order by created_at desc limit 350`, [tenantId]);
   return result.rows;
 }
 
 function gmailContactSignalSource(item = {}) {
-  const details = [item.title, item.phone].filter(Boolean).join(" - ");
+  const details = [item.title].filter(Boolean).join(" - ");
   return details ? `${item.source} - ${details}` : item.source;
 }
 
@@ -1144,18 +1173,28 @@ async function scanGmailForTenant(tenantId) {
   const staleMonths = Math.max(1, Number(integration.stale_months || 3));
   const [dealsResult, inboundList] = await Promise.all([
     dbQuery(`select distinct lower(email) email, contact, account from deals where tenant_id=$1 and email is not null and email<>''`, [tenantId]),
-    integration.detect_new_contacts ? gmailApi(accessToken, "messages", { q: `${gmailLabelQuery(integration.labels)} newer_than:90d -in:sent`, maxResults: 40 }) : { messages: [] },
+    integration.detect_new_contacts
+      ? listGmailMessages(accessToken, { q: `${gmailNewContactScope(integration.labels)} newer_than:${GMAIL_NEW_CONTACT_LOOKBACK_DAYS}d -in:sent` }, GMAIL_NEW_CONTACT_METADATA_LIMIT)
+      : { messages: [] },
   ]);
   const knownEmails = new Set(dealsResult.rows.map((row) => row.email));
-  const inboundMessages = await mapLimit((inboundList.messages || []).slice(0, 40), 6, (message) => gmailApi(accessToken, `messages/${message.id}`, { format: "full" }));
-
-  const newContacts = [];
+  const inboundMetadata = await mapLimit((inboundList.messages || []).slice(0, GMAIL_NEW_CONTACT_METADATA_LIMIT), 8, (message) => gmailApi(accessToken, `messages/${message.id}`, { format: "metadata", metadataHeaders: "From" }));
+  const unknownMetadata = [];
   const seenNew = new Set();
-  for (const message of inboundMessages) {
+  for (const message of inboundMetadata) {
     const parsed = parseEmailAddress(headerValue(message, "From"));
     if (!parsed || knownEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
     seenNew.add(parsed.email);
-    newContacts.push({ ...enrichGmailContactFromSignature(parsed, extractGmailMessageText(message)), messageId: message.id });
+    unknownMetadata.push({ ...message, parsed });
+  }
+  const inboundMessages = await mapLimit(unknownMetadata.slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT), 6, async (message) => ({
+    parsed: message.parsed,
+    full: await gmailApi(accessToken, `messages/${message.id}`, { format: "full" }),
+  }));
+
+  const newContacts = [];
+  for (const message of inboundMessages) {
+    newContacts.push({ ...enrichGmailContactFromSignature(message.parsed, extractGmailMessageText(message.full)), messageId: message.full.id });
   }
 
   const dormantChecks = integration.detect_dormant_contacts
@@ -1168,11 +1207,11 @@ async function scanGmailForTenant(tenantId) {
 
   await withTransaction(async (client) => {
     await client.query(`delete from gmail_contact_signals where tenant_id=$1`, [tenantId]);
-    for (const item of newContacts.slice(0, 25)) {
+    for (const item of newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT)) {
       await client.query(
-        `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, source, message_id, last_seen_at)
-         values ($1,'new_contact',$2,$3,$4,$5,$6,now())`,
-        [tenantId, item.email, item.name, item.account || "", gmailContactSignalSource(item), item.messageId],
+        `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, phone, source, message_id, last_seen_at)
+         values ($1,'new_contact',$2,$3,$4,$5,$6,$7,now())`,
+        [tenantId, item.email, item.name, item.account || "", item.phone || "", gmailContactSignalSource(item), item.messageId],
       );
     }
     for (const item of dormant.slice(0, 50)) {
@@ -1184,7 +1223,7 @@ async function scanGmailForTenant(tenantId) {
     }
     await client.query(`update gmail_integrations set last_scan_at=now(), status='Last scan completed', updated_at=now() where tenant_id=$1`, [tenantId]);
   });
-  return { newContacts: newContacts.slice(0, 25), dormantContacts: dormant.slice(0, 50), scannedMessages: inboundMessages.length + dormantChecks.length };
+  return { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), scannedMessages: inboundMetadata.length + dormantChecks.length };
 }
 
 async function handleApi(req, res) {

@@ -288,6 +288,8 @@ test("API auth tokens and Gmail labels are signed and bounded", () => {
   assert.equal(verifySignedPayload(`${token}tampered`), null);
   assert.equal(gmailLabelQuery("Inbox, Sales Follow Up, Sent"), "{in:inbox label:sales-follow-up}");
   assert.equal(gmailLabelQuery("Sent"), "in:anywhere");
+  assert.match(serverSource(), /function gmailNewContactScope/);
+  assert.match(serverSource(), /return "in:anywhere"/);
 });
 
 test("password changes require an authenticated matching user", () => {
@@ -521,6 +523,17 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /saveGmailSettingsViaApi/);
   assert.match(app, /connectGmailViaApi/);
   assert.match(app, /scanGmailViaApi/);
+  assert.match(serverSource(), /GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30/);
+  assert.match(serverSource(), /GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000/);
+  assert.match(serverSource(), /GMAIL_NEW_CONTACT_FULL_LIMIT = 250/);
+  assert.match(serverSource(), /GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250/);
+  assert.match(serverSource(), /listGmailMessages/);
+  assert.match(serverSource(), /gmailNewContactScope\(integration\.labels\)/);
+  assert.match(serverSource(), /newer_than:\$\{GMAIL_NEW_CONTACT_LOOKBACK_DAYS\}d/);
+  assert.match(serverSource(), /format: "metadata"/);
+  assert.match(serverSource(), /unknownMetadata\.slice\(0, GMAIL_NEW_CONTACT_FULL_LIMIT\)/);
+  assert.match(serverSource(), /format: "full"/);
+  assert.match(serverSource(), /add column if not exists phone text/);
   assert.match(app, /handleGmailCallbackQuery/);
   assert.match(app, /Gmail connected\. Refreshing integration status/);
   assert.match(app, /setGmailStatus\("Saving Gmail settings\.\.\."/);
@@ -553,13 +566,24 @@ test("CRM Gmail discovered contacts provide add feedback and disappear after add
 
   assert.match(renderMailSettingsSource, /New contacts found in Gmail/);
   assert.match(renderMailSettingsSource, /data-gmail-signal-email/);
+  assert.match(renderMailSettingsSource, /\[item\.email, item\.phone, item\.source\]\.filter\(Boolean\)\.join/);
+  assert.match(app, /GMAIL_DISCOVERY_PAGE_SIZE = 10/);
+  assert.match(renderMailSettingsSource, /visibleDiscoveries/);
+  assert.match(renderMailSettingsSource, /renderGmailDiscoveryPagination/);
+  assert.match(app, /data-action="gmail-discovery-page"/);
+  assert.match(clickHandlerSource, /action === "gmail-discovery-page"/);
   assert.match(renderMailSettingsSource, /!ui\.addedGmailContacts\.has\(item\.email\)/);
+  assert.match(app, /phone: signal\.phone \|\| ""/);
+  assert.match(app, /filter\(\(signal\) => !existing\.has\(String\(signal\.email \|\| ""\)\.toLowerCase\(\)\)\)/);
+  assert.match(clickHandlerSource, /phone: discovery\.phone \|\| ""/);
+  assert.match(clickHandlerSource, /phone \$\{discovery\.phone\}/);
   assert.match(clickHandlerSource, /action === "add-gmail-contact"/);
   assert.match(clickHandlerSource, /ui\.addedGmailContacts\.add\(discovery\.email\)/);
   assert.match(clickHandlerSource, /showToast\(`Added \$\{discovery\.name\} from Gmail`\)/);
   assert.match(app, /function showToast/);
   assert.match(styles, /\.toast-stack/);
   assert.match(styles, /\.toast/);
+  assert.match(styles, /\.signal-pagination/);
 });
 
 test("CRM shows an impressive whats new dialog after login", () => {

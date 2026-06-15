@@ -2,6 +2,7 @@ const STORAGE_KEY = "zeptrix-saas-crm-v1";
 const SESSION_KEY = "zeptrix-saas-session-v1";
 const WHATS_NEW_KEY = "zeptrix-crm-whats-new-v1";
 const WHATS_NEW_VERSION = "gmail-import-2026-06";
+const GMAIL_DISCOVERY_PAGE_SIZE = 10;
 const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
@@ -163,6 +164,7 @@ let ui = {
   selectedCommunicationId: null,
   selectedCampaignId: null,
   settingsTab: "mail",
+  gmailDiscoveryPage: 1,
   gmailNotice: "",
   addedGmailContacts: new Set(),
   toasts: [],
@@ -1420,6 +1422,10 @@ function renderMailIntegrationsSettings() {
   const tenant = currentTenant();
   const gmail = gmailIntegration(tenant);
   const discoveries = gmailContactDiscoveries(tenant).filter((item) => !ui.addedGmailContacts.has(item.email));
+  const totalDiscoveryPages = Math.max(1, Math.ceil(discoveries.length / GMAIL_DISCOVERY_PAGE_SIZE));
+  ui.gmailDiscoveryPage = Math.min(Math.max(1, ui.gmailDiscoveryPage || 1), totalDiscoveryPages);
+  const discoveryStart = (ui.gmailDiscoveryPage - 1) * GMAIL_DISCOVERY_PAGE_SIZE;
+  const visibleDiscoveries = discoveries.slice(discoveryStart, discoveryStart + GMAIL_DISCOVERY_PAGE_SIZE);
   const dormant = gmailDormantContacts(tenant, Number(gmail.staleMonths || 3));
   const canUseGmailBackend = !!session?.apiToken && session.role !== "demo_user";
   const actionDisabled = canUseGmailBackend ? "" : "disabled";
@@ -1455,13 +1461,21 @@ function renderMailIntegrationsSettings() {
         </div>
         <div class="signal-list">
           <h4>New contacts found in Gmail</h4>
-          ${discoveries.map((item) => `<div class="signal-row" data-gmail-signal-email="${escapeHtml(item.email)}"><span class="activity-symbol">＋</span><span class="list-primary">${escapeHtml(item.name)}<small>${escapeHtml(item.email)} · ${escapeHtml(item.source)}</small></span><button class="button small" data-action="add-gmail-contact" data-email="${escapeHtml(item.email)}">Add</button></div>`).join("") || `<p class="empty-state compact">No unknown Gmail contacts found in the latest scan.</p>`}
+          ${visibleDiscoveries.map((item) => `<div class="signal-row" data-gmail-signal-email="${escapeHtml(item.email)}"><span class="activity-symbol">＋</span><span class="list-primary">${escapeHtml(item.name)}<small>${escapeHtml([item.email, item.phone, item.source].filter(Boolean).join(" · "))}</small></span><button class="button small" data-action="add-gmail-contact" data-email="${escapeHtml(item.email)}">Add</button></div>`).join("") || `<p class="empty-state compact">No unknown Gmail contacts found in the latest scan.</p>`}
+          ${renderGmailDiscoveryPagination(discoveries.length, ui.gmailDiscoveryPage, totalDiscoveryPages)}
           <h4>Contacts needing follow-up</h4>
           ${dormant.map((item) => `<button class="signal-row" data-open-contact="${escapeHtml(item.email)}"><span class="activity-symbol">!</span><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · no sent mail for ${item.months} months</small></span><span class="priority priority-high">Follow up</span></button>`).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}
         </div>
         <p class="subcopy">Last scan: ${gmail.lastScanAt ? formatTimestamp(gmail.lastScanAt) : "Not scanned yet"}</p>
       </article>
     </section>`;
+}
+
+function renderGmailDiscoveryPagination(total, page, totalPages) {
+  if (total <= GMAIL_DISCOVERY_PAGE_SIZE) return "";
+  const start = (page - 1) * GMAIL_DISCOVERY_PAGE_SIZE + 1;
+  const end = Math.min(total, page * GMAIL_DISCOVERY_PAGE_SIZE);
+  return `<div class="signal-pagination"><span>Showing ${start}-${end} of ${total}</span><button class="button small" data-action="gmail-discovery-page" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>Previous</button><button class="button small" data-action="gmail-discovery-page" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>Next</button></div>`;
 }
 
 function renderWorkspaceSettingsPanel() {
@@ -1489,10 +1503,12 @@ function gmailFormValues(form) {
 function gmailContactDiscoveries(tenant = currentTenant()) {
   const gmail = gmailIntegration(tenant);
   const signals = gmail.signals || [];
-  const scanned = signals.filter((signal) => signal.type === "new_contact");
-  if (scanned.length) return scanned.map((signal) => ({ name: signal.name || signal.email.split("@")[0], email: signal.email, account: signal.account || "", source: signal.source || "Gmail scan" }));
-  if (gmail.lastScanAt) return [];
   const existing = new Set(tenant.deals.map((deal) => String(deal.email || "").toLowerCase()).filter(Boolean));
+  const scanned = signals.filter((signal) => signal.type === "new_contact");
+  if (scanned.length) return scanned
+    .filter((signal) => !existing.has(String(signal.email || "").toLowerCase()))
+    .map((signal) => ({ name: signal.name || signal.email.split("@")[0], email: signal.email, account: signal.account || "", phone: signal.phone || "", source: signal.source || "Gmail scan" }));
+  if (gmail.lastScanAt) return [];
   return [
     { name: "Maya Rosenthal", email: "maya.rosenthal@newbridge.ai", source: "Inbound Gmail thread" },
     { name: "Chris Morgan", email: "chris@procurementhub.com", source: "Cc on renewal discussion" },
@@ -1758,10 +1774,16 @@ document.addEventListener("click", async (event) => {
         render();
         const result = await scanGmailViaApi(tenant.id);
         setTenant({ ...currentTenant(), gmailIntegration: result.gmailIntegration });
+        ui.gmailDiscoveryPage = 1;
         render();
       } catch (error) {
         setGmailStatus(error.message, currentTenant());
       }
+    }
+    if (action === "gmail-discovery-page") {
+      ui.gmailDiscoveryPage = Math.max(1, Number(actionElement.dataset.page || 1));
+      render();
+      return;
     }
     if (action === "add-gmail-contact") {
       const tenant = currentTenant();
@@ -1773,6 +1795,7 @@ document.addEventListener("click", async (event) => {
           account: discovery.account || discovery.email.split("@")[1],
           contact: discovery.name,
           email: discovery.email,
+          phone: discovery.phone || "",
           owner: currentUser().name,
           stage: "Lead",
           value: 0,
@@ -1780,11 +1803,12 @@ document.addEventListener("click", async (event) => {
           priority: "Medium",
           group: "active",
           tags: ["Gmail"],
-          note: `Discovered from ${discovery.source}${discovery.account ? ` for ${discovery.account}` : ""}.`,
+          note: `Discovered from ${discovery.source}${discovery.account ? ` for ${discovery.account}` : ""}${discovery.phone ? `; phone ${discovery.phone}` : ""}.`,
           updated: "Just now",
         };
         setTenant({ ...tenant, deals: [contact, ...tenant.deals] });
         ui.addedGmailContacts.add(discovery.email);
+        ui.gmailDiscoveryPage = Math.max(1, ui.gmailDiscoveryPage);
         showToast(`Added ${discovery.name} from Gmail`);
         return;
       }

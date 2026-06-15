@@ -1395,6 +1395,18 @@ h3 { font-size: 14px; }
   font-size: 11px;
   text-transform: uppercase;
 }
+.signal-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.signal-pagination span {
+  margin-right: auto;
+}
 .guide-steps {
   display: grid;
   gap: 10px;
