@@ -334,6 +334,10 @@ function setTenant(nextTenant) {
   saveData();
 }
 
+function localRecordId(prefix = "local") {
+  return crypto.randomUUID ? crypto.randomUUID() : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function setGmailStatus(status, tenant = currentTenant()) {
   const previous = gmailIntegration(tenant);
   setTenant({ ...tenant, gmailIntegration: { ...previous, status } });
@@ -461,6 +465,18 @@ async function createTenantViaApi(values) {
 
 async function updateTenantViaApi(id, values) {
   return apiRequest(`/api/tenants/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+async function createDealViaApi(tenantId, values) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/deals`, { method: "POST", body: JSON.stringify(values) });
+}
+
+async function updateDealViaApi(tenantId, dealId, values) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/deals/${encodeURIComponent(dealId)}`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+async function deleteDealViaApi(tenantId, dealId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/deals/${encodeURIComponent(dealId)}`, { method: "DELETE" });
 }
 
 async function saveGmailSettingsViaApi(tenantId, values) {
@@ -1279,7 +1295,7 @@ function renderRelationshipMoment(moment) {
 function accountCorrespondence(accountDeal, contacts) {
   const accountKey = slugify(accountDeal.account);
   const existing = currentTenant().communications
-    .filter((item) => currentTenant().deals.find((deal) => deal.id === item.dealId)?.account === accountDeal.account)
+    .filter((item) => currentTenant().deals.find((deal) => String(deal.id) === String(item.dealId))?.account === accountDeal.account)
     .map((item, index) => ({
       id: `logged-${item.id}`,
       subject: item.subject,
@@ -1395,7 +1411,7 @@ function renderModal() {
   if (ui.modal === "email") return renderEmailForm();
   if (ui.modal === "import") return renderImportModal();
   if (ui.modal === "settings") return renderSettings();
-  if (ui.selected) return renderDealDrawer(currentTenant().deals.find((deal) => deal.id === ui.selected));
+  if (ui.selected) return renderDealDrawer(currentTenant().deals.find((deal) => String(deal.id) === String(ui.selected)));
   return "";
 }
 
@@ -1591,7 +1607,7 @@ function monthsSince(value) {
 
 function renderDealDrawer(deal) {
   if (!deal) return "";
-  return `<div class="modal-layer"><aside class="drawer"><header class="modal-head"><div><p class="subcopy">Deal details</p></div><button class="close-button" data-action="close">×</button></header><section class="detail-hero">${avatar(deal.owner, "large")}<div><h2>${escapeHtml(deal.name)}</h2><p class="subcopy">${escapeHtml(deal.account)} · ${escapeHtml(deal.contact)}</p></div></section><section class="detail-section"><div class="detail-grid"><div><span class="detail-label">Stage</span><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span></div><div><span class="detail-label">Value</span><strong>${money(deal.value)}</strong></div><div><span class="detail-label">Owner</span><span class="owner-cell">${avatar(deal.owner, "small")}${deal.owner}</span></div><div><span class="detail-label">Close date</span><span>${formatDate(deal.close)}</span></div><div><span class="detail-label">Priority</span><span class="priority priority-${deal.priority.toLowerCase()}">${deal.priority}</span></div><div><span class="detail-label">Email</span><span>${escapeHtml(deal.email || "-")}</span></div></div></section><section class="detail-section"><h3>Notes</h3><p class="subcopy">${escapeHtml(deal.note || "No notes yet.")}</p></section><section class="detail-section"><h3>Communication</h3>${currentTenant().communications.filter((item) => item.dealId === deal.id).map((item) => `<div class="message-card"><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(item.type)} · ${formatTimestamp(item.date)} · ${escapeHtml(item.tracked)}</small><p>${escapeHtml(item.body)}</p></div>`).join("") || `<p class="subcopy">No messages logged yet.</p>`}<button class="button small" data-action="compose-email" data-deal-id="${deal.id}">＋ Log email</button></section><section class="detail-section"><h3>Activity</h3>${currentTenant().tasks.filter((task) => task.dealId === deal.id).map((task) => { const [label, klass] = taskStatus(task); return `<div class="drawer-task"><button class="task-check" data-action="toggle-task" data-id="${task.id}">${task.completed ? "✓" : ""}</button><span>${escapeHtml(task.title)}<small>${formatDate(task.due)}</small></span><span class="priority ${klass}">${label}</span><button class="button small danger" data-action="delete-task" data-id="${task.id}">Delete</button></div>`; }).join("") || `<p class="subcopy">No tasks yet.</p>`}</section><div class="form-actions"><button class="button danger" data-action="delete-deal" data-id="${deal.id}">Delete deal</button><button class="button" data-action="add-task" data-deal-id="${deal.id}">＋ Add task</button><span class="toolbar-spacer"></span><button class="button" data-action="close">Close</button><button class="button primary" data-action="edit-deal" data-id="${deal.id}">Edit deal</button></div></aside></div>`;
+  return `<div class="modal-layer"><aside class="drawer"><header class="modal-head"><div><p class="subcopy">Deal details</p></div><button class="close-button" data-action="close">×</button></header><section class="detail-hero">${avatar(deal.owner, "large")}<div><h2>${escapeHtml(deal.name)}</h2><p class="subcopy">${escapeHtml(deal.account)} · ${escapeHtml(deal.contact)}</p></div></section><section class="detail-section"><div class="detail-grid"><div><span class="detail-label">Stage</span><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span></div><div><span class="detail-label">Value</span><strong>${money(deal.value)}</strong></div><div><span class="detail-label">Owner</span><span class="owner-cell">${avatar(deal.owner, "small")}${deal.owner}</span></div><div><span class="detail-label">Close date</span><span>${formatDate(deal.close)}</span></div><div><span class="detail-label">Priority</span><span class="priority priority-${deal.priority.toLowerCase()}">${deal.priority}</span></div><div><span class="detail-label">Email</span><span>${escapeHtml(deal.email || "-")}</span></div></div></section><section class="detail-section"><h3>Notes</h3><p class="subcopy">${escapeHtml(deal.note || "No notes yet.")}</p></section><section class="detail-section"><h3>Communication</h3>${currentTenant().communications.filter((item) => String(item.dealId) === String(deal.id)).map((item) => `<div class="message-card"><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(item.type)} · ${formatTimestamp(item.date)} · ${escapeHtml(item.tracked)}</small><p>${escapeHtml(item.body)}</p></div>`).join("") || `<p class="subcopy">No messages logged yet.</p>`}<button class="button small" data-action="compose-email" data-deal-id="${deal.id}">＋ Log email</button></section><section class="detail-section"><h3>Activity</h3>${currentTenant().tasks.filter((task) => String(task.dealId) === String(deal.id)).map((task) => { const [label, klass] = taskStatus(task); return `<div class="drawer-task"><button class="task-check" data-action="toggle-task" data-id="${task.id}">${task.completed ? "✓" : ""}</button><span>${escapeHtml(task.title)}<small>${formatDate(task.due)}</small></span><span class="priority ${klass}">${label}</span><button class="button small danger" data-action="delete-task" data-id="${task.id}">Delete</button></div>`; }).join("") || `<p class="subcopy">No tasks yet.</p>`}</section><div class="form-actions"><button class="button danger" data-action="delete-deal" data-id="${deal.id}">Delete deal</button><button class="button" data-action="add-task" data-deal-id="${deal.id}">＋ Add task</button><span class="toolbar-spacer"></span><button class="button" data-action="close">Close</button><button class="button primary" data-action="edit-deal" data-id="${deal.id}">Edit deal</button></div></aside></div>`;
 }
 
 function formField(label, name, value = "", type = "text", required = false, klass = "", labelAction = "") {
@@ -1646,7 +1662,7 @@ document.addEventListener("click", async (event) => {
     ui.accountFocus = "";
   }
   if (view) ui.view = view;
-  if (dealId) ui.selected = Number(dealId);
+  if (dealId) ui.selected = dealId;
   if (account) {
     ui.section = "accounts";
     ui.accountFocus = account;
@@ -1766,11 +1782,11 @@ document.addEventListener("click", async (event) => {
       ui.inlineDealGroup = null;
       ui.inlineContactOpen = false;
     }
-    if (action === "add-task") { ui.modal = "task"; ui.taskDealId = taskDealId ? Number(taskDealId) : null; ui.selected = null; }
-    if (action === "compose-email") { ui.modal = "email"; ui.emailDealId = taskDealId ? Number(taskDealId) : null; ui.selected = null; }
+    if (action === "add-task") { ui.modal = "task"; ui.taskDealId = taskDealId || null; ui.selected = null; }
+    if (action === "compose-email") { ui.modal = "email"; ui.emailDealId = taskDealId || null; ui.selected = null; }
     if (action === "open-import") ui.modal = "import";
     if (action === "import-source") {
-      importSampleRecords(actionElement.dataset.source);
+      await importSampleRecords(actionElement.dataset.source);
       ui.modal = null;
       ui.section = "contacts";
       ui.contactSearch = actionElement.dataset.source || "";
@@ -1841,7 +1857,7 @@ document.addEventListener("click", async (event) => {
       const discovery = gmailContactDiscoveries(tenant).find((item) => item.email === actionElement.dataset.email);
       if (discovery) {
         const contact = {
-          id: Math.max(0, ...tenant.deals.map((item) => item.id)) + 1,
+          id: localRecordId("gmail-contact"),
           name: `${discovery.name} Gmail lead`,
           account: discovery.account || discovery.email.split("@")[1],
           contact: discovery.name,
@@ -1857,10 +1873,15 @@ document.addEventListener("click", async (event) => {
           note: `Discovered from ${discovery.source}${discovery.account ? ` for ${discovery.account}` : ""}${discovery.phone ? `; phone ${discovery.phone}` : ""}.`,
           updated: "Just now",
         };
-        setTenant({ ...tenant, deals: [contact, ...tenant.deals] });
-        ui.addedGmailContacts.add(discovery.email);
-        ui.gmailDiscoveryPage = Math.max(1, ui.gmailDiscoveryPage);
-        showToast(`Added ${discovery.name} from Gmail`);
+        try {
+          const saved = session?.apiToken ? (await createDealViaApi(tenant.id, contact)).deal : contact;
+          setTenant({ ...currentTenant(), deals: [saved, ...currentTenant().deals] });
+          ui.addedGmailContacts.add(discovery.email);
+          ui.gmailDiscoveryPage = Math.max(1, ui.gmailDiscoveryPage);
+          showToast(`Added ${discovery.name} from Gmail`);
+        } catch (error) {
+          showToast(`Could not save ${discovery.name}: ${error.message}`);
+        }
         return;
       }
     }
@@ -1915,23 +1936,42 @@ document.addEventListener("click", async (event) => {
       }
     }
     if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.taskDealId = null; ui.emailDealId = null; ui.authError = ""; ui.adminNotice = ""; }
-    if (action === "edit-deal") { ui.selected = null; ui.editing = currentTenant().deals.find((deal) => deal.id === Number(id)); ui.modal = "deal"; }
+    if (action === "edit-deal") { ui.selected = null; ui.editing = currentTenant().deals.find((deal) => String(deal.id) === String(id)); ui.modal = "deal"; }
     if (action === "toggle-task") {
       const tenant = currentTenant();
       setTenant({ ...tenant, tasks: tenant.tasks.map((task) => task.id === Number(id) ? { ...task, completed: !task.completed } : task) });
     }
     if (action === "delete-deal") {
       const tenant = currentTenant();
-      setTenant({ ...tenant, deals: tenant.deals.filter((deal) => deal.id !== Number(id)), tasks: tenant.tasks.filter((task) => task.dealId !== Number(id)), communications: tenant.communications.filter((item) => item.dealId !== Number(id)) });
-      ui.modal = null;
-      ui.selected = null;
-      ui.editing = null;
+      try {
+        if (session?.apiToken) await deleteDealViaApi(tenant.id, id);
+        setTenant({ ...tenant, deals: tenant.deals.filter((deal) => String(deal.id) !== String(id)), tasks: tenant.tasks.filter((task) => String(task.dealId) !== String(id)), communications: tenant.communications.filter((item) => String(item.dealId) !== String(id)) });
+        ui.modal = null;
+        ui.selected = null;
+        ui.editing = null;
+      } catch (error) {
+        showToast(`Could not delete deal: ${error.message}`);
+      }
     }
     if (action === "delete-contact") {
       const email = actionElement.dataset.email?.toLowerCase();
       const tenant = currentTenant();
-      setTenant({ ...tenant, deals: tenant.deals.map((deal) => deal.email?.toLowerCase() === email ? { ...deal, contact: "", email: "", updated: "Just now" } : deal) });
-      ui.selected = null;
+      try {
+        const changedDeals = [];
+        const deals = tenant.deals.map((deal) => {
+          if (deal.email?.toLowerCase() !== email) return deal;
+          const changed = { ...deal, contact: "", email: "", updated: "Just now" };
+          changedDeals.push(changed);
+          return changed;
+        });
+        if (session?.apiToken) {
+          for (const deal of changedDeals) await updateDealViaApi(tenant.id, deal.id, deal);
+        }
+        setTenant({ ...tenant, deals });
+        ui.selected = null;
+      } catch (error) {
+        showToast(`Could not delete contact: ${error.message}`);
+      }
     }
     if (action === "delete-account") {
       const account = actionElement.dataset.account;
@@ -2147,7 +2187,7 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));
     const tenant = currentTenant();
-    const communications = [{ ...values, id: Math.max(0, ...tenant.communications.map((item) => item.id)) + 1, dealId: Number(values.dealId), type: "Email", owner: currentUser().name, tracked: "Logged", date: new Date().toISOString() }, ...tenant.communications];
+    const communications = [{ ...values, id: Math.max(0, ...tenant.communications.map((item) => item.id)) + 1, dealId: values.dealId, type: "Email", owner: currentUser().name, tracked: "Logged", date: new Date().toISOString() }, ...tenant.communications];
     setTenant({ ...tenant, communications });
     ui.modal = null;
     ui.emailDealId = null;
@@ -2235,7 +2275,7 @@ document.addEventListener("submit", async (event) => {
     const values = Object.fromEntries(new FormData(event.target));
     const tenant = currentTenant();
     const contact = {
-      id: Math.max(0, ...tenant.deals.map((item) => item.id)) + 1,
+      id: localRecordId("contact"),
       name: `${values.account} relationship`,
       account: values.account,
       contact: values.contact,
@@ -2250,11 +2290,16 @@ document.addEventListener("submit", async (event) => {
       note: "Contact added directly from Contacts.",
       updated: "Just now",
     };
-    setTenant({ ...tenant, deals: [contact, ...tenant.deals] });
-    ui.inlineContactOpen = false;
-    ui.section = "contacts";
-    ui.selectedContactEmail = contact.email;
-    render();
+    try {
+      const saved = session?.apiToken ? (await createDealViaApi(tenant.id, contact)).deal : contact;
+      setTenant({ ...currentTenant(), deals: [saved, ...currentTenant().deals] });
+      ui.inlineContactOpen = false;
+      ui.section = "contacts";
+      ui.selectedContactEmail = saved.email;
+      render();
+    } catch (error) {
+      showToast(`Could not save contact: ${error.message}`);
+    }
     return;
   }
   if (event.target.matches("[data-inline-deal-form]")) {
@@ -2264,7 +2309,7 @@ document.addEventListener("submit", async (event) => {
     const group = event.target.dataset.group || "active";
     const deal = {
       ...values,
-      id: Math.max(0, ...tenant.deals.map((item) => item.id)) + 1,
+      id: localRecordId("deal"),
       value: Number(values.value || 0),
       close: values.close || daysFromNow(30),
       group,
@@ -2275,17 +2320,22 @@ document.addEventListener("submit", async (event) => {
     const tasks = deal.stage === "Proposal"
       ? [{ id: Math.max(0, ...tenant.tasks.map((task) => task.id)) + 1, dealId: deal.id, title: "Follow up on proposal", type: "Follow-up", owner: deal.owner, due: daysFromNow(3), priority: "Medium", completed: false }, ...tenant.tasks]
       : tenant.tasks;
-    setTenant({ ...tenant, deals: [deal, ...tenant.deals], tasks });
-    ui.inlineDealGroup = null;
-    ui.selected = null;
-    render();
+    try {
+      const saved = session?.apiToken ? (await createDealViaApi(tenant.id, deal)).deal : deal;
+      setTenant({ ...currentTenant(), deals: [saved, ...currentTenant().deals], tasks: tasks.map((task) => String(task.dealId) === String(deal.id) ? { ...task, dealId: saved.id } : task) });
+      ui.inlineDealGroup = null;
+      ui.selected = null;
+      render();
+    } catch (error) {
+      showToast(`Could not save deal: ${error.message}`);
+    }
     return;
   }
   if (event.target.matches("[data-task-form]")) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));
     const tenant = currentTenant();
-    const tasks = [{ ...values, id: Math.max(0, ...tenant.tasks.map((task) => task.id)) + 1, dealId: Number(values.dealId), completed: false }, ...tenant.tasks];
+    const tasks = [{ ...values, id: Math.max(0, ...tenant.tasks.map((task) => task.id)) + 1, dealId: values.dealId, completed: false }, ...tenant.tasks];
     setTenant({ ...tenant, tasks });
     ui.modal = null;
     ui.taskDealId = null;
@@ -2297,15 +2347,22 @@ document.addEventListener("submit", async (event) => {
     const values = Object.fromEntries(new FormData(event.target));
     const tenant = currentTenant();
     const existing = ui.editing;
-    const deal = { ...existing, ...values, id: existing?.id || Math.max(0, ...tenant.deals.map((item) => item.id)) + 1, value: Number(values.value), tags: existing?.tags || defaultAccountTags(values), updated: "Just now" };
-    const deals = existing ? tenant.deals.map((item) => item.id === existing.id ? deal : item) : [deal, ...tenant.deals];
-    const tasks = deal.stage === "Proposal" && existing?.stage !== "Proposal"
-      ? [{ id: Math.max(0, ...tenant.tasks.map((task) => task.id)) + 1, dealId: deal.id, title: "Follow up on proposal", type: "Follow-up", owner: deal.owner, due: daysFromNow(3), priority: "Medium", completed: false }, ...tenant.tasks]
+    const deal = { ...existing, ...values, id: existing?.id || localRecordId("deal"), value: Number(values.value), tags: existing?.tags || defaultAccountTags(values), updated: "Just now" };
+    try {
+      const saved = session?.apiToken
+        ? (existing ? (await updateDealViaApi(tenant.id, existing.id, deal)).deal : (await createDealViaApi(tenant.id, deal)).deal)
+        : deal;
+      const deals = existing ? tenant.deals.map((item) => String(item.id) === String(existing.id) ? saved : item) : [saved, ...tenant.deals];
+      const tasks = saved.stage === "Proposal" && existing?.stage !== "Proposal"
+      ? [{ id: Math.max(0, ...tenant.tasks.map((task) => task.id)) + 1, dealId: saved.id, title: "Follow up on proposal", type: "Follow-up", owner: saved.owner, due: daysFromNow(3), priority: "Medium", completed: false }, ...tenant.tasks]
       : tenant.tasks;
-    setTenant({ ...tenant, deals, tasks });
-    ui.modal = null;
-    ui.editing = null;
-    render();
+      setTenant({ ...tenant, deals, tasks });
+      ui.modal = null;
+      ui.editing = null;
+      render();
+    } catch (error) {
+      showToast(`Could not save deal: ${error.message}`);
+    }
   }
 });
 
@@ -2318,15 +2375,23 @@ document.addEventListener("dragover", (event) => {
   if (event.target.closest("[data-drop-stage]")) event.preventDefault();
 });
 
-document.addEventListener("drop", (event) => {
+document.addEventListener("drop", async (event) => {
   const column = event.target.closest("[data-drop-stage]");
   if (!column) return;
   event.preventDefault();
   const tenant = currentTenant();
-  const id = Number(event.dataTransfer.getData("text/plain"));
+  const id = event.dataTransfer.getData("text/plain");
   const stage = column.dataset.dropStage;
-  setTenant({ ...tenant, deals: tenant.deals.map((deal) => deal.id === id ? { ...deal, stage, group: ["Won", "Lost"].includes(stage) ? "closed" : "active", updated: "Just now" } : deal) });
-  render();
+  const changed = tenant.deals.find((deal) => String(deal.id) === String(id));
+  if (!changed) return;
+  const nextDeal = { ...changed, stage, group: ["Won", "Lost"].includes(stage) ? "closed" : "active", updated: "Just now" };
+  try {
+    const saved = session?.apiToken ? (await updateDealViaApi(tenant.id, id, nextDeal)).deal : nextDeal;
+    setTenant({ ...tenant, deals: tenant.deals.map((deal) => String(deal.id) === String(id) ? saved : deal) });
+    render();
+  } catch (error) {
+    showToast(`Could not update stage: ${error.message}`);
+  }
 });
 
 function exportCsv() {
@@ -2340,7 +2405,7 @@ function exportCsv() {
   URL.revokeObjectURL(link.href);
 }
 
-function importSampleRecords(source = "csv") {
+async function importSampleRecords(source = "csv") {
   const imported = {
     csv: [
       { name: "CSV account enrichment", account: "Marble Ridge", contact: "Tara Quinn", email: "tara@marbleridge.com", owner: "Maya Bar", stage: "Lead", value: 14300, close: "2026-08-18", priority: "Medium", group: "active", note: "Imported from CSV with mapped account, contact, email, and owner fields." },
@@ -2357,11 +2422,19 @@ function importSampleRecords(source = "csv") {
   }[source] || [];
   const tenant = currentTenant();
   const existingEmails = new Set(tenant.deals.map((deal) => deal.email?.toLowerCase()));
-  const nextId = Math.max(0, ...tenant.deals.map((deal) => deal.id)) + 1;
   const deals = imported
     .filter((deal) => !existingEmails.has(deal.email.toLowerCase()))
-    .map((deal, index) => ({ ...deal, id: nextId + index, tags: defaultAccountTags(deal), updated: "Imported just now" }));
-  if (deals.length) setTenant({ ...tenant, deals: [...deals, ...tenant.deals] });
+    .map((deal) => ({ ...deal, id: localRecordId("import"), tags: defaultAccountTags(deal), updated: "Imported just now" }));
+  if (!deals.length) return;
+  try {
+    const savedDeals = [];
+    for (const deal of deals) {
+      savedDeals.push(session?.apiToken ? (await createDealViaApi(tenant.id, deal)).deal : deal);
+    }
+    setTenant({ ...currentTenant(), deals: [...savedDeals, ...currentTenant().deals] });
+  } catch (error) {
+    showToast(`Could not import records: ${error.message}`);
+  }
 }
 
 render();

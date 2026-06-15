@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { decryptToken, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
+const { decryptToken, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, normalizeDealPayload, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -178,6 +178,21 @@ test("Gmail settings normalization clamps scan thresholds and defaults detection
     () => normalizeGmailSettings({ accountEmail: "user@gmail.com", clientId: "https://www.zeptrix.io/api/gmail/oauth/callback" }),
     /OAuth client ID must be the Web application Client ID/,
   );
+});
+
+test("deal payload normalization preserves contact metadata for database persistence", () => {
+  const normalized = normalizeDealPayload({
+    account: "Example Account",
+    contact: "Helena Kralova",
+    email: "helena@example.com",
+    phone: "+972-52-1234567",
+    tags: ["Gmail", "Pilot", ""],
+  });
+
+  assert.equal(normalized.name, "Example Account relationship");
+  assert.equal(normalized.stage, "Lead");
+  assert.equal(normalized.phone, "+972-52-1234567");
+  assert.deepEqual(normalized.tags, ["Gmail", "Pilot"]);
 });
 
 test("Gmail OAuth URL uses readonly scope and tenant state", () => {
@@ -403,7 +418,15 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(clickHandlerSource, /ui\.inlineContactOpen = true/);
   assert.match(clickHandlerSource, /action === "cancel-inline-add"/);
   assert.doesNotMatch(clickHandlerSource, /ui\.modal = "contact"/);
+  assert.match(app, /async function createDealViaApi/);
+  assert.match(app, /async function updateDealViaApi/);
+  assert.match(app, /async function deleteDealViaApi/);
+  assert.match(serverSource(), /api\\\/tenants\\\/\[\^\/\]\+\\\/deals/);
+  assert.match(serverSource(), /function normalizeDealPayload/);
+  assert.match(serverSource(), /phone text/);
+  assert.match(serverSource(), /tags jsonb/);
   assert.match(submitHandlerSource, /data-inline-contact-form/);
+  assert.match(submitHandlerSource, /createDealViaApi\(tenant\.id, contact\)/);
   assert.match(submitHandlerSource, /Contact added directly from Contacts/);
   assert.match(submitHandlerSource, /ui\.inlineContactOpen = false/);
   assert.match(styles, /\.inline-contact-row/);
@@ -430,6 +453,8 @@ test("CRM deals add with an inline table row instead of a create dialog", () => 
   assert.match(clickHandlerSource, /ui\.view = "table"/);
   assert.doesNotMatch(clickHandlerSource, /action === "add-deal"\) \{ ui\.modal = "deal"/);
   assert.match(submitHandlerSource, /data-inline-deal-form/);
+  assert.match(submitHandlerSource, /createDealViaApi\(tenant\.id, deal\)/);
+  assert.match(submitHandlerSource, /updateDealViaApi\(tenant\.id, existing\.id, deal\)/);
   assert.match(submitHandlerSource, /Deal added inline from the pipeline/);
   assert.match(submitHandlerSource, /ui\.inlineDealGroup = null/);
   assert.match(styles, /\.inline-add-form/);
@@ -601,6 +626,9 @@ test("CRM Gmail discovered contacts provide add feedback and disappear after add
   assert.match(clickHandlerSource, /action === "add-gmail-contact"/);
   assert.match(clickHandlerSource, /skipGmailContactViaApi/);
   assert.match(clickHandlerSource, /ui\.skippedGmailContacts\.add\(discovery\.email\)/);
+  assert.match(serverSource(), /create table if not exists gmail_contact_blacklist/);
+  assert.match(serverSource(), /insert into gmail_contact_blacklist/);
+  assert.match(serverSource(), /select lower\(email::text\) email from gmail_contact_blacklist/);
   assert.match(clickHandlerSource, /pollGmailScanProgress/);
   assert.match(clickHandlerSource, /ui\.addedGmailContacts\.add\(discovery\.email\)/);
   assert.match(clickHandlerSource, /showToast\(`Added \$\{discovery\.name\} from Gmail`\)/);

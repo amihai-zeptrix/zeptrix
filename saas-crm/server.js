@@ -109,6 +109,39 @@ function normalizeTenantPayload(payload) {
   return { ...payload, ownerEmail: payload.ownerEmail || payload.billingEmail };
 }
 
+function normalizeDealPayload(payload = {}) {
+  const stage = ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"].includes(payload.stage) ? payload.stage : "Lead";
+  const priority = ["High", "Medium", "Low"].includes(payload.priority) ? payload.priority : "Medium";
+  const group = ["active", "closed"].includes(payload.group) ? payload.group : (["Won", "Lost"].includes(stage) ? "closed" : "active");
+  const tags = Array.isArray(payload.tags)
+    ? payload.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 20)
+    : String(payload.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 20);
+  return {
+    name: String(payload.name || `${payload.account || payload.contact || "New"} relationship`).trim(),
+    account: String(payload.account || "").trim(),
+    contact: String(payload.contact || "").trim(),
+    email: String(payload.email || "").trim(),
+    phone: String(payload.phone || "").trim(),
+    owner: String(payload.owner || "").trim(),
+    stage,
+    value: Math.max(0, Number.parseInt(payload.value, 10) || 0),
+    close: String(payload.close || "").trim() || null,
+    priority,
+    group,
+    tags,
+    note: String(payload.note || payload.notes || "").trim(),
+    updated: String(payload.updated || "Just now").trim(),
+  };
+}
+
+function validateDeal(values) {
+  if (!values.name) return "Deal name is required.";
+  if (!values.account && !values.contact) return "Account or contact is required.";
+  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) return "A valid email is required.";
+  if (values.close && !/^\d{4}-\d{2}-\d{2}$/.test(values.close)) return "Close date must use YYYY-MM-DD.";
+  return "";
+}
+
 function duplicateTenantEmailMessage(email, tenantName, role) {
   return `Tenant admin login email ${email} is already used by ${tenantName} (${role}).`;
 }
@@ -283,12 +316,14 @@ async function initDatabase() {
       account text,
       contact text,
       email citext,
+      phone text,
       owner text,
       stage text not null check (stage in ('Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost')),
       value integer not null default 0,
       close_date date,
       priority text not null default 'Medium' check (priority in ('High', 'Medium', 'Low')),
       deal_group text not null default 'active',
+      tags jsonb not null default '[]'::jsonb,
       notes text,
       updated_label text not null default 'Just now',
       created_at timestamptz not null default now(),
@@ -381,6 +416,8 @@ async function initDatabase() {
       unique(tenant_id, email)
     )`);
   await dbQuery(`alter table gmail_contact_signals add column if not exists phone text`);
+  await dbQuery(`alter table deals add column if not exists phone text`);
+  await dbQuery(`alter table deals add column if not exists tags jsonb not null default '[]'::jsonb`);
   await dbQuery(`alter table gmail_integrations add column if not exists gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365)`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
@@ -602,6 +639,35 @@ async function seedMissingDemoDeals(tenantId) {
   }
 }
 
+async function upsertDealForTenant(tenantId, payload, dealId = "") {
+  const values = normalizeDealPayload(payload);
+  const validationError = validateDeal(values);
+  if (validationError) {
+    const error = new Error(validationError);
+    error.statusCode = 400;
+    throw error;
+  }
+  if (dealId) {
+    const result = await dbQuery(
+      `update deals
+       set name=$3, account=$4, contact=$5, email=nullif($6,'')::citext, phone=$7, owner=$8, stage=$9, value=$10,
+           close_date=$11::date, priority=$12, deal_group=$13, tags=$14::jsonb, notes=$15, updated_label=$16, updated_at=now()
+       where tenant_id=$1 and id=$2
+       returning *`,
+      [tenantId, dealId, values.name, values.account, values.contact, values.email, values.phone, values.owner, values.stage, values.value, values.close, values.priority, values.group, JSON.stringify(values.tags), values.note, values.updated],
+    );
+    return result.rows[0] ? dealFromRow(result.rows[0]) : null;
+  }
+  const result = await dbQuery(
+    `insert into deals
+       (tenant_id, name, account, contact, email, phone, owner, stage, value, close_date, priority, deal_group, tags, notes, updated_label)
+     values ($1,$2,$3,$4,nullif($5,'')::citext,$6,$7,$8,$9,$10::date,$11,$12,$13::jsonb,$14,$15)
+     returning *`,
+    [tenantId, values.name, values.account, values.contact, values.email, values.phone, values.owner, values.stage, values.value, values.close, values.priority, values.group, JSON.stringify(values.tags), values.note, values.updated],
+  );
+  return dealFromRow(result.rows[0]);
+}
+
 async function readState(auth) {
   const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
@@ -666,12 +732,14 @@ function dealFromRow(deal) {
     account: deal.account || "",
     contact: deal.contact || "",
     email: deal.email || "",
+    phone: deal.phone || "",
     owner: deal.owner || "",
     stage: deal.stage,
     value: deal.value,
     close: deal.close_date ? deal.close_date.toISOString().slice(0, 10) : "",
     priority: deal.priority,
     group: deal.deal_group,
+    tags: Array.isArray(deal.tags) ? deal.tags : [],
     note: deal.notes || "",
     updated: deal.updated_label,
   };
@@ -1383,7 +1451,52 @@ async function handleApi(req, res) {
     }
   }
 
-  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && !pathname.endsWith("/gmail")) {
+  if (req.method === "POST" && /^\/api\/tenants\/[^/]+\/deals$/.test(pathname)) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const deal = await upsertDealForTenant(resolved.tenantId, await readBody(req));
+      return json(res, 201, { deal });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save contact or deal.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "PUT" && /^\/api\/tenants\/[^/]+\/deals\/[^/]+$/.test(pathname)) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const parts = pathname.split("/");
+      const tenantId = decodeURIComponent(parts.at(-3));
+      const dealId = decodeURIComponent(parts.at(-1));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const deal = await upsertDealForTenant(resolved.tenantId, await readBody(req), dealId);
+      if (!deal) return json(res, 404, { error: "Deal not found." });
+      return json(res, 200, { deal });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to update contact or deal.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "DELETE" && /^\/api\/tenants\/[^/]+\/deals\/[^/]+$/.test(pathname)) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const parts = pathname.split("/");
+      const tenantId = decodeURIComponent(parts.at(-3));
+      const dealId = decodeURIComponent(parts.at(-1));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const result = await dbQuery(`delete from deals where tenant_id=$1 and id=$2 returning id`, [resolved.tenantId, dealId]);
+      if (!result.rows.length) return json(res, 404, { error: "Deal not found." });
+      return json(res, 200, { ok: true, id: result.rows[0].id });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to delete contact or deal.", detail: error.message });
+    }
+  }
+
+  if (req.method === "PUT" && /^\/api\/tenants\/[^/]+$/.test(pathname)) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
       if (!requirePlatformAdmin(req, res)) return;
@@ -1433,7 +1546,7 @@ async function handleApi(req, res) {
     }
   }
 
-  if (req.method === "DELETE" && pathname.startsWith("/api/tenants/")) {
+  if (req.method === "DELETE" && /^\/api\/tenants\/[^/]+$/.test(pathname)) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
       if (!requirePlatformAdmin(req, res)) return;
@@ -1653,6 +1766,7 @@ module.exports = {
   gmailAuthUrl,
   gmailLabelQuery,
   inviteEmailContent,
+  normalizeDealPayload,
   normalizeGmailSettings,
   normalizeTenantPayload,
   parseEmailAddress,
