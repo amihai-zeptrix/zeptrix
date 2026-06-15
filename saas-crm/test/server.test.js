@@ -600,6 +600,7 @@ test("CRM shows an impressive whats new dialog after login", () => {
   const loginHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
   assert.match(app, /WHATS_NEW_VERSION/);
+  assert.match(app, /gmail-scan-paging-2026-06-15/);
   assert.match(app, /maybeShowWhatsNew/);
   assert.match(renderModalSource, /ui\.modal === "whats-new"/);
   assert.match(renderWhatsNewSource, /Gmail integration/);
