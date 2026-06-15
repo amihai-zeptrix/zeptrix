@@ -3,7 +3,7 @@ const SESSION_KEY = "zeptrix-saas-session-v1";
 const WHATS_NEW_KEY = "zeptrix-crm-whats-new-v1";
 const WHATS_NEW_VERSION = "gmail-scan-paging-2026-06-15";
 const GMAIL_DISCOVERY_PAGE_SIZE = 10;
-const GMAIL_DISCOVERY_LOOKBACK_DAYS = 30;
+const DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS = 30;
 const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
@@ -129,6 +129,7 @@ const defaultGmailIntegration = {
   clientId: "",
   redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
   labels: "Inbox, Sent",
+  gmailLookbackDays: DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS,
   staleMonths: 3,
   detectNewContacts: true,
   detectDormantContacts: true,
@@ -168,6 +169,8 @@ let ui = {
   gmailDiscoveryPage: 1,
   gmailNotice: "",
   addedGmailContacts: new Set(),
+  skippedGmailContacts: new Set(),
+  gmailScanProgress: null,
   toasts: [],
   replyingThread: "",
   correspondenceDrafts: {},
@@ -339,6 +342,18 @@ function setGmailStatus(status, tenant = currentTenant()) {
   render();
 }
 
+function pollGmailScanProgress(tenantId, scanId) {
+  return window.setInterval(async () => {
+    try {
+      ui.gmailScanProgress = { ...(ui.gmailScanProgress || {}), ...(await gmailScanProgressViaApi(tenantId, scanId)), active: true };
+      render();
+    } catch (error) {
+      ui.gmailScanProgress = { ...(ui.gmailScanProgress || {}), status: "progress unavailable", error: error.message, active: true };
+      render();
+    }
+  }, 5000);
+}
+
 function showToast(message) {
   const toast = { id: Date.now(), message };
   ui.toasts = [toast, ...ui.toasts].slice(0, 3);
@@ -452,12 +467,25 @@ async function saveGmailSettingsViaApi(tenantId, values) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail`, { method: "PUT", body: JSON.stringify(values) });
 }
 
+async function saveConfigurationViaApi(tenantId, values) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/configuration`, { method: "PUT", body: JSON.stringify(values) });
+}
+
 async function connectGmailViaApi(tenantId) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail/connect`, { method: "POST" });
 }
 
-async function scanGmailViaApi(tenantId) {
-  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail/scan`, { method: "POST" });
+async function scanGmailViaApi(tenantId, scanId = "") {
+  const suffix = scanId ? `?scanId=${encodeURIComponent(scanId)}` : "";
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail/scan${suffix}`, { method: "POST" });
+}
+
+async function gmailScanProgressViaApi(tenantId, scanId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail/scan-progress?scanId=${encodeURIComponent(scanId)}`);
+}
+
+async function skipGmailContactViaApi(tenantId, contact) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail/skip`, { method: "POST", body: JSON.stringify(contact) });
 }
 
 async function resetTenantPasswordViaApi(id) {
@@ -1414,15 +1442,16 @@ function renderSettingsPage() {
     ${renderPageHeader("Settings", "Configure CRM integrations and workspace behavior.")}
     <nav class="settings-tabs">
       <button class="${ui.settingsTab === "mail" ? "active" : ""}" data-settings-tab="mail">Mail integrations</button>
-      <button class="${ui.settingsTab === "workspace" ? "active" : ""}" data-settings-tab="workspace">Workspace</button>
+      <button class="${ui.settingsTab === "configuration" ? "active" : ""}" data-settings-tab="configuration">Configuration</button>
     </nav>
-    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : renderWorkspaceSettingsPanel()}`;
+    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : renderConfigurationSettingsPanel()}`;
 }
 
 function renderMailIntegrationsSettings() {
   const tenant = currentTenant();
   const gmail = gmailIntegration(tenant);
-  const discoveries = gmailContactDiscoveries(tenant).filter((item) => !ui.addedGmailContacts.has(item.email));
+  const gmailLookbackDays = Number(gmail.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS);
+  const discoveries = gmailContactDiscoveries(tenant).filter((item) => !ui.addedGmailContacts.has(item.email) && !ui.skippedGmailContacts.has(item.email));
   const totalDiscoveryPages = Math.max(1, Math.ceil(discoveries.length / GMAIL_DISCOVERY_PAGE_SIZE));
   ui.gmailDiscoveryPage = Math.min(Math.max(1, ui.gmailDiscoveryPage || 1), totalDiscoveryPages);
   const discoveryStart = (ui.gmailDiscoveryPage - 1) * GMAIL_DISCOVERY_PAGE_SIZE;
@@ -1439,20 +1468,19 @@ function renderMailIntegrationsSettings() {
           <div class="form-grid">
             ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
             ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
-            ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full")}
-            <div class="field full oauth-help-row"><span></span><button type="button" class="button small" data-action="open-gmail-oauth-guide">Show me now</button></div>
+            ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full", `<button type="button" class="button small" data-action="open-gmail-oauth-guide">Show me now</button>`)}
             ${formField("Authorized redirect URI", "redirectUri", gmail.redirectUri, "url", false, "full")}
             ${formField("Labels to read", "labels", gmail.labels)}
             ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
           </div>
           <div class="check-list compact">
-            <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Scans the last ${GMAIL_DISCOVERY_LOOKBACK_DAYS} days of non-sent Gmail and suggests people who do not exist in CRM.</small></label>
+            <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Scans the last ${gmailLookbackDays} days of non-sent Gmail and suggests people who do not exist in CRM.</small></label>
             <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
           </div>
           ${canUseGmailBackend ? "" : `<p class="admin-notice">Gmail connection requires signing in to a workspace at /crm.</p>`}
           <div class="form-actions"><button type="button" class="button" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button><span class="toolbar-spacer"></span><button class="button primary" ${actionDisabled}>Save Gmail settings</button></div>
           <p class="subcopy">Uses server-side OAuth with <strong>gmail.readonly</strong>; refresh tokens are encrypted on the server and the browser never stores the Google client secret.</p>
-          <p class="subcopy">New-contact discovery scans the last <strong>${GMAIL_DISCOVERY_LOOKBACK_DAYS} days</strong> of non-sent Gmail and filters out contacts already in CRM.</p>
+          <p class="subcopy">New-contact discovery scans the last <strong>${gmailLookbackDays} days</strong> of non-sent Gmail and filters out contacts already in CRM.</p>
         </form>
       </article>
       <article class="settings-card">
@@ -1463,8 +1491,8 @@ function renderMailIntegrationsSettings() {
         </div>
         <div class="signal-list">
           <h4>New contacts found in Gmail</h4>
-          <p class="signal-scope">Scope: last ${GMAIL_DISCOVERY_LOOKBACK_DAYS} days, non-sent Gmail, excluding existing CRM contacts.</p>
-          ${visibleDiscoveries.map((item) => `<div class="signal-row" data-gmail-signal-email="${escapeHtml(item.email)}"><span class="activity-symbol">＋</span><span class="list-primary">${escapeHtml(item.name)}<small>${escapeHtml([item.email, item.phone, item.source].filter(Boolean).join(" · "))}</small></span><button class="button small" data-action="add-gmail-contact" data-email="${escapeHtml(item.email)}">Add</button></div>`).join("") || `<p class="empty-state compact">No unknown Gmail contacts found in the latest scan.</p>`}
+          <p class="signal-scope">Scope: last ${gmailLookbackDays} days, non-sent Gmail, excluding existing CRM contacts.</p>
+          ${ui.gmailScanProgress?.active ? renderGmailScanProgress() : visibleDiscoveries.map((item) => `<div class="signal-row" data-gmail-signal-email="${escapeHtml(item.email)}"><span class="activity-symbol">＋</span><span class="list-primary">${escapeHtml(item.name)}<small>${escapeHtml([item.email, item.phone, item.source].filter(Boolean).join(" · "))}</small></span><span class="row-actions"><button class="button small" data-action="add-gmail-contact" data-email="${escapeHtml(item.email)}">Add</button><button class="button small" data-action="skip-gmail-contact" data-email="${escapeHtml(item.email)}">Skip</button></span></div>`).join("") || `<p class="empty-state compact">No unknown Gmail contacts found in the latest scan.</p>`}
           ${renderGmailDiscoveryPagination(discoveries.length, ui.gmailDiscoveryPage, totalDiscoveryPages)}
           <h4>Contacts needing follow-up</h4>
           ${dormant.map((item) => `<button class="signal-row" data-open-contact="${escapeHtml(item.email)}"><span class="activity-symbol">!</span><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · no sent mail for ${item.months} months</small></span><span class="priority priority-high">Follow up</span></button>`).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}
@@ -1481,8 +1509,17 @@ function renderGmailDiscoveryPagination(total, page, totalPages) {
   return `<div class="signal-pagination"><span>Showing ${start}-${end} of ${total}</span><button class="button small" data-action="gmail-discovery-page" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>Previous</button><button class="button small" data-action="gmail-discovery-page" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>Next</button></div>`;
 }
 
-function renderWorkspaceSettingsPanel() {
-  return `<section class="settings-card"><h3>Workspace settings</h3><p class="subcopy">Pipeline columns and forecast settings are still available from the Sales pipeline toolbar.</p><button class="button" data-action="open-settings">Open pipeline settings</button></section>`;
+function renderGmailScanProgress() {
+  const progress = ui.gmailScanProgress || {};
+  const scanned = Number(progress.scannedMessages || 0);
+  const total = Number(progress.totalMessages || 0);
+  const detail = total ? `${scanned} of ${total} emails scanned` : `${scanned} emails scanned`;
+  return `<div class="gmail-progress"><strong>Scanning Gmail...</strong><span>${escapeHtml(detail)}</span><small>Updating every 5 seconds while the scan runs.</small></div>`;
+}
+
+function renderConfigurationSettingsPanel() {
+  const gmail = gmailIntegration(currentTenant());
+  return `<section class="settings-card configuration-card"><div class="panel-head"><div><h3>Configuration</h3><p class="subcopy">Tenant-level keys that control CRM behavior.</p></div></div><form class="configuration-list" data-configuration-form><label class="configuration-row"><span><strong>gmail.inboxLookbackDays</strong><small>Number of days to look back when scanning Gmail for new contacts.</small></span><input name="gmailLookbackDays" type="number" min="1" max="365" value="${Number(gmail.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS)}" /></label><div class="form-actions"><button class="button primary">Save configuration</button></div></form></section>`;
 }
 
 function gmailIntegration(tenant = currentTenant()) {
@@ -1557,8 +1594,8 @@ function renderDealDrawer(deal) {
   return `<div class="modal-layer"><aside class="drawer"><header class="modal-head"><div><p class="subcopy">Deal details</p></div><button class="close-button" data-action="close">×</button></header><section class="detail-hero">${avatar(deal.owner, "large")}<div><h2>${escapeHtml(deal.name)}</h2><p class="subcopy">${escapeHtml(deal.account)} · ${escapeHtml(deal.contact)}</p></div></section><section class="detail-section"><div class="detail-grid"><div><span class="detail-label">Stage</span><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span></div><div><span class="detail-label">Value</span><strong>${money(deal.value)}</strong></div><div><span class="detail-label">Owner</span><span class="owner-cell">${avatar(deal.owner, "small")}${deal.owner}</span></div><div><span class="detail-label">Close date</span><span>${formatDate(deal.close)}</span></div><div><span class="detail-label">Priority</span><span class="priority priority-${deal.priority.toLowerCase()}">${deal.priority}</span></div><div><span class="detail-label">Email</span><span>${escapeHtml(deal.email || "-")}</span></div></div></section><section class="detail-section"><h3>Notes</h3><p class="subcopy">${escapeHtml(deal.note || "No notes yet.")}</p></section><section class="detail-section"><h3>Communication</h3>${currentTenant().communications.filter((item) => item.dealId === deal.id).map((item) => `<div class="message-card"><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(item.type)} · ${formatTimestamp(item.date)} · ${escapeHtml(item.tracked)}</small><p>${escapeHtml(item.body)}</p></div>`).join("") || `<p class="subcopy">No messages logged yet.</p>`}<button class="button small" data-action="compose-email" data-deal-id="${deal.id}">＋ Log email</button></section><section class="detail-section"><h3>Activity</h3>${currentTenant().tasks.filter((task) => task.dealId === deal.id).map((task) => { const [label, klass] = taskStatus(task); return `<div class="drawer-task"><button class="task-check" data-action="toggle-task" data-id="${task.id}">${task.completed ? "✓" : ""}</button><span>${escapeHtml(task.title)}<small>${formatDate(task.due)}</small></span><span class="priority ${klass}">${label}</span><button class="button small danger" data-action="delete-task" data-id="${task.id}">Delete</button></div>`; }).join("") || `<p class="subcopy">No tasks yet.</p>`}</section><div class="form-actions"><button class="button danger" data-action="delete-deal" data-id="${deal.id}">Delete deal</button><button class="button" data-action="add-task" data-deal-id="${deal.id}">＋ Add task</button><span class="toolbar-spacer"></span><button class="button" data-action="close">Close</button><button class="button primary" data-action="edit-deal" data-id="${deal.id}">Edit deal</button></div></aside></div>`;
 }
 
-function formField(label, name, value = "", type = "text", required = false, klass = "") {
-  return `<div class="field ${klass}"><label>${label}</label><input name="${name}" type="${type}" value="${escapeHtml(String(value))}" ${required ? "required" : ""} /></div>`;
+function formField(label, name, value = "", type = "text", required = false, klass = "", labelAction = "") {
+  return `<div class="field ${klass}"><label>${labelAction ? `<span>${label}</span>${labelAction}` : label}</label><input name="${name}" type="${type}" value="${escapeHtml(String(value))}" ${required ? "required" : ""} /></div>`;
 }
 
 function selectField(label, name, options, value) {
@@ -1770,16 +1807,27 @@ document.addEventListener("click", async (event) => {
     }
     if (action === "scan-gmail") {
       const tenant = currentTenant();
+      const scanId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      let progressTimer = null;
       try {
         setGmailStatus("Saving Gmail settings...", tenant);
         const saved = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(actionElement.closest("form")));
-        setTenant({ ...currentTenant(), gmailIntegration: { ...saved.gmailIntegration, status: "Scanning Gmail..." } });
+        setTenant({ ...currentTenant(), gmailIntegration: { ...saved.gmailIntegration, signals: [], status: "Scanning Gmail..." } });
+        ui.addedGmailContacts.clear();
+        ui.skippedGmailContacts.clear();
+        ui.gmailDiscoveryPage = 1;
+        ui.gmailScanProgress = { active: true, status: "starting", scannedMessages: 0, totalMessages: 0, scanId };
         render();
-        const result = await scanGmailViaApi(tenant.id);
+        progressTimer = pollGmailScanProgress(tenant.id, scanId);
+        const result = await scanGmailViaApi(tenant.id, scanId);
+        if (progressTimer) window.clearInterval(progressTimer);
+        ui.gmailScanProgress = { active: false, status: "complete", scannedMessages: result.scannedMessages || 0, totalMessages: result.scannedMessages || 0 };
         setTenant({ ...currentTenant(), gmailIntegration: result.gmailIntegration });
         ui.gmailDiscoveryPage = 1;
         render();
       } catch (error) {
+        if (progressTimer) window.clearInterval(progressTimer);
+        ui.gmailScanProgress = { ...(ui.gmailScanProgress || {}), active: false, status: "failed", error: error.message };
         setGmailStatus(error.message, currentTenant());
       }
     }
@@ -1813,6 +1861,21 @@ document.addEventListener("click", async (event) => {
         ui.addedGmailContacts.add(discovery.email);
         ui.gmailDiscoveryPage = Math.max(1, ui.gmailDiscoveryPage);
         showToast(`Added ${discovery.name} from Gmail`);
+        return;
+      }
+    }
+    if (action === "skip-gmail-contact") {
+      const tenant = currentTenant();
+      const discovery = gmailContactDiscoveries(tenant).find((item) => item.email === actionElement.dataset.email);
+      if (discovery) {
+        try {
+          const result = await skipGmailContactViaApi(tenant.id, discovery);
+          if (result.gmailIntegration) setTenant({ ...currentTenant(), gmailIntegration: result.gmailIntegration });
+          ui.skippedGmailContacts.add(discovery.email);
+          showToast(`Skipped ${discovery.email}`);
+        } catch (error) {
+          showToast(error.message);
+        }
         return;
       }
     }
@@ -2145,6 +2208,25 @@ document.addEventListener("submit", async (event) => {
     ui.section = "settings";
     ui.settingsTab = "mail";
     ui.gmailNotice = "";
+    render();
+    return;
+  }
+  if (event.target.matches("[data-configuration-form]")) {
+    event.preventDefault();
+    const tenant = currentTenant();
+    const values = Object.fromEntries(new FormData(event.target));
+    const gmailLookbackDays = Math.max(1, Math.min(365, Number(values.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS)));
+    try {
+      const result = await saveConfigurationViaApi(tenant.id, { gmailLookbackDays });
+      setTenant({ ...currentTenant(), gmailIntegration: { ...result.gmailIntegration, status: "Configuration saved." } });
+      showToast("Configuration saved");
+    } catch (error) {
+      const previous = gmailIntegration(tenant);
+      setTenant({ ...tenant, gmailIntegration: { ...previous, gmailLookbackDays, status: error.message } });
+      showToast(error.message);
+    }
+    ui.section = "settings";
+    ui.settingsTab = "configuration";
     render();
     return;
   }

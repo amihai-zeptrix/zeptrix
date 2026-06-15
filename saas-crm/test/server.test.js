@@ -490,7 +490,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   const sidebarSource = functionSource(app, "renderSidebar", "sideLink");
   const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
   const renderSettingsPageSource = functionSource(app, "renderSettingsPage", "renderMailIntegrationsSettings");
-  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderWorkspaceSettingsPanel");
+  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderConfigurationSettingsPanel");
+  const renderConfigurationSource = functionSource(app, "renderConfigurationSettingsPanel", "gmailIntegration");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
@@ -499,6 +500,12 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSectionSource, /ui\.section === "settings"/);
   assert.match(renderSettingsPageSource, /Mail integrations/);
   assert.match(renderSettingsPageSource, /data-settings-tab="mail"/);
+  assert.match(renderSettingsPageSource, /Configuration/);
+  assert.match(renderSettingsPageSource, /data-settings-tab="configuration"/);
+  assert.doesNotMatch(renderSettingsPageSource, /data-settings-tab="workspace"/);
+  assert.match(renderConfigurationSource, /data-configuration-form/);
+  assert.match(renderConfigurationSource, /gmail\.inboxLookbackDays/);
+  assert.match(renderConfigurationSource, /gmailLookbackDays/);
   assert.match(renderMailSettingsSource, /data-gmail-settings-form/);
   assert.match(renderMailSettingsSource, /formField\("Gmail account", "accountEmail", gmail\.accountEmail, "email", true\)/);
   assert.doesNotMatch(renderMailSettingsSource, /gmailClientIdDiagnostic/);
@@ -514,7 +521,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /Authorized redirect URI/);
   assert.match(renderMailSettingsSource, /No-mail threshold in months/);
   assert.match(renderMailSettingsSource, /Identify new contacts from Gmail/);
-  assert.match(renderMailSettingsSource, /last \$\{GMAIL_DISCOVERY_LOOKBACK_DAYS\} days/);
+  assert.match(renderMailSettingsSource, /last \$\{gmailLookbackDays\} days/);
   assert.match(renderMailSettingsSource, /filters out contacts already in CRM/);
   assert.match(renderMailSettingsSource, /Find contacts with no sent mail/);
   assert.match(renderMailSettingsSource, /gmail\.readonly/);
@@ -526,17 +533,20 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /connectGmailViaApi/);
   assert.match(app, /scanGmailViaApi/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30/);
-  assert.match(app, /GMAIL_DISCOVERY_LOOKBACK_DAYS = 30/);
+  assert.match(app, /DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS = 30/);
+  assert.match(serverSource(), /gmail_lookback_days/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_FULL_LIMIT = 250/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250/);
   assert.match(serverSource(), /listGmailMessages/);
   assert.match(serverSource(), /gmailNewContactScope\(integration\.labels\)/);
-  assert.match(serverSource(), /newer_than:\$\{GMAIL_NEW_CONTACT_LOOKBACK_DAYS\}d/);
+  assert.match(serverSource(), /newer_than:\$\{gmailLookbackDays\}d/);
   assert.match(serverSource(), /format: "metadata"/);
   assert.match(serverSource(), /unknownMetadata\.slice\(0, GMAIL_NEW_CONTACT_FULL_LIMIT\)/);
   assert.match(serverSource(), /format: "full"/);
   assert.match(serverSource(), /add column if not exists phone text/);
+  assert.match(serverSource(), /gmail_contact_blacklist/);
+  assert.match(serverSource(), /scanProgressById/);
   assert.match(app, /handleGmailCallbackQuery/);
   assert.match(app, /Gmail connected\. Refreshing integration status/);
   assert.match(app, /setGmailStatus\("Saving Gmail settings\.\.\."/);
@@ -551,9 +561,12 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(clickHandlerSource, /data-settings-tab/);
   assert.match(clickHandlerSource, /action === "connect-gmail"/);
   assert.match(clickHandlerSource, /action === "scan-gmail"/);
+  assert.match(clickHandlerSource, /action === "skip-gmail-contact"/);
   assert.match(clickHandlerSource, /action === "add-gmail-contact"/);
   assert.match(submitHandlerSource, /data-gmail-settings-form/);
   assert.match(submitHandlerSource, /saveGmailSettingsViaApi\(tenant\.id, gmailFormValues\(event\.target\)\)/);
+  assert.match(submitHandlerSource, /data-configuration-form/);
+  assert.match(submitHandlerSource, /saveConfigurationViaApi/);
   assert.match(styles, /\.settings-tabs/);
   assert.match(styles, /\.settings-layout/);
   assert.match(styles, /\.signal-row/);
@@ -565,14 +578,16 @@ test("CRM settings include Gmail mail integration controls", () => {
 test("CRM Gmail discovered contacts provide add feedback and disappear after add", () => {
   const app = crmAppSource();
   const styles = crmStylesSource();
-  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderWorkspaceSettingsPanel");
+  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderConfigurationSettingsPanel");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
 
   assert.match(renderMailSettingsSource, /New contacts found in Gmail/);
-  assert.match(renderMailSettingsSource, /Scope: last \$\{GMAIL_DISCOVERY_LOOKBACK_DAYS\} days/);
+  assert.match(renderMailSettingsSource, /Scope: last \$\{gmailLookbackDays\} days/);
   assert.match(renderMailSettingsSource, /non-sent Gmail/);
   assert.match(renderMailSettingsSource, /data-gmail-signal-email/);
   assert.match(renderMailSettingsSource, /\[item\.email, item\.phone, item\.source\]\.filter\(Boolean\)\.join/);
+  assert.match(renderMailSettingsSource, /data-action="skip-gmail-contact"/);
+  assert.match(renderMailSettingsSource, /renderGmailScanProgress/);
   assert.match(app, /GMAIL_DISCOVERY_PAGE_SIZE = 10/);
   assert.match(renderMailSettingsSource, /visibleDiscoveries/);
   assert.match(renderMailSettingsSource, /renderGmailDiscoveryPagination/);
@@ -584,6 +599,9 @@ test("CRM Gmail discovered contacts provide add feedback and disappear after add
   assert.match(clickHandlerSource, /phone: discovery\.phone \|\| ""/);
   assert.match(clickHandlerSource, /phone \$\{discovery\.phone\}/);
   assert.match(clickHandlerSource, /action === "add-gmail-contact"/);
+  assert.match(clickHandlerSource, /skipGmailContactViaApi/);
+  assert.match(clickHandlerSource, /ui\.skippedGmailContacts\.add\(discovery\.email\)/);
+  assert.match(clickHandlerSource, /pollGmailScanProgress/);
   assert.match(clickHandlerSource, /ui\.addedGmailContacts\.add\(discovery\.email\)/);
   assert.match(clickHandlerSource, /showToast\(`Added \$\{discovery\.name\} from Gmail`\)/);
   assert.match(app, /function showToast/);

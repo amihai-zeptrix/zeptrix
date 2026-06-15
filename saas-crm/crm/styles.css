@@ -1371,10 +1371,42 @@ h3 { font-size: 14px; }
   display: grid;
   gap: 14px;
 }
-.oauth-help-row {
+.configuration-list {
+  display: grid;
+  gap: 12px;
+}
+.configuration-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 14px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.configuration-row span {
+  display: grid;
+  gap: 4px;
+}
+.configuration-row small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+.configuration-row input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+}
+.field label {
   display: flex;
-  justify-content: flex-end;
-  margin-top: -10px;
+  align-items: center;
+  gap: 10px;
+}
+.field label .button {
+  text-transform: none;
 }
 .check-list.compact {
   gap: 7px;
@@ -1412,6 +1444,18 @@ h3 { font-size: 14px; }
 }
 .signal-pagination span {
   margin-right: auto;
+}
+.gmail-progress {
+  display: grid;
+  gap: 4px;
+  padding: 13px;
+  border: 1px solid #c8dcff;
+  border-radius: 8px;
+  background: #f6f9ff;
+}
+.gmail-progress span,
+.gmail-progress small {
+  color: var(--muted);
 }
 .guide-steps {
   display: grid;

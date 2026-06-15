@@ -26,6 +26,7 @@ const GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30;
 const GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000;
 const GMAIL_NEW_CONTACT_FULL_LIMIT = 250;
 const GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250;
+const scanProgressById = new Map();
 const ses = new SESClient({ region });
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false } })
@@ -340,6 +341,7 @@ async function initDatabase() {
       client_id text,
       redirect_uri text,
       labels text not null default 'Inbox, Sent',
+      gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365),
       stale_months integer not null default 3 check (stale_months > 0 and stale_months <= 36),
       detect_new_contacts boolean not null default true,
       detect_dormant_contacts boolean not null default true,
@@ -368,10 +370,22 @@ async function initDatabase() {
       created_at timestamptz not null default now(),
       unique(tenant_id, signal_type, email)
     )`);
+  await dbQuery(`
+    create table if not exists gmail_contact_blacklist (
+      id uuid primary key default gen_random_uuid(),
+      tenant_id uuid not null references tenants(id) on delete cascade,
+      email citext not null,
+      name text,
+      source text,
+      created_at timestamptz not null default now(),
+      unique(tenant_id, email)
+    )`);
   await dbQuery(`alter table gmail_contact_signals add column if not exists phone text`);
+  await dbQuery(`alter table gmail_integrations add column if not exists gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365)`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
+  await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
   await seedDatabase();
 }
 
@@ -699,6 +713,7 @@ function gmailIntegrationFromRow(row, signals = []) {
     clientId: row?.client_id || "",
     redirectUri: row?.redirect_uri || `${publicBaseUrl}/api/gmail/oauth/callback`,
     labels: row?.labels || "Inbox, Sent",
+    gmailLookbackDays: row?.gmail_lookback_days || GMAIL_NEW_CONTACT_LOOKBACK_DAYS,
     staleMonths: row?.stale_months || 3,
     detectNewContacts: row?.detect_new_contacts ?? true,
     detectDormantContacts: row?.detect_dormant_contacts ?? true,
@@ -843,6 +858,7 @@ function normalizeGmailSettings(payload = {}) {
     clientId,
     redirectUri: String(payload.redirectUri || `${publicBaseUrl}/api/gmail/oauth/callback`).trim(),
     labels: String(payload.labels || "Inbox, Sent").trim(),
+    gmailLookbackDays: payload.gmailLookbackDays == null ? null : Math.max(1, Math.min(365, Number(payload.gmailLookbackDays || GMAIL_NEW_CONTACT_LOOKBACK_DAYS))),
     staleMonths: Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
     detectNewContacts: payload.detectNewContacts !== false,
     detectDormantContacts: payload.detectDormantContacts !== false,
@@ -861,21 +877,43 @@ async function upsertGmailSettings(tenantId, payload) {
   const settings = normalizeGmailSettings(payload);
   const result = await dbQuery(
     `insert into gmail_integrations
-       (tenant_id, account_email, workspace_domain, client_id, redirect_uri, labels, stale_months, detect_new_contacts, detect_dormant_contacts, status, updated_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Settings saved',now())
+       (tenant_id, account_email, workspace_domain, client_id, redirect_uri, labels, gmail_lookback_days, stale_months, detect_new_contacts, detect_dormant_contacts, status, updated_at)
+     values ($1,$2,$3,$4,$5,$6,coalesce($7,${GMAIL_NEW_CONTACT_LOOKBACK_DAYS}),$8,$9,$10,'Settings saved',now())
      on conflict (tenant_id) do update set
        account_email=excluded.account_email,
        workspace_domain=excluded.workspace_domain,
        client_id=excluded.client_id,
        redirect_uri=excluded.redirect_uri,
        labels=excluded.labels,
+       gmail_lookback_days=coalesce($7,gmail_integrations.gmail_lookback_days),
        stale_months=excluded.stale_months,
        detect_new_contacts=excluded.detect_new_contacts,
        detect_dormant_contacts=excluded.detect_dormant_contacts,
        status=case when gmail_integrations.enabled then 'Settings saved' else 'Not connected' end,
        updated_at=now()
      returning *`,
-    [tenantId, settings.accountEmail, settings.workspaceDomain, settings.clientId, settings.redirectUri, settings.labels, settings.staleMonths, settings.detectNewContacts, settings.detectDormantContacts],
+    [tenantId, settings.accountEmail, settings.workspaceDomain, settings.clientId, settings.redirectUri, settings.labels, settings.gmailLookbackDays, settings.staleMonths, settings.detectNewContacts, settings.detectDormantContacts],
+  );
+  return gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId));
+}
+
+function normalizeConfigurationSettings(payload = {}) {
+  return {
+    gmailLookbackDays: Math.max(1, Math.min(365, Number(payload.gmailLookbackDays || GMAIL_NEW_CONTACT_LOOKBACK_DAYS))),
+  };
+}
+
+async function upsertConfigurationSettings(tenantId, payload) {
+  const settings = normalizeConfigurationSettings(payload);
+  const result = await dbQuery(
+    `insert into gmail_integrations (tenant_id, gmail_lookback_days, status, updated_at)
+     values ($1,$2,'Configuration saved',now())
+     on conflict (tenant_id) do update set
+       gmail_lookback_days=excluded.gmail_lookback_days,
+       status=case when gmail_integrations.enabled then gmail_integrations.status else gmail_integrations.status end,
+       updated_at=now()
+     returning *`,
+    [tenantId, settings.gmailLookbackDays],
   );
   return gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId));
 }
@@ -1165,28 +1203,52 @@ function gmailContactSignalSource(item = {}) {
   return details ? `${item.source} - ${details}` : item.source;
 }
 
-async function scanGmailForTenant(tenantId) {
+function updateGmailScanProgress(scanId, patch) {
+  if (!scanId) return;
+  scanProgressById.set(scanId, { ...(scanProgressById.get(scanId) || {}), ...patch, updatedAt: new Date().toISOString() });
+}
+
+function finishGmailScanProgress(scanId, patch = {}) {
+  if (!scanId) return;
+  updateGmailScanProgress(scanId, { status: "complete", active: false, ...patch });
+  setTimeout(() => scanProgressById.delete(scanId), 10 * 60 * 1000).unref?.();
+}
+
+async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
   const integrationResult = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [tenantId]);
   const integration = integrationResult.rows[0];
   if (!integration?.enabled) throw new Error("Gmail is not connected.");
+  updateGmailScanProgress(scanId, { active: true, status: "listing", scannedMessages: 0, totalMessages: 0, startedAt: new Date().toISOString() });
   const accessToken = await getGmailAccessToken(tenantId);
   const staleMonths = Math.max(1, Number(integration.stale_months || 3));
-  const [dealsResult, inboundList] = await Promise.all([
+  const gmailLookbackDays = Math.max(1, Math.min(365, Number(integration.gmail_lookback_days || GMAIL_NEW_CONTACT_LOOKBACK_DAYS)));
+  const [dealsResult, blacklistResult, inboundList] = await Promise.all([
     dbQuery(`select distinct lower(email) email, contact, account from deals where tenant_id=$1 and email is not null and email<>''`, [tenantId]),
+    dbQuery(`select lower(email::text) email from gmail_contact_blacklist where tenant_id=$1`, [tenantId]),
     integration.detect_new_contacts
-      ? listGmailMessages(accessToken, { q: `${gmailNewContactScope(integration.labels)} newer_than:${GMAIL_NEW_CONTACT_LOOKBACK_DAYS}d -in:sent` }, GMAIL_NEW_CONTACT_METADATA_LIMIT)
+      ? listGmailMessages(accessToken, { q: `${gmailNewContactScope(integration.labels)} newer_than:${gmailLookbackDays}d -in:sent` }, GMAIL_NEW_CONTACT_METADATA_LIMIT)
       : { messages: [] },
   ]);
   const knownEmails = new Set(dealsResult.rows.map((row) => row.email));
-  const inboundMetadata = await mapLimit((inboundList.messages || []).slice(0, GMAIL_NEW_CONTACT_METADATA_LIMIT), 8, (message) => gmailApi(accessToken, `messages/${message.id}`, { format: "metadata", metadataHeaders: "From" }));
+  const blacklistedEmails = new Set(blacklistResult.rows.map((row) => row.email));
+  const inboundCandidates = (inboundList.messages || []).slice(0, GMAIL_NEW_CONTACT_METADATA_LIMIT);
+  let scannedMessages = 0;
+  updateGmailScanProgress(scanId, { status: "scanning", totalMessages: inboundCandidates.length, scannedMessages });
+  const inboundMetadata = await mapLimit(inboundCandidates, 8, async (message) => {
+    const metadata = await gmailApi(accessToken, `messages/${message.id}`, { format: "metadata", metadataHeaders: "From" });
+    scannedMessages += 1;
+    updateGmailScanProgress(scanId, { status: "scanning", totalMessages: inboundCandidates.length, scannedMessages });
+    return metadata;
+  });
   const unknownMetadata = [];
   const seenNew = new Set();
   for (const message of inboundMetadata) {
     const parsed = parseEmailAddress(headerValue(message, "From"));
-    if (!parsed || knownEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
+    if (!parsed || knownEmails.has(parsed.email) || blacklistedEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
     seenNew.add(parsed.email);
     unknownMetadata.push({ ...message, parsed });
   }
+  updateGmailScanProgress(scanId, { status: "enriching", totalMessages: inboundCandidates.length, scannedMessages, candidatesFound: unknownMetadata.length });
   const inboundMessages = await mapLimit(unknownMetadata.slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT), 6, async (message) => ({
     parsed: message.parsed,
     full: await gmailApi(accessToken, `messages/${message.id}`, { format: "full" }),
@@ -1223,7 +1285,9 @@ async function scanGmailForTenant(tenantId) {
     }
     await client.query(`update gmail_integrations set last_scan_at=now(), status='Last scan completed', updated_at=now() where tenant_id=$1`, [tenantId]);
   });
-  return { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), scannedMessages: inboundMetadata.length + dormantChecks.length };
+  const result = { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), scannedMessages: inboundMetadata.length + dormantChecks.length };
+  finishGmailScanProgress(scanId, { scannedMessages: inboundMetadata.length, totalMessages: inboundCandidates.length, candidatesFound: newContacts.length });
+  return result;
 }
 
 async function handleApi(req, res) {
@@ -1395,6 +1459,44 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/configuration")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const gmailIntegration = await upsertConfigurationSettings(resolved.tenantId, await readBody(req));
+      return json(res, 200, { gmailIntegration });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save configuration.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail/skip")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const body = await readBody(req);
+      const parsed = parseEmailAddress(body.email || "");
+      if (!parsed) return json(res, 400, { error: "Valid email is required." });
+      await withTransaction(async (client) => {
+        await client.query(
+          `insert into gmail_contact_blacklist (tenant_id, email, name, source)
+           values ($1,$2,$3,$4)
+           on conflict (tenant_id, email) do update set name=excluded.name, source=excluded.source`,
+          [resolved.tenantId, parsed.email, body.name || parsed.name, body.source || "Skipped from Gmail discoveries"],
+        );
+        await client.query(`delete from gmail_contact_signals where tenant_id=$1 and signal_type='new_contact' and email=$2`, [resolved.tenantId, parsed.email]);
+      });
+      const integration = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [resolved.tenantId]);
+      return json(res, 200, { ok: true, email: parsed.email, gmailIntegration: gmailIntegrationFromRow(integration.rows[0], await readGmailSignals(resolved.tenantId)) });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to skip Gmail contact.", detail: error.message });
+    }
+  }
+
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail/connect")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -1458,16 +1560,31 @@ async function handleApi(req, res) {
   }
 
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail/scan")) {
+    const scanId = requestUrl.searchParams.get("scanId") || "";
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const result = await scanGmailForTenant(resolved.tenantId);
+      const result = await scanGmailForTenant(resolved.tenantId, { scanId });
       const integration = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [resolved.tenantId]);
       return json(res, 200, { ...result, gmailIntegration: gmailIntegrationFromRow(integration.rows[0], await readGmailSignals(resolved.tenantId)) });
     } catch (error) {
+      finishGmailScanProgress(scanId, { status: "failed", error: error.message });
       return json(res, 502, { error: "Unable to scan Gmail.", detail: error.message });
+    }
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail/scan-progress")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const scanId = requestUrl.searchParams.get("scanId") || "";
+      return json(res, 200, scanProgressById.get(scanId) || { active: false, status: "unknown", scannedMessages: 0, totalMessages: 0 });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to read Gmail scan progress.", detail: error.message });
     }
   }
 
