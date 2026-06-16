@@ -403,11 +403,10 @@ async function apiRequest(path, options = {}) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 401 && session && !IS_DEMO_ROUTE) {
-      session = null;
-      saveSession();
-    }
-    throw new Error(body.error === "Authentication required." ? "Please sign in again to continue." : body.error || body.detail || "Request failed.");
+    const message = response.status === 401 && body.error === "Authentication required."
+      ? "Please sign in again to continue."
+      : body.error || body.detail || "Request failed.";
+    throw new Error(message);
   }
   return body;
 }

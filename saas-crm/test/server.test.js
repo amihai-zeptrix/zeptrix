@@ -666,7 +666,7 @@ test("CRM shows an impressive whats new dialog after login", () => {
   assert.match(styles, /\.whats-new-hero/);
 });
 
-test("CRM clears stale sessions without API tokens before protected calls", () => {
+test("CRM rejects stale local sessions but does not log out on protected request failures", () => {
   const app = crmAppSource();
   const loadSessionSource = functionSource(app, "loadSession", "saveData");
   const apiRequestSource = functionSource(app, "apiRequest", "loadStateFromApi");
@@ -674,6 +674,7 @@ test("CRM clears stale sessions without API tokens before protected calls", () =
   assert.match(loadSessionSource, /storedSession\.role !== "demo_user" && !storedSession\.apiToken/);
   assert.match(apiRequestSource, /response\.status === 401/);
   assert.match(apiRequestSource, /Please sign in again to continue/);
+  assert.doesNotMatch(apiRequestSource, /session = null/);
 });
 
 test("CRM inbox expands communication rows into correspondence threads", () => {
