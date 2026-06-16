@@ -1122,7 +1122,8 @@ function parseEmailAddress(value = "") {
 
 function isAutomatedSenderEmail(email = "") {
   const localPart = String(email).toLowerCase().split("@")[0] || "";
-  return /(^|[._+-])(no-?reply|do-?not-?reply|donotreply|updates-?noreply)([._+-]|$)/i.test(localPart);
+  const automatedLocalParts = new Set(["alerts", "newslater", "newsletter", "service", "help", "news", "info"]);
+  return automatedLocalParts.has(localPart) || /(^|[._+-])(no-?reply|do-?not-?reply|donotreply|updates-?noreply)([._+-]|$)/i.test(localPart);
 }
 
 function decodeGmailBody(data = "") {

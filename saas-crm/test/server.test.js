@@ -222,6 +222,13 @@ test("Gmail helpers parse addresses and encrypt tokens", () => {
   assert.equal(isAutomatedSenderEmail("no-reply@netflix.com"), true);
   assert.equal(isAutomatedSenderEmail("noreply@primark.example"), true);
   assert.equal(isAutomatedSenderEmail("updates-noreply@example.com"), true);
+  assert.equal(isAutomatedSenderEmail("alerts@example.com"), true);
+  assert.equal(isAutomatedSenderEmail("newslater@example.com"), true);
+  assert.equal(isAutomatedSenderEmail("newsletter@example.com"), true);
+  assert.equal(isAutomatedSenderEmail("service@example.com"), true);
+  assert.equal(isAutomatedSenderEmail("help@example.com"), true);
+  assert.equal(isAutomatedSenderEmail("news@example.com"), true);
+  assert.equal(isAutomatedSenderEmail("info@example.com"), true);
   assert.equal(isAutomatedSenderEmail("maya.noa@example.com"), false);
   assert.match(serverSource(), /isAutomatedSenderEmail\(parsed\.email\)/);
 
