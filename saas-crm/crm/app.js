@@ -45,6 +45,26 @@ const templateTokens = [
   ["dealValue", "Deal value"],
   ["closeDate", "Close date"],
 ];
+const defaultMailTemplates = [
+  {
+    id: "follow-up-check-in",
+    name: "Follow-up check-in",
+    subject: "Quick check-in for {{accountName}}",
+    body: "Hi {{mainContactName}},\n\nI noticed we have not connected in a while and wanted to check how things are going at {{accountName}}.\n\nIs there anything you need from us, or any priority we should help move forward?\n\nBest,\n{{ownerName}}",
+  },
+  {
+    id: "renewal-touchpoint",
+    name: "Renewal touchpoint",
+    subject: "Planning ahead for {{accountName}}",
+    body: "Hi {{mainContactName}},\n\nAs we plan ahead for {{accountName}}, I wanted to review current priorities, value delivered, and any open risks before the next milestone.\n\nWould a short review next week work?\n\nBest,\n{{ownerName}}",
+  },
+  {
+    id: "executive-value-recap",
+    name: "Executive value recap",
+    subject: "Value recap for {{accountName}}",
+    body: "Hi {{mainContactName}},\n\nI prepared a short recap for {{accountName}} covering outcomes, open actions, and the next value areas for {{dealName}}.\n\nHappy to walk through it with your team.\n\nBest,\n{{ownerName}}",
+  },
+];
 
 const tenantSeed = [
   {
@@ -162,6 +182,7 @@ let ui = {
   importOpen: false,
   taskDealId: null,
   emailDealId: null,
+  emailTemplateId: "follow-up-check-in",
   collapsed: [],
   accountFocus: "",
   selectedContactEmail: "",
@@ -223,6 +244,7 @@ function normalizeData(nextData) {
     ...tenant,
     deals: (tenant.deals || []).map((deal) => ({ ...deal, tags: deal.tags || defaultAccountTags(deal) })),
     availableTags: normalizeTags([...(tenant.availableTags || []), ...(tenant.deals || []).flatMap((deal) => deal.tags || defaultAccountTags(deal)), ...defaultTags]),
+    mailTemplates: normalizeMailTemplates(tenant.mailTemplates),
     campaigns: (tenant.campaigns?.length ? tenant.campaigns : defaultCampaignsForTenant(tenant)).map((campaign) => ({ recurrence: "one-time", ...campaign })),
     gmailIntegration: { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) },
     users: (tenant.users || []).map((user) => {
@@ -259,6 +281,11 @@ function normalizeTagName(value = "") {
 
 function normalizeTags(tags = []) {
   return [...new Set((Array.isArray(tags) ? tags : String(tags || "").split(",")).map(normalizeTagName).filter(Boolean))].sort();
+}
+
+function normalizeMailTemplates(templates = []) {
+  const source = templates?.length ? templates : defaultMailTemplates;
+  return source.map((template) => ({ ...template, id: template.id || localRecordId("template") }));
 }
 
 function defaultCampaignsForTenant(tenant) {
@@ -495,6 +522,18 @@ async function updateDealViaApi(tenantId, dealId, values) {
 
 async function deleteDealViaApi(tenantId, dealId) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/deals/${encodeURIComponent(dealId)}`, { method: "DELETE" });
+}
+
+async function saveMailTemplateViaApi(tenantId, template) {
+  const isPersisted = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(template.id || ""));
+  const path = isPersisted
+    ? `/api/tenants/${encodeURIComponent(tenantId)}/templates/${encodeURIComponent(template.id)}`
+    : `/api/tenants/${encodeURIComponent(tenantId)}/templates`;
+  return apiRequest(path, { method: isPersisted ? "PUT" : "POST", body: JSON.stringify(template) });
+}
+
+async function deleteMailTemplateViaApi(tenantId, templateId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/templates/${encodeURIComponent(templateId)}`, { method: "DELETE" });
 }
 
 async function createTagViaApi(tenantId, name) {
@@ -1208,6 +1247,27 @@ function renderMergedTemplate(template, deal) {
   return escapeHtml(template || "").replace(/\{\{(\w+)\}\}/g, (_, key) => `<strong>${escapeHtml(data[key] || "")}</strong>`).replace(/\n/g, "<br>");
 }
 
+function mailTemplates(tenant = currentTenant()) {
+  return normalizeMailTemplates(tenant.mailTemplates);
+}
+
+function selectedMailTemplate() {
+  const templates = mailTemplates();
+  return templates.find((template) => String(template.id) === String(ui.emailTemplateId)) || templates[0];
+}
+
+function mergeMailTemplate(value = "", deal = currentTenant().deals[0]) {
+  const data = {
+    ...mergeDataForDeal(deal),
+    mainContactName: deal?.contact || "there",
+    contactName: deal?.contact || "there",
+    email: deal?.email || "",
+    phone: deal?.phone || "",
+    months: String(gmailDormantContacts(currentTenant()).find((item) => item.email === deal?.email)?.months || gmailIntegration(currentTenant()).staleMonths || 3),
+  };
+  return String(value || "").replace(/\{\{(\w+)\}\}/g, (_, key) => data[key] || "");
+}
+
 function renderImportStrip() {
   return `<section class="import-strip"><button data-action="import-source" data-source="csv"><strong>CSV</strong><small>Upload accounts and contacts from a spreadsheet</small></button><button data-action="import-source" data-source="salesforce"><strong>Salesforce</strong><small>Sync leads, accounts, contacts, and owners</small></button><button data-action="import-source" data-source="zendesk"><strong>Zendesk</strong><small>Bring support contacts and account context</small></button></section>`;
 }
@@ -1467,6 +1527,14 @@ function addCorrespondenceReply(threadId, body) {
   saveData();
 }
 
+function openFollowUpEmail(email) {
+  const deal = currentTenant().deals.find((item) => String(item.email || "").toLowerCase() === String(email || "").toLowerCase()) || currentTenant().deals[0];
+  ui.emailDealId = deal?.id || null;
+  ui.emailTemplateId = mailTemplates()[0]?.id || "follow-up-check-in";
+  ui.modal = "email";
+  ui.selected = null;
+}
+
 function renderActivities() {
   const allTasks = [...currentTenant().tasks].sort((a, b) => Number(a.completed) - Number(b.completed) || a.due.localeCompare(b.due));
   const tasks = ui.activityFilter === "open" ? allTasks.filter((task) => !task.completed) : allTasks;
@@ -1544,7 +1612,12 @@ function renderTaskForm() {
 
 function renderEmailForm() {
   const dealId = ui.emailDealId || currentTenant().deals[0]?.id;
-  return `<div class="modal-layer center"><form class="modal" data-email-form><header class="modal-head"><div><h2>Log email</h2><p class="subcopy">Capture the message and attach it to the right opportunity.</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="form-grid">${selectField("Deal", "dealId", currentTenant().deals.map((deal) => [deal.id, deal.name]), dealId)}${selectField("Direction", "direction", [["outbound", "Outbound"], ["inbound", "Inbound"]], "outbound")}${formField("Subject", "subject", "", "text", true, "full")}<div class="field full"><label>Message</label><textarea name="body" required></textarea></div></div><div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">Log email</button></div></form></div>`;
+  const deal = currentTenant().deals.find((item) => String(item.id) === String(dealId)) || currentTenant().deals[0];
+  const templates = mailTemplates();
+  const template = selectedMailTemplate();
+  const subject = mergeMailTemplate(template?.subject || "", deal);
+  const body = mergeMailTemplate(template?.body || "", deal);
+  return `<div class="modal-layer center"><form class="modal email-modal" data-email-form><header class="modal-head"><div><h2>Log email</h2><p class="subcopy">Capture the message and attach it to the right opportunity.</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="form-grid">${selectField("Deal", "dealId", currentTenant().deals.map((deal) => [deal.id, deal.name]), dealId)}<div class="field"><label>Template</label><select name="templateId" data-email-template>${templates.map((item) => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(template?.id) ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></div>${selectField("Direction", "direction", [["outbound", "Outbound"], ["inbound", "Inbound"]], "outbound")}${formField("Subject", "subject", subject, "text", true, "full")}<div class="field full"><label>Message</label><textarea name="body" required>${escapeHtml(body)}</textarea></div></div><div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">Log email</button></div></form></div>`;
 }
 
 function renderImportModal() {
@@ -1561,9 +1634,19 @@ function renderSettingsPage() {
     ${renderPageHeader("Settings", "Configure CRM integrations and workspace behavior.")}
     <nav class="settings-tabs">
       <button class="${ui.settingsTab === "mail" ? "active" : ""}" data-settings-tab="mail">Mail integrations</button>
+      <button class="${ui.settingsTab === "templates" ? "active" : ""}" data-settings-tab="templates">Templates</button>
       <button class="${ui.settingsTab === "configuration" ? "active" : ""}" data-settings-tab="configuration">Configuration</button>
     </nav>
-    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : renderConfigurationSettingsPanel()}`;
+    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : renderConfigurationSettingsPanel()}`;
+}
+
+function renderTemplatesSettingsPanel() {
+  const templates = mailTemplates();
+  return `<section class="settings-card templates-card"><div class="panel-head"><div><h3>Mail templates</h3><p class="subcopy">Manage reusable messages for follow-ups and account outreach.</p></div></div><div class="template-list">${templates.map((template) => renderTemplateForm(template)).join("")}</div><form class="template-form new-template-form" data-template-form><h4>New template</h4><div class="form-grid">${formField("Template name", "name", "", "text", true)}${formField("Subject", "subject", "", "text", true)}<div class="field full"><label>Body</label><textarea name="body" required placeholder="Hi {{mainContactName}},&#10;&#10;..."></textarea></div></div><div class="token-bar">${templateTokens.map(([token, label]) => `<span class="field-tag">${escapeHtml(label)}: {{${escapeHtml(token)}}}</span>`).join("")}</div><div class="form-actions"><button class="button primary">Create template</button></div></form></section>`;
+}
+
+function renderTemplateForm(template) {
+  return `<form class="template-form" data-template-form data-template-id="${escapeHtml(template.id)}"><div class="panel-head compact"><h4>${escapeHtml(template.name)}</h4><button type="button" class="button small danger" data-action="delete-template" data-id="${escapeHtml(template.id)}">Delete</button></div><div class="form-grid">${formField("Template name", "name", template.name, "text", true)}${formField("Subject", "subject", template.subject, "text", true)}<div class="field full"><label>Body</label><textarea name="body" required>${escapeHtml(template.body)}</textarea></div></div><div class="form-actions"><button class="button small primary">Save template</button></div></form>`;
 }
 
 function renderMailIntegrationsSettings() {
@@ -1606,7 +1689,7 @@ function renderMailIntegrationsSettings() {
         <article class="settings-card follow-up-card">
           <div class="panel-head"><div><h3>Contacts needing follow-up</h3><p class="subcopy">Contacts with no sent mail in the configured window.</p></div><span class="summary-icon" style="background: var(--orange-soft); color: var(--orange);">◴</span></div>
           <div class="signal-list">
-            ${dormant.map((item) => `<button class="signal-row" data-open-contact="${escapeHtml(item.email)}"><span class="activity-symbol">!</span><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · no sent mail for ${item.months} months</small></span><span class="priority priority-high">Follow up</span></button>`).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}
+            ${dormant.map((item) => `<div class="signal-row"><span class="activity-symbol">!</span><button class="activity-main" data-open-contact="${escapeHtml(item.email)}"><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · no sent mail for ${item.months} months</small></span></button><button class="priority priority-high follow-up-chip" data-action="follow-up-contact" data-email="${escapeHtml(item.email)}">Follow up</button></div>`).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}
           </div>
         </article>
       </div>
@@ -1917,6 +2000,19 @@ document.addEventListener("click", async (event) => {
     }
     if (action === "add-task") { ui.modal = "task"; ui.taskDealId = taskDealId || null; ui.selected = null; }
     if (action === "compose-email") { ui.modal = "email"; ui.emailDealId = taskDealId || null; ui.selected = null; }
+    if (action === "follow-up-contact") {
+      openFollowUpEmail(actionElement.dataset.email);
+    }
+    if (action === "delete-template") {
+      const tenant = currentTenant();
+      try {
+        if (session?.apiToken && /^[0-9a-f-]{36}$/i.test(id)) await deleteMailTemplateViaApi(tenant.id, id);
+        setTenant({ ...currentTenant(), mailTemplates: mailTemplates().filter((template) => String(template.id) !== String(id)) });
+        showToast("Template deleted");
+      } catch (error) {
+        showToast(`Could not delete template: ${error.message}`);
+      }
+    }
     if (action === "open-import") ui.importOpen = !ui.importOpen;
     if (action === "import-source") {
       await importSampleRecords(actionElement.dataset.source);
@@ -2192,6 +2288,16 @@ document.addEventListener("change", async (event) => {
     render();
     return;
   }
+  if (event.target.matches("[data-email-template]")) {
+    ui.emailTemplateId = event.target.value;
+    render();
+    return;
+  }
+  if (event.target.closest("[data-email-form]") && event.target.name === "dealId") {
+    ui.emailDealId = event.target.value;
+    render();
+    return;
+  }
   if (event.target.matches("[data-campaign-field]")) {
     ui.campaignDraft = { ...ui.campaignDraft, [event.target.name]: event.target.value };
     if (event.target.name === "audienceType") ui.campaignDraft.audienceValue = "";
@@ -2344,7 +2450,7 @@ document.addEventListener("submit", async (event) => {
     if (ui.editingTenant) {
       try {
         const result = await updateTenantViaApi(ui.editingTenant.id, values);
-        data.tenants = data.tenants.map((tenant) => tenant.id === ui.editingTenant.id ? { ...tenant, ...result.tenant, users: result.tenant.users?.length ? result.tenant.users : tenant.users, deals: tenant.deals, tasks: tenant.tasks, communications: tenant.communications, campaigns: tenant.campaigns } : tenant);
+        data.tenants = data.tenants.map((tenant) => tenant.id === ui.editingTenant.id ? { ...tenant, ...result.tenant, users: result.tenant.users?.length ? result.tenant.users : tenant.users, deals: tenant.deals, tasks: tenant.tasks, communications: tenant.communications, campaigns: tenant.campaigns, mailTemplates: tenant.mailTemplates } : tenant);
         if (ui.tenantId === ui.editingTenant.id) ui.tenantId = ui.editingTenant.id;
       } catch (error) {
         ui.authError = error.message;
@@ -2380,6 +2486,26 @@ document.addEventListener("submit", async (event) => {
     ui.modal = null;
     ui.emailDealId = null;
     render();
+    return;
+  }
+  if (event.target.matches("[data-template-form]")) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.target));
+    const tenant = currentTenant();
+    const existingId = event.target.dataset.templateId || "";
+    const template = { id: existingId || localRecordId("template"), ...values, updatedAt: new Date().toISOString() };
+    try {
+      const saved = session?.apiToken ? (await saveMailTemplateViaApi(tenant.id, template)).template : template;
+      const templates = existingId
+        ? mailTemplates().map((item) => String(item.id) === String(existingId) ? saved : item)
+        : [saved, ...mailTemplates()];
+      setTenant({ ...currentTenant(), mailTemplates: templates });
+      ui.settingsTab = "templates";
+      showToast(existingId ? "Template saved" : "Template created");
+      render();
+    } catch (error) {
+      showToast(`Could not save template: ${error.message}`);
+    }
     return;
   }
   if (event.target.matches("[data-reply-form]")) {

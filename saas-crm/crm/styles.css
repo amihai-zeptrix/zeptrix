@@ -460,6 +460,10 @@ h3 { font-size: 14px; }
 .priority-high { color: #ae3d3d; background: #fde1e1; }
 .priority-medium { color: #9a6711; background: #fff1ca; }
 .priority-low { color: #277c60; background: #dcf4eb; }
+.follow-up-chip {
+  border: 0;
+  cursor: pointer;
+}
 .muted { color: var(--muted); }
 
 .avatar, .workspace-avatar {
@@ -1447,6 +1451,32 @@ h3 { font-size: 14px; }
 .settings-form {
   display: grid;
   gap: 14px;
+}
+.templates-card {
+  display: grid;
+  gap: 14px;
+}
+.template-list {
+  display: grid;
+  gap: 12px;
+}
+.template-form {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.template-form h4 {
+  margin: 0;
+}
+.template-form.new-template-form {
+  background: #f7fbff;
+  border-color: #d9e7ff;
+}
+.panel-head.compact {
+  margin-bottom: 0;
 }
 .configuration-list {
   display: grid;

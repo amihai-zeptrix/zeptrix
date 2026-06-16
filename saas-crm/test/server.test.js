@@ -210,6 +210,21 @@ test("CRM contact tags are backed by tenant tag catalog persistence", () => {
   assert.match(server, /createContactTagForTenant\(resolved\.tenantId, body\.name \|\| body\.tag\)/);
 });
 
+test("CRM mail templates are persisted and exposed through tenant APIs", () => {
+  const server = serverSource();
+
+  assert.match(server, /create table if not exists mail_templates/);
+  assert.match(server, /mail_templates_tenant_updated_idx/);
+  assert.match(server, /function normalizeMailTemplatePayload/);
+  assert.match(server, /async function upsertMailTemplateForTenant/);
+  assert.match(server, /mailTemplates: mailTemplates\.map\(mailTemplateFromRow\)/);
+  assert.match(server, /function mailTemplateFromRow/);
+  assert.match(server, /\/api\\\/tenants\\\/\[\^\/\]\+\\\/templates/);
+  assert.match(server, /Unable to save mail template/);
+  assert.match(server, /Unable to update mail template/);
+  assert.match(server, /Unable to delete mail template/);
+});
+
 test("Gmail OAuth URL uses readonly scope and tenant state", () => {
   const authUrl = new URL(gmailAuthUrl({
     tenantId: "tenant-123",
@@ -606,6 +621,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSectionSource, /ui\.section === "settings"/);
   assert.match(renderSettingsPageSource, /Mail integrations/);
   assert.match(renderSettingsPageSource, /data-settings-tab="mail"/);
+  assert.match(renderSettingsPageSource, /Templates/);
+  assert.match(renderSettingsPageSource, /data-settings-tab="templates"/);
+  assert.match(renderSettingsPageSource, /renderTemplatesSettingsPanel/);
   assert.match(renderSettingsPageSource, /Configuration/);
   assert.match(renderSettingsPageSource, /data-settings-tab="configuration"/);
   assert.doesNotMatch(renderSettingsPageSource, /data-settings-tab="workspace"/);
@@ -683,6 +701,42 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(styles, /\.signal-scope/);
   assert.match(styles, /\.gmail-notice\.error/);
   assert.doesNotMatch(styles, /\.gmail-diagnostic/);
+});
+
+test("CRM mail templates can be managed and selected from follow-up email", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderTemplatesSource = functionSource(app, "renderTemplatesSettingsPanel", "renderTemplateForm");
+  const renderTemplateFormSource = functionSource(app, "renderTemplateForm", "renderMailIntegrationsSettings");
+  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderGmailDiscoveryPagination");
+  const renderEmailFormSource = functionSource(app, "renderEmailForm", "renderImportModal");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const changeHandlerSource = app.slice(app.indexOf("document.addEventListener(\"change\""), app.indexOf("document.addEventListener(\"submit\""));
+  const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+
+  assert.match(app, /const defaultMailTemplates/);
+  assert.match(app, /mailTemplates: normalizeMailTemplates/);
+  assert.match(app, /async function saveMailTemplateViaApi/);
+  assert.match(app, /async function deleteMailTemplateViaApi/);
+  assert.match(app, /function mergeMailTemplate/);
+  assert.match(app, /function openFollowUpEmail/);
+  assert.match(renderTemplatesSource, /data-template-form/);
+  assert.match(renderTemplatesSource, /New template/);
+  assert.match(renderTemplateFormSource, /Save template/);
+  assert.match(renderTemplateFormSource, /data-action="delete-template"/);
+  assert.match(renderMailSettingsSource, /data-action="follow-up-contact"/);
+  assert.match(renderMailSettingsSource, /follow-up-chip/);
+  assert.match(renderEmailFormSource, /data-email-template/);
+  assert.match(renderEmailFormSource, /mergeMailTemplate\(template\?\.subject/);
+  assert.match(renderEmailFormSource, /mergeMailTemplate\(template\?\.body/);
+  assert.match(clickHandlerSource, /action === "follow-up-contact"/);
+  assert.match(clickHandlerSource, /openFollowUpEmail\(actionElement\.dataset\.email\)/);
+  assert.match(clickHandlerSource, /action === "delete-template"/);
+  assert.match(changeHandlerSource, /data-email-template/);
+  assert.match(submitHandlerSource, /data-template-form/);
+  assert.match(submitHandlerSource, /saveMailTemplateViaApi\(tenant\.id, template\)/);
+  assert.match(styles, /\.templates-card/);
+  assert.match(styles, /\.follow-up-chip/);
 });
 
 test("CRM Gmail discovered contacts provide add feedback and disappear after add", () => {

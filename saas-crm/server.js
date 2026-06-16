@@ -149,6 +149,22 @@ function validateDeal(values) {
   return "";
 }
 
+function normalizeMailTemplatePayload(payload = {}) {
+  return {
+    id: String(payload.id || "").trim(),
+    name: String(payload.name || "").trim(),
+    subject: String(payload.subject || "").trim(),
+    body: String(payload.body || "").trim(),
+  };
+}
+
+function validateMailTemplate(values) {
+  if (!values.name) return "Template name is required.";
+  if (!values.subject) return "Template subject is required.";
+  if (!values.body) return "Template body is required.";
+  return "";
+}
+
 function duplicateTenantEmailMessage(email, tenantName, role) {
   return `Tenant admin login email ${email} is already used by ${tenantName} (${role}).`;
 }
@@ -371,6 +387,16 @@ async function initDatabase() {
       occurred_at timestamptz not null default now()
     )`);
   await dbQuery(`
+    create table if not exists mail_templates (
+      id uuid primary key default gen_random_uuid(),
+      tenant_id uuid not null references tenants(id) on delete cascade,
+      name text not null,
+      subject text not null,
+      body text not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )`);
+  await dbQuery(`
     create table if not exists invite_emails (
       id uuid primary key default gen_random_uuid(),
       tenant_id uuid not null references tenants(id) on delete cascade,
@@ -436,6 +462,7 @@ async function initDatabase() {
   await dbQuery(`alter table gmail_integrations add column if not exists gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365)`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists contact_tags_tenant_name_idx on contact_tags(tenant_id, lower(name))`);
+  await dbQuery(`create index if not exists mail_templates_tenant_updated_idx on mail_templates(tenant_id, updated_at desc)`);
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
@@ -711,8 +738,35 @@ async function createContactTagForTenant(tenantId, name) {
   return result.rows.map((row) => row.name);
 }
 
+async function upsertMailTemplateForTenant(tenantId, payload, templateId = "") {
+  const values = normalizeMailTemplatePayload(payload);
+  const validationError = validateMailTemplate(values);
+  if (validationError) {
+    const error = new Error(validationError);
+    error.statusCode = 400;
+    throw error;
+  }
+  if (templateId) {
+    const result = await dbQuery(
+      `update mail_templates
+       set name=$3, subject=$4, body=$5, updated_at=now()
+       where tenant_id=$1 and id=$2
+       returning *`,
+      [tenantId, templateId, values.name, values.subject, values.body],
+    );
+    return result.rows[0] ? mailTemplateFromRow(result.rows[0]) : null;
+  }
+  const result = await dbQuery(
+    `insert into mail_templates (tenant_id, name, subject, body)
+     values ($1,$2,$3,$4)
+     returning *`,
+    [tenantId, values.name, values.subject, values.body],
+  );
+  return mailTemplateFromRow(result.rows[0]);
+}
+
 async function readState(auth) {
-  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult] = await Promise.all([
+  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult, mailTemplatesResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
     dbQuery(`select * from users order by created_at`),
     dbQuery(`select * from deals order by created_at`),
@@ -722,6 +776,7 @@ async function readState(auth) {
     dbQuery(`select * from gmail_integrations`),
     dbQuery(`select * from gmail_contact_signals order by created_at desc limit 500`),
     dbQuery(`select * from contact_tags order by lower(name), name`),
+    dbQuery(`select * from mail_templates order by updated_at desc`),
   ]);
   const visibleTenants = auth.role === "platform_admin" ? tenantsResult.rows : tenantsResult.rows.filter((tenant) => tenant.id === auth.tenantId);
   return {
@@ -734,12 +789,13 @@ async function readState(auth) {
       gmailResult.rows.find((integration) => integration.tenant_id === tenant.id),
       gmailSignalResult.rows.filter((signal) => signal.tenant_id === tenant.id),
       contactTagsResult.rows.filter((tag) => tag.tenant_id === tenant.id),
+      mailTemplatesResult.rows.filter((template) => template.tenant_id === tenant.id),
     )),
     inviteEmails: auth.role === "platform_admin" ? invitesResult.rows.map(inviteFromRow) : [],
   };
 }
 
-function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], contactTags = []) {
+function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], contactTags = [], mailTemplates = []) {
   const normalizedDeals = deals.map(dealFromRow);
   return {
     id: tenant.id,
@@ -756,6 +812,7 @@ function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegra
     communications: communications.map(communicationFromRow),
     gmailIntegration: gmailIntegrationFromRow(gmailIntegration, gmailSignals),
     availableTags: availableContactTags(contactTags, normalizedDeals),
+    mailTemplates: mailTemplates.map(mailTemplateFromRow),
   };
 }
 
@@ -823,6 +880,16 @@ function communicationFromRow(item) {
     date: item.occurred_at.toISOString(),
     owner: item.owner || "",
     tracked: item.tracked || "",
+  };
+}
+
+function mailTemplateFromRow(template) {
+  return {
+    id: template.id,
+    name: template.name,
+    subject: template.subject,
+    body: template.body,
+    updatedAt: template.updated_at ? template.updated_at.toISOString() : "",
   };
 }
 
@@ -1567,6 +1634,51 @@ async function handleApi(req, res) {
       return json(res, 201, { tags });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save tag.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && /^\/api\/tenants\/[^/]+\/templates$/.test(pathname)) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const template = await upsertMailTemplateForTenant(resolved.tenantId, await readBody(req));
+      return json(res, 201, { template });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save mail template.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "PUT" && /^\/api\/tenants\/[^/]+\/templates\/[^/]+$/.test(pathname)) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const parts = pathname.split("/");
+      const tenantId = decodeURIComponent(parts.at(-3));
+      const templateId = decodeURIComponent(parts.at(-1));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const template = await upsertMailTemplateForTenant(resolved.tenantId, await readBody(req), templateId);
+      if (!template) return json(res, 404, { error: "Mail template not found." });
+      return json(res, 200, { template });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to update mail template.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "DELETE" && /^\/api\/tenants\/[^/]+\/templates\/[^/]+$/.test(pathname)) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const parts = pathname.split("/");
+      const tenantId = decodeURIComponent(parts.at(-3));
+      const templateId = decodeURIComponent(parts.at(-1));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const result = await dbQuery(`delete from mail_templates where tenant_id=$1 and id=$2 returning id`, [resolved.tenantId, templateId]);
+      if (!result.rows.length) return json(res, 404, { error: "Mail template not found." });
+      return json(res, 200, { ok: true, id: result.rows[0].id });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to delete mail template.", detail: error.message });
     }
   }
 
