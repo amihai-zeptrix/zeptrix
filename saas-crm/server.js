@@ -1120,6 +1120,11 @@ function parseEmailAddress(value = "") {
   return { name: (match[1] || email.split("@")[0]).trim(), email };
 }
 
+function isAutomatedSenderEmail(email = "") {
+  const localPart = String(email).toLowerCase().split("@")[0] || "";
+  return /(^|[._+-])(no-?reply|do-?not-?reply|donotreply|updates-?noreply)([._+-]|$)/i.test(localPart);
+}
+
 function decodeGmailBody(data = "") {
   if (!data) return "";
   try {
@@ -1312,7 +1317,7 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
   const seenNew = new Set();
   for (const message of inboundMetadata) {
     const parsed = parseEmailAddress(headerValue(message, "From"));
-    if (!parsed || knownEmails.has(parsed.email) || blacklistedEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
+    if (!parsed || isAutomatedSenderEmail(parsed.email) || knownEmails.has(parsed.email) || blacklistedEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
     seenNew.add(parsed.email);
     unknownMetadata.push({ ...message, parsed });
   }
@@ -1766,6 +1771,7 @@ module.exports = {
   gmailAuthUrl,
   gmailLabelQuery,
   inviteEmailContent,
+  isAutomatedSenderEmail,
   normalizeDealPayload,
   normalizeGmailSettings,
   normalizeTenantPayload,

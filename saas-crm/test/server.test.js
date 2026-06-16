@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { decryptToken, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, normalizeDealPayload, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
+const { decryptToken, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -219,6 +219,11 @@ test("Gmail helpers parse addresses and encrypt tokens", () => {
   assert.deepEqual(parseEmailAddress("Maya Rosenthal <maya@example.com>"), { name: "Maya Rosenthal", email: "maya@example.com" });
   assert.deepEqual(parseEmailAddress("plain@example.com"), { name: "plain", email: "plain@example.com" });
   assert.equal(parseEmailAddress("not an address"), null);
+  assert.equal(isAutomatedSenderEmail("no-reply@netflix.com"), true);
+  assert.equal(isAutomatedSenderEmail("noreply@primark.example"), true);
+  assert.equal(isAutomatedSenderEmail("updates-noreply@example.com"), true);
+  assert.equal(isAutomatedSenderEmail("maya.noa@example.com"), false);
+  assert.match(serverSource(), /isAutomatedSenderEmail\(parsed\.email\)/);
 
   const encrypted = encryptToken("refresh-token-value");
   assert.notEqual(encrypted, "refresh-token-value");
