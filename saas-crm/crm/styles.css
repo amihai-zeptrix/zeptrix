@@ -552,7 +552,7 @@ h3 { font-size: 14px; }
 }
 .list-row { grid-template-columns: minmax(240px, 1fr) 130px 120px 130px; }
 .tenant-row { grid-template-columns: 38px minmax(250px, 1fr) 110px 110px 150px 148px; }
-.contact-row { grid-template-columns: 30px minmax(250px, 1fr) 180px 180px 82px; }
+.contact-row { grid-template-columns: 30px minmax(230px, 1fr) 150px 170px 170px 82px; }
 .account-row { grid-template-columns: 38px minmax(250px, 1fr) 150px 120px 82px; }
 .activity-feed-row { grid-template-columns: 34px minmax(300px, 1fr) 130px 92px 82px; }
 .list-row:last-child, .activity-feed-row:last-child, .tenant-row:last-child { border-bottom: 0; }

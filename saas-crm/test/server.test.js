@@ -413,6 +413,7 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   const styles = crmStylesSource();
   const renderContactsSource = functionSource(app, "renderContacts", "filteredContacts");
   const renderInlineContactRowSource = functionSource(app, "renderInlineContactRow", "filteredContacts");
+  const renderContactRowSource = functionSource(app, "renderContactRow", "renderContactDetail");
   const renderModalSource = functionSource(app, "renderModal", "renderTenantForm");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
@@ -425,7 +426,11 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(renderInlineContactRowSource, /data-inline-contact-form/);
   assert.match(renderInlineContactRowSource, /inline-contact-row/);
   assert.match(renderInlineContactRowSource, /Contact name/);
+  assert.match(renderInlineContactRowSource, /name="phone"/);
   assert.match(renderInlineContactRowSource, /Save/);
+  assert.match(renderContactRowSource, /contact-phone/);
+  assert.match(renderContactRowSource, /deal\.phone \|\| "-"/);
+  assert.match(app, /deal\.phone/);
   assert.match(clickHandlerSource, /action === "add-contact"/);
   assert.match(clickHandlerSource, /ui\.inlineContactOpen = true/);
   assert.match(clickHandlerSource, /action === "cancel-inline-add"/);
@@ -439,6 +444,7 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(serverSource(), /tags jsonb/);
   assert.match(submitHandlerSource, /data-inline-contact-form/);
   assert.match(submitHandlerSource, /createDealViaApi\(tenant\.id, contact\)/);
+  assert.match(submitHandlerSource, /phone: values\.phone/);
   assert.match(submitHandlerSource, /Contact added directly from Contacts/);
   assert.match(submitHandlerSource, /ui\.inlineContactOpen = false/);
   assert.match(styles, /\.inline-contact-row/);

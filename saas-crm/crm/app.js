@@ -1009,7 +1009,7 @@ function renderContacts() {
 }
 
 function renderInlineContactRow() {
-  return `<form class="list-row contact-row inline-contact-row" data-inline-contact-form><span class="activity-symbol">＋</span><span class="inline-field-stack"><input name="contact" placeholder="Contact name" required /><input name="email" type="email" placeholder="Email" required /></span><input name="account" placeholder="Account" required /><select name="owner">${Object.keys(owners).map((owner) => `<option ${owner === currentUser().name ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select><span class="row-actions"><button class="button small primary">Save</button><button type="button" class="button small" data-action="cancel-inline-add">Cancel</button></span></form>`;
+  return `<form class="list-row contact-row inline-contact-row" data-inline-contact-form><span class="activity-symbol">＋</span><span class="inline-field-stack"><input name="contact" placeholder="Contact name" required /><input name="email" type="email" placeholder="Email" required /></span><input name="phone" placeholder="Phone" /><input name="account" placeholder="Account" required /><select name="owner">${Object.keys(owners).map((owner) => `<option ${owner === currentUser().name ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select><span class="row-actions"><button class="button small primary">Save</button><button type="button" class="button small" data-action="cancel-inline-add">Cancel</button></span></form>`;
 }
 
 function filteredContacts(contacts = uniqueBy("email")) {
@@ -1018,7 +1018,8 @@ function filteredContacts(contacts = uniqueBy("email")) {
   return contacts.filter((deal) => [
     deal.contact,
     deal.account,
-    deal.email,
+      deal.email,
+      deal.phone,
     deal.owner,
     deal.name,
     deal.stage,
@@ -1029,7 +1030,7 @@ function filteredContacts(contacts = uniqueBy("email")) {
 
 function renderContactRow(deal) {
   const isOpen = ui.selectedContactEmail === deal.email;
-  return `<div class="list-row contact-row ${isOpen ? "is-open" : ""}">${avatar(deal.owner)}<button class="activity-main" data-open-contact="${escapeHtml(deal.email)}"><span class="list-primary">${escapeHtml(deal.contact)}<small>${escapeHtml(deal.email)}</small></span></button><button class="inline-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button><span class="muted">Owner: ${escapeHtml(deal.owner)}</span><button class="button small danger" data-action="delete-contact" data-email="${escapeHtml(deal.email)}">Delete</button></div>${isOpen ? renderContactDetail(deal) : ""}`;
+  return `<div class="list-row contact-row ${isOpen ? "is-open" : ""}">${avatar(deal.owner)}<button class="activity-main" data-open-contact="${escapeHtml(deal.email)}"><span class="list-primary">${escapeHtml(deal.contact)}<small>${escapeHtml(deal.email)}</small></span></button><span class="muted contact-phone">${escapeHtml(deal.phone || "-")}</span><button class="inline-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button><span class="muted">Owner: ${escapeHtml(deal.owner)}</span><button class="button small danger" data-action="delete-contact" data-email="${escapeHtml(deal.email)}">Delete</button></div>${isOpen ? renderContactDetail(deal) : ""}`;
 }
 
 function renderContactDetail(deal) {
@@ -2279,6 +2280,7 @@ document.addEventListener("submit", async (event) => {
       account: values.account,
       contact: values.contact,
       email: values.email,
+      phone: values.phone,
       owner: values.owner,
       stage: "Lead",
       value: 0,
