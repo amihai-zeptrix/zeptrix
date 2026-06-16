@@ -1183,6 +1183,21 @@ h3 { font-size: 14px; }
   background: #fff;
   box-shadow: var(--shadow);
 }
+.modal.email-modal {
+  width: min(1000px, calc(100vw - 48px));
+  min-height: min(720px, calc(100vh - 48px));
+  max-height: calc(100vh - 32px);
+}
+.email-modal .form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.email-modal .field.full,
+.email-modal .form-actions {
+  grid-column: 1 / -1;
+}
+.email-modal textarea[name="body"] {
+  min-height: 360px;
+}
 .modal.import-modal { width: 620px; }
 .modal.tag-dialog {
   width: min(560px, calc(100vw - 32px));

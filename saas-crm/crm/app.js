@@ -8,7 +8,7 @@ const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
 const CRM_NAMED_ROUTE_MATCH = location.pathname.match(/^\/crm\/([^/.]+)\/?$/);
-const CRM_SECTION_ROUTE = CRM_NAMED_ROUTE_MATCH && ["admin", "home", "pipeline", "accounts", "campaigns", "contacts", "activities", "inbox", "reports", "settings"].includes(CRM_NAMED_ROUTE_MATCH[1]) ? CRM_NAMED_ROUTE_MATCH[1] : "";
+const CRM_SECTION_ROUTE = CRM_NAMED_ROUTE_MATCH && ["admin", "home", "pipeline", "accounts", "campaigns", "contacts", "activities", "inbox", "reports", "settings", "templates"].includes(CRM_NAMED_ROUTE_MATCH[1]) ? CRM_NAMED_ROUTE_MATCH[1] : "";
 const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm\/demo(?:\/([^/]+))?\/?$/) || (!CRM_SECTION_ROUTE ? CRM_NAMED_ROUTE_MATCH : null);
 const IS_DEMO_ROUTE = !!DEMO_ROUTE_MATCH;
 const DEMO_USER_NAME = DEMO_ROUTE_MATCH?.[1] || DEMO_ROUTE_MATCH?.[2] ? titleCase(DEMO_ROUTE_MATCH[1] || DEMO_ROUTE_MATCH[2]) : "Demo User";
@@ -773,6 +773,7 @@ function renderSidebar() {
       ${sideLink("inbox", "✉", "Inbox", tenant.communications.length)}
       ${sideLink("reports", "◴", "Reports")}
       ${sideLink("settings", "⚙", "Settings")}
+      ${sideLink("templates", "✎", "Templates", mailTemplates(tenant).length)}
       <div class="side-spacer"></div>
       <button class="side-link" data-action="logout"><span class="icon">⇤</span> Sign out</button>
       <div class="profile">${avatar(currentUser().name)}<div><strong>${escapeHtml(currentUser().name)}</strong><small>${escapeHtml(currentUser().role)}</small></div></div>
@@ -805,6 +806,7 @@ function renderSection() {
   if (ui.section === "inbox") return renderInbox();
   if (ui.section === "reports") return `${renderPageHeader("Reports", "Monitor pipeline health and sales performance.")}${renderDashboard()}`;
   if (ui.section === "settings") return renderSettingsPage();
+  if (ui.section === "templates") return `${renderPageHeader("Templates", "Manage reusable mail templates for follow-ups and outreach.")}${renderTemplatesSettingsPanel()}`;
   return renderHome();
 }
 

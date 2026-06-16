@@ -374,7 +374,7 @@ test("CRM named demo routes use the demo tenant instead of admin", () => {
   const app = crmAppSource();
 
   assert.match(app, /const CRM_SECTION_ROUTE = CRM_NAMED_ROUTE_MATCH/);
-  assert.match(app, /"settings"\]\.includes\(CRM_NAMED_ROUTE_MATCH\[1\]\)/);
+  assert.match(app, /"settings", "templates"\]\.includes\(CRM_NAMED_ROUTE_MATCH\[1\]\)/);
   assert.ok(app.includes("const DEMO_ROUTE_MATCH = location.pathname.match(/^\\/crm\\/demo(?:\\/([^/]+))?\\/?$/) || (!CRM_SECTION_ROUTE ? CRM_NAMED_ROUTE_MATCH : null);"));
   assert.match(app, /section: CRM_SECTION_ROUTE \|\| "admin"/);
   assert.match(app, /function ensureClientDemoTenant/);
@@ -617,8 +617,11 @@ test("CRM settings include Gmail mail integration controls", () => {
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
   assert.match(sidebarSource, /sideLink\("settings", "⚙", "Settings"\)/);
+  assert.match(sidebarSource, /sideLink\("templates", "✎", "Templates"/);
   assert.doesNotMatch(sidebarSource, /data-action="open-settings"><span class="icon">⚙<\/span> Settings/);
   assert.match(renderSectionSource, /ui\.section === "settings"/);
+  assert.match(renderSectionSource, /ui\.section === "templates"/);
+  assert.match(renderSectionSource, /renderTemplatesSettingsPanel\(\)/);
   assert.match(renderSettingsPageSource, /Mail integrations/);
   assert.match(renderSettingsPageSource, /data-settings-tab="mail"/);
   assert.match(renderSettingsPageSource, /Templates/);
@@ -727,6 +730,7 @@ test("CRM mail templates can be managed and selected from follow-up email", () =
   assert.match(renderMailSettingsSource, /data-action="follow-up-contact"/);
   assert.match(renderMailSettingsSource, /follow-up-chip/);
   assert.match(renderEmailFormSource, /data-email-template/);
+  assert.match(renderEmailFormSource, /email-modal/);
   assert.match(renderEmailFormSource, /mergeMailTemplate\(template\?\.subject/);
   assert.match(renderEmailFormSource, /mergeMailTemplate\(template\?\.body/);
   assert.match(clickHandlerSource, /action === "follow-up-contact"/);
@@ -737,6 +741,8 @@ test("CRM mail templates can be managed and selected from follow-up email", () =
   assert.match(submitHandlerSource, /saveMailTemplateViaApi\(tenant\.id, template\)/);
   assert.match(styles, /\.templates-card/);
   assert.match(styles, /\.follow-up-chip/);
+  assert.match(styles, /\.modal\.email-modal/);
+  assert.match(styles, /min-height: min\(720px, calc\(100vh - 48px\)\)/);
 });
 
 test("CRM Gmail discovered contacts provide add feedback and disappear after add", () => {
