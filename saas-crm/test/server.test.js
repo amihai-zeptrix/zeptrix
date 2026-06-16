@@ -356,9 +356,13 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   const app = crmAppSource();
   const styles = crmStylesSource();
   const renderHomeSource = functionSource(app, "renderHome", "homeCorrespondenceNeedingAttention");
+  const israelGreetingSource = functionSource(app, "israelGreeting", "isPlatformAdmin");
   const homeAttentionSource = functionSource(app, "homeCorrespondenceNeedingAttention", "renderHomeAttentionThread");
   const renderHomeEventSource = functionSource(app, "renderHomeEvent", "birthdayDate");
 
+  assert.match(renderHomeSource, /israelGreeting\(\)/);
+  assert.doesNotMatch(renderHomeSource, /Good morning,/);
+  assert.match(israelGreetingSource, /timeZone: "Asia\/Jerusalem"/);
   assert.match(renderHomeSource, /Accounts that need attention/);
   assert.match(renderHomeSource, /Today's focus/);
   assert.match(renderHomeSource, /Correspondence needing attention/);

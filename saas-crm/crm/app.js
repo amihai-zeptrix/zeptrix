@@ -384,6 +384,13 @@ function currentUser() {
   return { name: session.name, email: session.email, role: session.role };
 }
 
+function israelGreeting(date = new Date()) {
+  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jerusalem", hour: "numeric", hour12: false }).format(date));
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 function isPlatformAdmin() {
   return session?.role === "platform_admin";
 }
@@ -807,7 +814,7 @@ function renderHome() {
   const tasks = openTasks(tenant);
   const attentionAccounts = accountsNeedingAttention(tenant);
   return `
-    ${renderPageHeader(`Good morning, ${currentUser().name.split(" ")[0]}`, `Here is what is happening in ${tenant.name}.`)}
+    ${renderPageHeader(`${israelGreeting()}, ${currentUser().name.split(" ")[0]}`, `Here is what is happening in ${tenant.name}.`)}
     ${renderSummary()}
     <section class="admin-grid">
       <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(({ account, primaryDeal, count, value, reasons }) => `<button class="metric-row attention-row" data-open-account="${escapeHtml(account)}"><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">High</span></button>`).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
