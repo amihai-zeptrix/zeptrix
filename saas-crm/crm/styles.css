@@ -552,7 +552,7 @@ h3 { font-size: 14px; }
 }
 .list-row { grid-template-columns: minmax(240px, 1fr) 130px 120px 130px; }
 .tenant-row { grid-template-columns: 38px minmax(250px, 1fr) 110px 110px 150px 148px; }
-.contact-row { grid-template-columns: 30px minmax(230px, 1fr) 150px 190px 82px; }
+.contact-row { grid-template-columns: 30px minmax(210px, 1fr) 135px minmax(130px, .55fr) 170px 82px; }
 .account-row { grid-template-columns: 38px minmax(250px, 1fr) 150px 120px 82px; }
 .activity-feed-row { grid-template-columns: 34px minmax(300px, 1fr) 130px 92px 82px; }
 .list-row:last-child, .activity-feed-row:last-child, .tenant-row:last-child { border-bottom: 0; }
@@ -628,20 +628,34 @@ h3 { font-size: 14px; }
   font-weight: 900;
 }
 .account-tags button { cursor: pointer; }
-.account-tag-editor {
+.account-tag-editor,
+.contact-tag-editor {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-top: 10px;
 }
-.account-tag-editor select {
+.account-tag-editor select,
+.contact-tag-editor select {
   min-height: 30px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 5px 8px;
   background: #fff;
   font-weight: 800;
+}
+.contact-tags-short {
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+  margin-top: 0;
+}
+.contact-tags-short span {
+  white-space: nowrap;
+}
+.contact-tag-editor {
+  margin: 0 0 14px;
 }
 .contact-detail-row {
   padding: 16px 18px 18px 58px;

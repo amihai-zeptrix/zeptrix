@@ -113,9 +113,7 @@ function normalizeDealPayload(payload = {}) {
   const stage = ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"].includes(payload.stage) ? payload.stage : "Lead";
   const priority = ["High", "Medium", "Low"].includes(payload.priority) ? payload.priority : "Medium";
   const group = ["active", "closed"].includes(payload.group) ? payload.group : (["Won", "Lost"].includes(stage) ? "closed" : "active");
-  const tags = Array.isArray(payload.tags)
-    ? payload.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 20)
-    : String(payload.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 20);
+  const tags = normalizeTags(payload.tags);
   return {
     name: String(payload.name || `${payload.account || payload.contact || "New"} relationship`).trim(),
     account: String(payload.account || "").trim(),
@@ -132,6 +130,15 @@ function normalizeDealPayload(payload = {}) {
     note: String(payload.note || payload.notes || "").trim(),
     updated: String(payload.updated || "Just now").trim(),
   };
+}
+
+function normalizeTagName(value = "") {
+  return String(value).trim().replace(/\s+/g, " ").slice(0, 40);
+}
+
+function normalizeTags(value = []) {
+  const rawTags = Array.isArray(value) ? value : String(value || "").split(",");
+  return [...new Set(rawTags.map(normalizeTagName).filter(Boolean))].slice(0, 20);
 }
 
 function validateDeal(values) {
@@ -330,6 +337,14 @@ async function initDatabase() {
       updated_at timestamptz not null default now()
     )`);
   await dbQuery(`
+    create table if not exists contact_tags (
+      id uuid primary key default gen_random_uuid(),
+      tenant_id uuid not null references tenants(id) on delete cascade,
+      name text not null,
+      created_at timestamptz not null default now(),
+      unique(tenant_id, name)
+    )`);
+  await dbQuery(`
     create table if not exists activities (
       id uuid primary key default gen_random_uuid(),
       tenant_id uuid not null references tenants(id) on delete cascade,
@@ -420,6 +435,7 @@ async function initDatabase() {
   await dbQuery(`alter table deals add column if not exists tags jsonb not null default '[]'::jsonb`);
   await dbQuery(`alter table gmail_integrations add column if not exists gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365)`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
+  await dbQuery(`create index if not exists contact_tags_tenant_name_idx on contact_tags(tenant_id, lower(name))`);
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
@@ -656,6 +672,7 @@ async function upsertDealForTenant(tenantId, payload, dealId = "") {
        returning *`,
       [tenantId, dealId, values.name, values.account, values.contact, values.email, values.phone, values.owner, values.stage, values.value, values.close, values.priority, values.group, JSON.stringify(values.tags), values.note, values.updated],
     );
+    if (result.rows[0]) await upsertContactTags(tenantId, values.tags);
     return result.rows[0] ? dealFromRow(result.rows[0]) : null;
   }
   const result = await dbQuery(
@@ -665,11 +682,37 @@ async function upsertDealForTenant(tenantId, payload, dealId = "") {
      returning *`,
     [tenantId, values.name, values.account, values.contact, values.email, values.phone, values.owner, values.stage, values.value, values.close, values.priority, values.group, JSON.stringify(values.tags), values.note, values.updated],
   );
+  await upsertContactTags(tenantId, values.tags);
   return dealFromRow(result.rows[0]);
 }
 
+async function upsertContactTags(tenantId, tags = []) {
+  const normalized = normalizeTags(tags);
+  for (const tag of normalized) {
+    await dbQuery(
+      `insert into contact_tags (tenant_id, name)
+       values ($1,$2)
+       on conflict (tenant_id, name) do nothing`,
+      [tenantId, tag],
+    );
+  }
+  return normalized;
+}
+
+async function createContactTagForTenant(tenantId, name) {
+  const tag = normalizeTagName(name);
+  if (!tag) {
+    const error = new Error("Tag name is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+  await upsertContactTags(tenantId, [tag]);
+  const result = await dbQuery(`select name from contact_tags where tenant_id=$1 order by lower(name), name`, [tenantId]);
+  return result.rows.map((row) => row.name);
+}
+
 async function readState(auth) {
-  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult] = await Promise.all([
+  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
     dbQuery(`select * from users order by created_at`),
     dbQuery(`select * from deals order by created_at`),
@@ -678,6 +721,7 @@ async function readState(auth) {
     dbQuery(`select i.*, t.name tenant_name from invite_emails i join tenants t on t.id=i.tenant_id order by i.created_at desc limit 25`),
     dbQuery(`select * from gmail_integrations`),
     dbQuery(`select * from gmail_contact_signals order by created_at desc limit 500`),
+    dbQuery(`select * from contact_tags order by lower(name), name`),
   ]);
   const visibleTenants = auth.role === "platform_admin" ? tenantsResult.rows : tenantsResult.rows.filter((tenant) => tenant.id === auth.tenantId);
   return {
@@ -689,12 +733,14 @@ async function readState(auth) {
       communicationsResult.rows.filter((communication) => communication.tenant_id === tenant.id),
       gmailResult.rows.find((integration) => integration.tenant_id === tenant.id),
       gmailSignalResult.rows.filter((signal) => signal.tenant_id === tenant.id),
+      contactTagsResult.rows.filter((tag) => tag.tenant_id === tenant.id),
     )),
     inviteEmails: auth.role === "platform_admin" ? invitesResult.rows.map(inviteFromRow) : [],
   };
 }
 
-function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = []) {
+function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], contactTags = []) {
+  const normalizedDeals = deals.map(dealFromRow);
   return {
     id: tenant.id,
     name: tenant.name,
@@ -705,11 +751,19 @@ function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegra
     seats: tenant.seats,
     billingEmail: tenant.billing_email,
     users: users.map(userFromRow),
-    deals: deals.map(dealFromRow),
+    deals: normalizedDeals,
     tasks: tasks.map(taskFromRow),
     communications: communications.map(communicationFromRow),
     gmailIntegration: gmailIntegrationFromRow(gmailIntegration, gmailSignals),
+    availableTags: availableContactTags(contactTags, normalizedDeals),
   };
+}
+
+function availableContactTags(contactTags = [], deals = []) {
+  return [...new Set([
+    ...contactTags.map((tag) => tag.name || tag),
+    ...deals.flatMap((deal) => deal.tags || []),
+  ].map(normalizeTagName).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
 function userFromRow(user) {
@@ -1499,6 +1553,20 @@ async function handleApi(req, res) {
       return json(res, 200, { ok: true, id: result.rows[0].id });
     } catch (error) {
       return json(res, 500, { error: "Unable to delete contact or deal.", detail: error.message });
+    }
+  }
+
+  if (req.method === "POST" && /^\/api\/tenants\/[^/]+\/tags$/.test(pathname)) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const body = await readBody(req);
+      const tags = await createContactTagForTenant(resolved.tenantId, body.name || body.tag);
+      return json(res, 201, { tags });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save tag.", detail: error.statusCode ? undefined : error.message });
     }
   }
 

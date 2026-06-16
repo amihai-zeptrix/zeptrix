@@ -195,6 +195,21 @@ test("deal payload normalization preserves contact metadata for database persist
   assert.deepEqual(normalized.tags, ["Gmail", "Pilot"]);
 });
 
+test("CRM contact tags are backed by tenant tag catalog persistence", () => {
+  const server = serverSource();
+
+  assert.match(server, /create table if not exists contact_tags/);
+  assert.match(server, /unique\(tenant_id, name\)/);
+  assert.match(server, /create index if not exists contact_tags_tenant_name_idx/);
+  assert.match(server, /function normalizeTags/);
+  assert.match(server, /async function upsertContactTags/);
+  assert.match(server, /await upsertContactTags\(tenantId, values\.tags\)/);
+  assert.match(server, /dbQuery\(`select \* from contact_tags order by lower\(name\), name`\)/);
+  assert.match(server, /availableTags: availableContactTags\(contactTags, normalizedDeals\)/);
+  assert.match(server, /\/api\\\/tenants\\\/\[\^\/\]\+\\\/tags/);
+  assert.match(server, /createContactTagForTenant\(resolved\.tenantId, body\.name \|\| body\.tag\)/);
+});
+
 test("Gmail OAuth URL uses readonly scope and tenant state", () => {
   const authUrl = new URL(gmailAuthUrl({
     tenantId: "tenant-123",
@@ -419,8 +434,12 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   const renderContactsSource = functionSource(app, "renderContacts", "filteredContacts");
   const renderInlineContactRowSource = functionSource(app, "renderInlineContactRow", "filteredContacts");
   const renderContactRowSource = functionSource(app, "renderContactRow", "renderContactDetail");
+  const renderContactDetailSource = functionSource(app, "renderContactDetail", "contactProfile");
+  const allContactTagsSource = functionSource(app, "allContactTags", "accountTags");
+  const setContactTagsSource = functionSource(app, "setContactTags", "setAccountTags");
   const renderModalSource = functionSource(app, "renderModal", "renderTenantForm");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const changeHandlerSource = app.slice(app.indexOf("document.addEventListener(\"change\""), app.indexOf("document.addEventListener(\"submit\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
   assert.match(renderContactsSource, /data-action="add-contact"/);
@@ -435,12 +454,27 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(renderInlineContactRowSource, /Save/);
   assert.match(renderContactRowSource, /contact-phone/);
   assert.match(renderContactRowSource, /deal\.phone \|\| "-"/);
+  assert.match(renderContactRowSource, /renderCompactContactTags\(deal\)/);
+  assert.match(renderContactRowSource, /contact-tags-short/);
+  assert.match(renderContactDetailSource, /contact-tag-editor/);
+  assert.match(renderContactDetailSource, /data-contact-tag-select/);
+  assert.match(renderContactDetailSource, /remove-contact-tag/);
+  assert.match(renderContactDetailSource, /\.\.\.add new/);
+  assert.match(allContactTagsSource, /tenant\.availableTags/);
+  assert.match(setContactTagsSource, /updateDealViaApi\(tenant\.id, existing\.id, nextDeal\)/);
+  assert.match(setContactTagsSource, /availableTags: normalizeTags/);
   assert.doesNotMatch(renderContactRowSource, /Owner:/);
   assert.match(app, /deal\.phone/);
+  assert.match(app, /async function createTagViaApi/);
+  assert.match(app, /async function saveAvailableTag/);
   assert.match(clickHandlerSource, /action === "add-contact"/);
   assert.match(clickHandlerSource, /ui\.inlineContactOpen = true/);
   assert.match(clickHandlerSource, /action === "cancel-inline-add"/);
+  assert.match(clickHandlerSource, /action === "remove-contact-tag"/);
   assert.doesNotMatch(clickHandlerSource, /ui\.modal = "contact"/);
+  assert.match(changeHandlerSource, /data-contact-tag-select/);
+  assert.match(changeHandlerSource, /saveAvailableTag\(prompt\("New contact tag"\)\?\.trim\(\)\)/);
+  assert.match(changeHandlerSource, /setContactTags\(deal\.id, \[\.\.\.\(deal\.tags \|\| \[\]\), tag\]\)/);
   assert.match(app, /async function createDealViaApi/);
   assert.match(app, /async function updateDealViaApi/);
   assert.match(app, /async function deleteDealViaApi/);
@@ -454,6 +488,8 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(submitHandlerSource, /Contact added directly from Contacts/);
   assert.match(submitHandlerSource, /ui\.inlineContactOpen = false/);
   assert.match(styles, /\.inline-contact-row/);
+  assert.match(styles, /\.contact-tags-short/);
+  assert.match(styles, /\.contact-tag-editor/);
 });
 
 test("CRM deals add with an inline table row instead of a create dialog", () => {
@@ -504,6 +540,9 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   assert.match(app, /Expansion discovery pulse|Expansion stakeholder note/);
   assert.match(app, /Renewal value recap|Enterprise renewal readiness/);
   assert.match(app, /function allAccountTags/);
+  assert.match(app, /function allContactTags/);
+  assert.match(app, /async function setAccountTags/);
+  assert.match(app, /updateDealViaApi\(tenant\.id, deal\.id, deal\)/);
   assert.match(app, /function campaignRecipients/);
   assert.match(app, /function renderMergedTemplate/);
   assert.match(app, /function recurrenceLabel/);

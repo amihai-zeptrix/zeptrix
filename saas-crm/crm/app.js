@@ -219,6 +219,7 @@ function normalizeData(nextData) {
   nextData.tenants = nextData.tenants.map((tenant) => ({
     ...tenant,
     deals: (tenant.deals || []).map((deal) => ({ ...deal, tags: deal.tags || defaultAccountTags(deal) })),
+    availableTags: normalizeTags([...(tenant.availableTags || []), ...(tenant.deals || []).flatMap((deal) => deal.tags || defaultAccountTags(deal)), ...defaultTags]),
     campaigns: (tenant.campaigns?.length ? tenant.campaigns : defaultCampaignsForTenant(tenant)).map((campaign) => ({ recurrence: "one-time", ...campaign })),
     gmailIntegration: { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) },
     users: (tenant.users || []).map((user) => {
@@ -247,6 +248,14 @@ function defaultAccountTags(deal) {
   if (deal.stage === "Won") return ["Renewal"];
   if (deal.stage === "Proposal") return ["Expansion"];
   return ["Pilot"];
+}
+
+function normalizeTagName(value = "") {
+  return String(value).trim().replace(/\s+/g, " ").slice(0, 40);
+}
+
+function normalizeTags(tags = []) {
+  return [...new Set((Array.isArray(tags) ? tags : String(tags || "").split(",")).map(normalizeTagName).filter(Boolean))].sort();
 }
 
 function defaultCampaignsForTenant(tenant) {
@@ -483,6 +492,10 @@ async function updateDealViaApi(tenantId, dealId, values) {
 
 async function deleteDealViaApi(tenantId, dealId) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/deals/${encodeURIComponent(dealId)}`, { method: "DELETE" });
+}
+
+async function createTagViaApi(tenantId, name) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/tags`, { method: "POST", body: JSON.stringify({ name }) });
 }
 
 async function saveGmailSettingsViaApi(tenantId, values) {
@@ -1027,6 +1040,7 @@ function filteredContacts(contacts = uniqueBy("email")) {
     deal.account,
       deal.email,
       deal.phone,
+    ...(deal.tags || []),
     deal.owner,
     deal.name,
     deal.stage,
@@ -1037,13 +1051,22 @@ function filteredContacts(contacts = uniqueBy("email")) {
 
 function renderContactRow(deal) {
   const isOpen = ui.selectedContactEmail === deal.email;
-  return `<div class="list-row contact-row ${isOpen ? "is-open" : ""}">${avatar(deal.owner)}<button class="activity-main" data-open-contact="${escapeHtml(deal.email)}"><span class="list-primary">${escapeHtml(deal.contact)}<small>${escapeHtml(deal.email)}</small></span></button><span class="muted contact-phone">${escapeHtml(deal.phone || "-")}</span><button class="inline-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button><button class="button small danger" data-action="delete-contact" data-email="${escapeHtml(deal.email)}">Delete</button></div>${isOpen ? renderContactDetail(deal) : ""}`;
+  return `<div class="list-row contact-row ${isOpen ? "is-open" : ""}">${avatar(deal.owner)}<button class="activity-main" data-open-contact="${escapeHtml(deal.email)}"><span class="list-primary">${escapeHtml(deal.contact)}<small>${escapeHtml(deal.email)}</small></span></button><span class="muted contact-phone">${escapeHtml(deal.phone || "-")}</span>${renderCompactContactTags(deal)}<button class="inline-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button><button class="button small danger" data-action="delete-contact" data-email="${escapeHtml(deal.email)}">Delete</button></div>${isOpen ? renderContactDetail(deal) : ""}`;
+}
+
+function renderCompactContactTags(deal) {
+  const tags = deal.tags || [];
+  const visibleTags = tags.slice(0, 2);
+  return `<span class="contact-tags-short account-tags">${visibleTags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}${tags.length > visibleTags.length ? `<span>+${tags.length - visibleTags.length}</span>` : ""}</span>`;
 }
 
 function renderContactDetail(deal) {
   const profile = contactProfile(deal);
+  const contactTags = normalizeTags(deal.tags || []);
+  const availableTags = allContactTags().filter((tag) => !contactTags.includes(tag));
   return `<div class="contact-detail-row">
     <div class="contact-detail-head">${avatar(deal.contact, "large")}<div><h3>${escapeHtml(deal.contact)}</h3><p class="subcopy">${escapeHtml(profile.role)} · <button class="text-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button></p></div></div>
+    <div class="contact-tag-editor"><span class="account-tags">${contactTags.map((tag) => `<button data-action="remove-contact-tag" data-id="${escapeHtml(deal.id)}" data-tag="${escapeHtml(tag)}" data-tooltip="Remove tag">${escapeHtml(tag)} ×</button>`).join("") || `<span>No tags yet</span>`}</span><select data-contact-tag-select data-id="${escapeHtml(deal.id)}"><option value="">Add tag...</option>${availableTags.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join("")}<option value="__new__">...add new</option></select></div>
     <div class="contact-insight-grid">
       ${contactInsight("Buying role", profile.buyingRole, "How this person affects the deal")}
       ${contactInsight("Engagement", profile.engagement, "Recent email, meeting, and reply signal")}
@@ -1081,16 +1104,61 @@ function renderAccounts() {
 }
 
 function allAccountTags() {
-  return [...new Set([...defaultTags, ...currentTenant().deals.flatMap((deal) => deal.tags || [])])].sort();
+  return allContactTags();
+}
+
+function allContactTags() {
+  const tenant = currentTenant();
+  return normalizeTags([...defaultTags, ...(tenant.availableTags || []), ...tenant.deals.flatMap((deal) => deal.tags || [])]);
 }
 
 function accountTags(account) {
   return [...new Set(currentTenant().deals.filter((deal) => deal.account === account).flatMap((deal) => deal.tags || []))].sort();
 }
 
-function setAccountTags(account, tags) {
+async function saveAvailableTag(tag) {
+  const normalized = normalizeTagName(tag);
+  if (!normalized) return "";
   const tenant = currentTenant();
-  setTenant({ ...tenant, deals: tenant.deals.map((deal) => deal.account === account ? { ...deal, tags } : deal) });
+  if (session?.apiToken) {
+    const result = await createTagViaApi(tenant.id, normalized);
+    setTenant({ ...currentTenant(), availableTags: normalizeTags(result.tags || [...(currentTenant().availableTags || []), normalized]) });
+  } else {
+    setTenant({ ...tenant, availableTags: normalizeTags([...(tenant.availableTags || []), normalized]) });
+  }
+  return normalized;
+}
+
+async function setContactTags(dealId, tags) {
+  const tenant = currentTenant();
+  const existing = tenant.deals.find((deal) => String(deal.id) === String(dealId));
+  if (!existing) return;
+  const nextTags = normalizeTags(tags);
+  const nextDeal = { ...existing, tags: nextTags, updated: "Just now" };
+  const saved = session?.apiToken ? (await updateDealViaApi(tenant.id, existing.id, nextDeal)).deal : nextDeal;
+  setTenant({
+    ...currentTenant(),
+    deals: currentTenant().deals.map((deal) => String(deal.id) === String(existing.id) ? saved : deal),
+    availableTags: normalizeTags([...(currentTenant().availableTags || []), ...nextTags]),
+  });
+}
+
+async function setAccountTags(account, tags) {
+  const tenant = currentTenant();
+  const nextTags = normalizeTags(tags);
+  const updatedDeals = [];
+  let deals = tenant.deals.map((deal) => {
+    if (deal.account !== account) return deal;
+    const updated = { ...deal, tags: nextTags, updated: "Just now" };
+    updatedDeals.push(updated);
+    return updated;
+  });
+  if (session?.apiToken) {
+    const savedDeals = [];
+    for (const deal of updatedDeals) savedDeals.push((await updateDealViaApi(tenant.id, deal.id, deal)).deal);
+    deals = deals.map((deal) => savedDeals.find((saved) => String(saved.id) === String(deal.id)) || deal);
+  }
+  setTenant({ ...currentTenant(), deals, availableTags: normalizeTags([...(currentTenant().availableTags || []), ...nextTags]) });
 }
 
 function accountLevel(deal) {
@@ -1761,7 +1829,22 @@ document.addEventListener("click", async (event) => {
     if (action === "remove-account-tag") {
       const accountName = actionElement.dataset.account;
       const tags = accountTags(accountName).filter((tag) => tag !== actionElement.dataset.tag);
-      setAccountTags(accountName, tags);
+      try {
+        await setAccountTags(accountName, tags);
+      } catch (error) {
+        showToast(`Could not remove tag: ${error.message}`);
+      }
+    }
+    if (action === "remove-contact-tag") {
+      const tenant = currentTenant();
+      const deal = tenant.deals.find((item) => String(item.id) === String(id));
+      if (deal) {
+        try {
+          await setContactTags(deal.id, (deal.tags || []).filter((tag) => tag !== actionElement.dataset.tag));
+        } catch (error) {
+          showToast(`Could not remove tag: ${error.message}`);
+        }
+      }
     }
     if (action === "filter-activities") ui.activityFilter = actionElement.dataset.filter || "open";
     if (action === "reply-correspondence") {
@@ -2041,7 +2124,7 @@ function restoreSearchFocus(selector, cursor) {
   if (typeof cursor === "number") input?.setSelectionRange(cursor, cursor);
 }
 
-document.addEventListener("change", (event) => {
+document.addEventListener("change", async (event) => {
   if (event.target.matches("[data-tenant-select]")) {
     ui.tenantId = event.target.value;
     session.tenantId = ui.tenantId;
@@ -2075,9 +2158,29 @@ document.addEventListener("change", (event) => {
     const account = event.target.dataset.account;
     let tag = event.target.value;
     if (!tag) return;
-    if (tag === "__new__") tag = prompt("New account tag")?.trim();
-    if (tag) setAccountTags(account, [...new Set([...accountTags(account), tag])].sort());
-    render();
+    try {
+      if (tag === "__new__") tag = await saveAvailableTag(prompt("New account tag")?.trim());
+      if (tag) await setAccountTags(account, [...accountTags(account), tag]);
+      event.target.value = "";
+      render();
+    } catch (error) {
+      showToast(`Could not save tag: ${error.message}`);
+    }
+    return;
+  }
+  if (event.target.matches("[data-contact-tag-select]")) {
+    const dealId = event.target.dataset.id;
+    const deal = currentTenant().deals.find((item) => String(item.id) === String(dealId));
+    let tag = event.target.value;
+    if (!deal || !tag) return;
+    try {
+      if (tag === "__new__") tag = await saveAvailableTag(prompt("New contact tag")?.trim());
+      if (tag) await setContactTags(deal.id, [...(deal.tags || []), tag]);
+      event.target.value = "";
+      render();
+    } catch (error) {
+      showToast(`Could not save tag: ${error.message}`);
+    }
   }
 });
 
