@@ -221,6 +221,7 @@ test("Gmail helpers parse addresses and encrypt tokens", () => {
   assert.equal(parseEmailAddress("not an address"), null);
   assert.equal(isAutomatedSenderEmail("no-reply@netflix.com"), true);
   assert.equal(isAutomatedSenderEmail("noreply@primark.example"), true);
+  assert.equal(isAutomatedSenderEmail("nooreply@scj.igulzynawldxt.us"), true);
   assert.equal(isAutomatedSenderEmail("updates-noreply@example.com"), true);
   assert.equal(isAutomatedSenderEmail("alerts@example.com"), true);
   assert.equal(isAutomatedSenderEmail("newslater@example.com"), true);
