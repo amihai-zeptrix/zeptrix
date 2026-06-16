@@ -1404,9 +1404,17 @@ h3 { font-size: 14px; }
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
 }
 .field label .button {
   text-transform: none;
+}
+.field label .oauth-guide-button {
+  margin-left: auto;
+  border-color: var(--blue);
+  color: var(--blue);
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(68, 115, 223, 0.12);
 }
 .check-list.compact {
   gap: 7px;

@@ -1484,7 +1484,7 @@ function renderMailIntegrationsSettings() {
           <div class="form-grid">
             ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
             ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
-            ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full", `<button type="button" class="button small" data-action="open-gmail-oauth-guide">Show me now</button>`)}
+            ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full", `<button type="button" class="button small oauth-guide-button" data-action="open-gmail-oauth-guide">Show me now</button>`)}
             ${formField("Authorized redirect URI", "redirectUri", gmail.redirectUri, "url", false, "full")}
             ${formField("Labels to read", "labels", gmail.labels)}
             ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
