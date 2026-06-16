@@ -1477,28 +1477,36 @@ function renderMailIntegrationsSettings() {
   const actionDisabled = canUseGmailBackend ? "" : "disabled";
   return `
     <section class="settings-layout">
-      <article class="settings-card">
-        <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Read Gmail metadata and messages to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
-        ${ui.gmailNotice ? `<p class="admin-notice gmail-notice ${ui.gmailNotice.toLowerCase().includes("failed") ? "error" : ""}">${escapeHtml(ui.gmailNotice)}</p>` : ""}
-        <form class="settings-form" data-gmail-settings-form>
-          <div class="form-grid">
-            ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
-            ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
-            ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full", `<button type="button" class="button small oauth-guide-button" data-action="open-gmail-oauth-guide">Show me now</button>`)}
-            ${formField("Authorized redirect URI", "redirectUri", gmail.redirectUri, "url", false, "full")}
-            ${formField("Labels to read", "labels", gmail.labels)}
-            ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
+      <div class="settings-stack">
+        <article class="settings-card">
+          <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Read Gmail metadata and messages to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
+          ${ui.gmailNotice ? `<p class="admin-notice gmail-notice ${ui.gmailNotice.toLowerCase().includes("failed") ? "error" : ""}">${escapeHtml(ui.gmailNotice)}</p>` : ""}
+          <form class="settings-form" data-gmail-settings-form>
+            <div class="form-grid">
+              ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
+              ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
+              ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full", `<button type="button" class="button small oauth-guide-button" data-action="open-gmail-oauth-guide">Show me now</button>`)}
+              ${formField("Authorized redirect URI", "redirectUri", gmail.redirectUri, "url", false, "full")}
+              ${formField("Labels to read", "labels", gmail.labels)}
+              ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
+            </div>
+            <div class="check-list compact">
+              <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Scans the last ${gmailLookbackDays} days of non-sent Gmail and suggests people who do not exist in CRM.</small></label>
+              <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
+            </div>
+            ${canUseGmailBackend ? "" : `<p class="admin-notice">Gmail connection requires signing in to a workspace at /crm.</p>`}
+            <div class="form-actions"><button type="button" class="button" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button><span class="toolbar-spacer"></span><button class="button primary" ${actionDisabled}>Save Gmail settings</button></div>
+            <p class="subcopy">Uses server-side OAuth with <strong>gmail.readonly</strong>; refresh tokens are encrypted on the server and the browser never stores the Google client secret.</p>
+            <p class="subcopy">New-contact discovery scans the last <strong>${gmailLookbackDays} days</strong> of non-sent Gmail and filters out contacts already in CRM.</p>
+          </form>
+        </article>
+        <article class="settings-card follow-up-card">
+          <div class="panel-head"><div><h3>Contacts needing follow-up</h3><p class="subcopy">Contacts with no sent mail in the configured window.</p></div><span class="summary-icon" style="background: var(--orange-soft); color: var(--orange);">◴</span></div>
+          <div class="signal-list">
+            ${dormant.map((item) => `<button class="signal-row" data-open-contact="${escapeHtml(item.email)}"><span class="activity-symbol">!</span><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · no sent mail for ${item.months} months</small></span><span class="priority priority-high">Follow up</span></button>`).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}
           </div>
-          <div class="check-list compact">
-            <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Scans the last ${gmailLookbackDays} days of non-sent Gmail and suggests people who do not exist in CRM.</small></label>
-            <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
-          </div>
-          ${canUseGmailBackend ? "" : `<p class="admin-notice">Gmail connection requires signing in to a workspace at /crm.</p>`}
-          <div class="form-actions"><button type="button" class="button" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button><span class="toolbar-spacer"></span><button class="button primary" ${actionDisabled}>Save Gmail settings</button></div>
-          <p class="subcopy">Uses server-side OAuth with <strong>gmail.readonly</strong>; refresh tokens are encrypted on the server and the browser never stores the Google client secret.</p>
-          <p class="subcopy">New-contact discovery scans the last <strong>${gmailLookbackDays} days</strong> of non-sent Gmail and filters out contacts already in CRM.</p>
-        </form>
-      </article>
+        </article>
+      </div>
       <article class="settings-card">
         <h3>Gmail signals</h3>
         <div class="integration-metrics">
@@ -1510,8 +1518,6 @@ function renderMailIntegrationsSettings() {
           <p class="signal-scope">Scope: last ${gmailLookbackDays} days, non-sent Gmail, excluding existing CRM contacts.</p>
           ${ui.gmailScanProgress?.active ? renderGmailScanProgress() : visibleDiscoveries.map((item) => `<div class="signal-row" data-gmail-signal-email="${escapeHtml(item.email)}"><span class="activity-symbol">＋</span><span class="list-primary">${escapeHtml(item.name)}<small>${escapeHtml([item.email, item.phone, item.source].filter(Boolean).join(" · "))}</small></span><span class="row-actions"><button class="button small" data-action="add-gmail-contact" data-email="${escapeHtml(item.email)}">Add</button><button class="button small" data-action="skip-gmail-contact" data-email="${escapeHtml(item.email)}">Skip</button></span></div>`).join("") || `<p class="empty-state compact">No unknown Gmail contacts found in the latest scan.</p>`}
           ${renderGmailDiscoveryPagination(discoveries.length, ui.gmailDiscoveryPage, totalDiscoveryPages)}
-          <h4>Contacts needing follow-up</h4>
-          ${dormant.map((item) => `<button class="signal-row" data-open-contact="${escapeHtml(item.email)}"><span class="activity-symbol">!</span><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · no sent mail for ${item.months} months</small></span><span class="priority priority-high">Follow up</span></button>`).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}
         </div>
         <p class="subcopy">Last scan: ${gmail.lastScanAt ? formatTimestamp(gmail.lastScanAt) : "Not scanned yet"}</p>
       </article>

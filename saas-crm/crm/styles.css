@@ -1361,6 +1361,10 @@ h3 { font-size: 14px; }
   gap: 14px;
   align-items: start;
 }
+.settings-stack {
+  display: grid;
+  gap: 14px;
+}
 .settings-card {
   padding: 18px;
   border: 1px solid var(--line);

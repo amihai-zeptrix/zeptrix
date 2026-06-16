@@ -568,6 +568,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /last \$\{gmailLookbackDays\} days/);
   assert.match(renderMailSettingsSource, /filters out contacts already in CRM/);
   assert.match(renderMailSettingsSource, /Find contacts with no sent mail/);
+  assert.match(renderMailSettingsSource, /settings-stack/);
+  assert.match(renderMailSettingsSource, /follow-up-card/);
+  assert.ok(renderMailSettingsSource.indexOf("Contacts needing follow-up") < renderMailSettingsSource.indexOf("Gmail signals"));
   assert.match(renderMailSettingsSource, /gmail\.readonly/);
   assert.match(app, /staleMonths: 3/);
   assert.match(app, /gmailContactDiscoveries/);
@@ -613,6 +616,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(submitHandlerSource, /saveConfigurationViaApi/);
   assert.match(styles, /\.settings-tabs/);
   assert.match(styles, /\.settings-layout/);
+  assert.match(styles, /\.settings-stack/);
   assert.match(styles, /\.signal-row/);
   assert.match(styles, /\.signal-scope/);
   assert.match(styles, /\.gmail-notice\.error/);
