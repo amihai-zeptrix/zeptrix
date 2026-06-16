@@ -435,6 +435,7 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(renderInlineContactRowSource, /Save/);
   assert.match(renderContactRowSource, /contact-phone/);
   assert.match(renderContactRowSource, /deal\.phone \|\| "-"/);
+  assert.doesNotMatch(renderContactRowSource, /Owner:/);
   assert.match(app, /deal\.phone/);
   assert.match(clickHandlerSource, /action === "add-contact"/);
   assert.match(clickHandlerSource, /ui\.inlineContactOpen = true/);
