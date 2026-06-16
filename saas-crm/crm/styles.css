@@ -504,6 +504,28 @@ h3 { font-size: 14px; }
   margin: 0 0 12px;
 }
 .contact-search { width: min(620px, 100%); }
+.contact-tag-filter {
+  display: grid;
+  min-width: 210px;
+  gap: 3px;
+}
+.contact-tag-filter span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.contact-tag-filter select {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
 .import-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1158,6 +1180,43 @@ h3 { font-size: 14px; }
   box-shadow: var(--shadow);
 }
 .modal.import-modal { width: 620px; }
+.modal.tag-dialog {
+  width: min(560px, calc(100vw - 32px));
+  border: 1px solid #cfe0ff;
+  box-shadow: 0 26px 70px rgba(35, 77, 150, .24), 0 0 0 7px rgba(64, 120, 219, .08);
+}
+.tag-dialog .modal-head {
+  margin: -22px -22px 18px;
+  padding: 22px;
+  background: linear-gradient(135deg, #f7fbff, #eef5ff);
+  border-bottom: 1px solid #d9e7ff;
+}
+.tag-dialog-body {
+  display: grid;
+  gap: 14px;
+}
+.tag-preview-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.tag-preview-card strong,
+.tag-preview-card small {
+  display: block;
+}
+.tag-preview-card small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+.tag-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .modal.whats-new-modal {
   width: min(760px, calc(100vw - 32px));
   padding: 0;

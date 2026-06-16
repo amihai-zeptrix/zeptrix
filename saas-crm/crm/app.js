@@ -148,6 +148,7 @@ let ui = {
   savedView: "All deals",
   search: "",
   contactSearch: "",
+  contactTagFilters: [],
   activityFilter: "open",
   stageFilter: "All",
   selected: null,
@@ -158,6 +159,7 @@ let ui = {
   newGroup: "active",
   inlineDealGroup: null,
   inlineContactOpen: false,
+  importOpen: false,
   taskDealId: null,
   emailDealId: null,
   collapsed: [],
@@ -165,6 +167,7 @@ let ui = {
   selectedContactEmail: "",
   selectedCommunicationId: null,
   selectedCampaignId: null,
+  pendingTag: null,
   settingsTab: "mail",
   gmailDiscoveryPage: 1,
   gmailNotice: "",
@@ -770,8 +773,8 @@ function renderPageHeader(title = "Sales pipeline", copy = "Manage deals, track 
   return `
     <div class="page-title-row">
       <div><h1>${title}</h1><p class="subcopy">${copy}</p></div>
-      <div><button class="button" data-action="export">⇩ Export</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
-    </div>`;
+      <div><button class="button" data-action="export">⇩ Export</button><button class="button ${ui.importOpen ? "filter-pill" : ""}" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
+    </div>${ui.importOpen ? renderImportStrip() : ""}`;
 }
 
 function renderAdmin() {
@@ -1025,7 +1028,13 @@ function renderContacts() {
   const allContacts = uniqueBy("email");
   const contacts = filteredContacts(allContacts);
   const query = ui.contactSearch.trim();
-  return `${renderPageHeader("Contacts", "Keep the people behind every opportunity organized.")}<div class="section-toolbar"><strong>${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"}</strong><span class="toolbar-spacer"></span><button class="button" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-contact">＋ Add contact</button></div><div class="contact-search-bar"><label class="table-search contact-search"><span>⌕</span><input data-contact-search value="${escapeHtml(ui.contactSearch)}" placeholder="Search contacts, accounts, email, owner, deal, stage..." /></label>${query ? `<button class="button small" data-action="clear-contact-search">Clear</button>` : ""}</div>${renderImportStrip()}<section class="list-card">${ui.inlineContactOpen ? renderInlineContactRow() : ""}${contacts.map(renderContactRow).join("") || (!ui.inlineContactOpen ? `<p class="empty-state">${query ? `No contacts match "${escapeHtml(query)}".` : "No contacts yet."}</p>` : "")}</section>`;
+  const hasFilters = query || ui.contactTagFilters.length;
+  return `${renderPageHeader("Contacts", "Keep the people behind every opportunity organized.")}<div class="section-toolbar"><strong>${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"}</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-contact">＋ Add contact</button></div><div class="contact-search-bar"><label class="table-search contact-search"><span>⌕</span><input data-contact-search value="${escapeHtml(ui.contactSearch)}" placeholder="Search contacts, accounts, email, owner, deal, stage..." /></label>${renderContactTagFilter()}${hasFilters ? `<button class="button small" data-action="clear-contact-search">Clear</button>` : ""}</div><section class="list-card">${ui.inlineContactOpen ? renderInlineContactRow() : ""}${contacts.map(renderContactRow).join("") || (!ui.inlineContactOpen ? `<p class="empty-state">${hasFilters ? "No contacts match the current filters." : "No contacts yet."}</p>` : "")}</section>`;
+}
+
+function renderContactTagFilter() {
+  const selected = new Set(ui.contactTagFilters);
+  return `<label class="contact-tag-filter"><span>Tags</span><select data-contact-tag-filter multiple size="1">${allContactTags().map((tag) => `<option value="${escapeHtml(tag)}" ${selected.has(tag) ? "selected" : ""}>${escapeHtml(tag)}</option>`).join("")}</select></label>`;
 }
 
 function renderInlineContactRow() {
@@ -1034,8 +1043,9 @@ function renderInlineContactRow() {
 
 function filteredContacts(contacts = uniqueBy("email")) {
   const query = ui.contactSearch.trim().toLowerCase();
-  if (!query) return contacts;
-  return contacts.filter((deal) => [
+  const tagFilters = new Set(ui.contactTagFilters || []);
+  return contacts.filter((deal) => {
+    const matchesQuery = !query || [
     deal.contact,
     deal.account,
       deal.email,
@@ -1046,7 +1056,10 @@ function filteredContacts(contacts = uniqueBy("email")) {
     deal.stage,
     deal.priority,
     deal.note,
-  ].join(" ").toLowerCase().includes(query));
+  ].join(" ").toLowerCase().includes(query);
+    const matchesTags = !tagFilters.size || (deal.tags || []).some((tag) => tagFilters.has(tag));
+    return matchesQuery && matchesTags;
+  });
 }
 
 function renderContactRow(deal) {
@@ -1100,7 +1113,7 @@ function renderAccounts() {
   const allAccounts = uniqueBy("account");
   const accounts = ui.accountFocus ? allAccounts.filter((deal) => deal.account === ui.accountFocus) : allAccounts;
   if (ui.accountFocus) return renderAccountDetail(accounts[0], allAccounts.length);
-  return `${renderPageHeader("Accounts", "Track customers and prospects at the company level.")}<div class="section-toolbar"><strong>${accounts.length} accounts</strong><span class="toolbar-spacer"></span><button class="button" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ Add account</button></div>${renderImportStrip()}<section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-account="${escapeHtml(deal.account)}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small><span class="account-tags">${accountTags(deal.account).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</span></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
+  return `${renderPageHeader("Accounts", "Track customers and prospects at the company level.")}<div class="section-toolbar"><strong>${accounts.length} accounts</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-deal">＋ Add account</button></div><section class="list-card">${accounts.map((deal) => `<div class="list-row account-row"><span class="account-mark">${initials(deal.account)}</span><button class="activity-main" data-open-account="${escapeHtml(deal.account)}"><span class="list-primary">${escapeHtml(deal.account)}<small>${escapeHtml(deal.contact)}</small><span class="account-tags">${accountTags(deal.account).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</span></span></button><strong>${money(total(currentTenant().deals.filter((item) => item.account === deal.account)))}</strong><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span><button class="button small danger" data-action="delete-account" data-account="${escapeHtml(deal.account)}">Delete</button></div>`).join("") || `<p class="empty-state">No accounts yet.</p>`}</section>`;
 }
 
 function allAccountTags() {
@@ -1127,6 +1140,12 @@ async function saveAvailableTag(tag) {
     setTenant({ ...tenant, availableTags: normalizeTags([...(tenant.availableTags || []), normalized]) });
   }
   return normalized;
+}
+
+function openTagDialog(target) {
+  ui.pendingTag = target;
+  ui.modal = "tag";
+  render();
 }
 
 async function setContactTags(dealId, tags) {
@@ -1480,6 +1499,7 @@ function renderInboxThread(item, deal) {
 function renderModal() {
   if (ui.modal === "whats-new") return renderWhatsNewDialog();
   if (ui.modal === "gmail-oauth-guide") return renderGmailOAuthGuide();
+  if (ui.modal === "tag") return renderTagDialog();
   if (ui.modal === "tenant") return renderTenantForm();
   if (ui.modal === "deal") return renderDealForm();
   if (ui.modal === "task") return renderTaskForm();
@@ -1488,6 +1508,14 @@ function renderModal() {
   if (ui.modal === "settings") return renderSettings();
   if (ui.selected) return renderDealDrawer(currentTenant().deals.find((deal) => String(deal.id) === String(ui.selected)));
   return "";
+}
+
+function renderTagDialog() {
+  const target = ui.pendingTag || {};
+  const label = target.type === "account"
+    ? `Add a reusable tag to ${target.account}`
+    : `Add a reusable tag to ${currentTenant().deals.find((deal) => String(deal.id) === String(target.dealId))?.contact || "this contact"}`;
+  return `<div class="modal-layer center tag-dialog-layer"><form class="modal tag-dialog" data-tag-form><header class="modal-head"><div><p class="eyebrow">Tag management</p><h2>Create a new tag</h2><p class="subcopy">${escapeHtml(label)} and make it available for future contacts, accounts, and campaigns.</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="tag-dialog-body"><div class="tag-preview-card"><span class="summary-icon" style="background: var(--blue-soft); color: var(--blue);">#</span><div><strong>Reusable customer signal</strong><small>Use tags for segments like Champion, Technical buyer, Renewal, VIP, or At risk.</small></div></div><label class="field full"><span>Tag name</span><input name="tag" placeholder="e.g. Champion" required autofocus /></label><div class="tag-suggestions">${["Champion", "Technical buyer", "VIP", "Renewal", "At risk"].map((tag) => `<button type="button" class="field-tag" data-action="use-tag-suggestion" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join("")}</div></div><div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">Create and apply tag</button></div></form></div>`;
 }
 
 function renderWhatsNewDialog() {
@@ -1736,6 +1764,7 @@ document.addEventListener("click", async (event) => {
 
   if (section) {
     ui.section = section;
+    ui.importOpen = false;
     ui.selectedContactEmail = "";
     ui.selectedCommunicationId = null;
     ui.selectedCampaignId = null;
@@ -1856,6 +1885,14 @@ document.addEventListener("click", async (event) => {
     if (action === "cancel-reply") {
       ui.replyingThread = "";
     }
+    if (action === "use-tag-suggestion") {
+      const input = document.querySelector("[data-tag-form] input[name='tag']");
+      if (input) {
+        input.value = actionElement.dataset.tag || "";
+        input.focus();
+      }
+      return;
+    }
     if (action === "back-login") { ui.authStep = "password"; ui.authError = ""; }
     if (action === "logout") { session = null; saveSession(); ui.authStep = "password"; }
     if (action === "open-tenant") { ui.tenantId = id; ui.section = "pipeline"; session.tenantId = id; saveSession(); }
@@ -1880,10 +1917,11 @@ document.addEventListener("click", async (event) => {
     }
     if (action === "add-task") { ui.modal = "task"; ui.taskDealId = taskDealId || null; ui.selected = null; }
     if (action === "compose-email") { ui.modal = "email"; ui.emailDealId = taskDealId || null; ui.selected = null; }
-    if (action === "open-import") ui.modal = "import";
+    if (action === "open-import") ui.importOpen = !ui.importOpen;
     if (action === "import-source") {
       await importSampleRecords(actionElement.dataset.source);
       ui.modal = null;
+      ui.importOpen = false;
       ui.section = "contacts";
       ui.contactSearch = actionElement.dataset.source || "";
       ui.selectedContactEmail = "";
@@ -2031,7 +2069,7 @@ document.addEventListener("click", async (event) => {
         }
       }
     }
-    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.taskDealId = null; ui.emailDealId = null; ui.authError = ""; ui.adminNotice = ""; }
+    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.pendingTag = null; ui.importOpen = false; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.taskDealId = null; ui.emailDealId = null; ui.authError = ""; ui.adminNotice = ""; }
     if (action === "edit-deal") { ui.selected = null; ui.editing = currentTenant().deals.find((deal) => String(deal.id) === String(id)); ui.modal = "deal"; }
     if (action === "toggle-task") {
       const tenant = currentTenant();
@@ -2089,7 +2127,7 @@ document.addEventListener("click", async (event) => {
       if (field?.trim() && !data.customFields.includes(field.trim())) data.customFields = [...data.customFields, field.trim()];
     }
     if (action === "clear-account-focus") ui.accountFocus = "";
-    if (action === "clear-contact-search") { ui.contactSearch = ""; ui.selectedContactEmail = ""; }
+    if (action === "clear-contact-search") { ui.contactSearch = ""; ui.contactTagFilters = []; ui.selectedContactEmail = ""; }
     if (action === "reset") { data = structuredClone(defaultData); ui.tenantId = session?.tenantId || "admin"; }
     if (action === "export") exportCsv();
   }
@@ -2148,6 +2186,12 @@ document.addEventListener("change", async (event) => {
     render();
     return;
   }
+  if (event.target.matches("[data-contact-tag-filter]")) {
+    ui.contactTagFilters = [...event.target.selectedOptions].map((option) => option.value);
+    ui.selectedContactEmail = "";
+    render();
+    return;
+  }
   if (event.target.matches("[data-campaign-field]")) {
     ui.campaignDraft = { ...ui.campaignDraft, [event.target.name]: event.target.value };
     if (event.target.name === "audienceType") ui.campaignDraft.audienceValue = "";
@@ -2159,7 +2203,11 @@ document.addEventListener("change", async (event) => {
     let tag = event.target.value;
     if (!tag) return;
     try {
-      if (tag === "__new__") tag = await saveAvailableTag(prompt("New account tag")?.trim());
+      if (tag === "__new__") {
+        event.target.value = "";
+        openTagDialog({ type: "account", account });
+        return;
+      }
       if (tag) await setAccountTags(account, [...accountTags(account), tag]);
       event.target.value = "";
       render();
@@ -2174,7 +2222,11 @@ document.addEventListener("change", async (event) => {
     let tag = event.target.value;
     if (!deal || !tag) return;
     try {
-      if (tag === "__new__") tag = await saveAvailableTag(prompt("New contact tag")?.trim());
+      if (tag === "__new__") {
+        event.target.value = "";
+        openTagDialog({ type: "contact", dealId: deal.id });
+        return;
+      }
       if (tag) await setContactTags(deal.id, [...(deal.tags || []), tag]);
       event.target.value = "";
       render();
@@ -2185,6 +2237,26 @@ document.addEventListener("change", async (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  if (event.target.matches("[data-tag-form]")) {
+    event.preventDefault();
+    const { tag } = Object.fromEntries(new FormData(event.target));
+    const target = ui.pendingTag;
+    try {
+      const savedTag = await saveAvailableTag(tag);
+      if (savedTag && target?.type === "account") await setAccountTags(target.account, [...accountTags(target.account), savedTag]);
+      if (savedTag && target?.type === "contact") {
+        const deal = currentTenant().deals.find((item) => String(item.id) === String(target.dealId));
+        if (deal) await setContactTags(deal.id, [...(deal.tags || []), savedTag]);
+      }
+      ui.pendingTag = null;
+      ui.modal = null;
+      showToast(`Added tag ${savedTag}`);
+      render();
+    } catch (error) {
+      showToast(`Could not save tag: ${error.message}`);
+    }
+    return;
+  }
   if (event.target.matches("[data-login-form]")) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));

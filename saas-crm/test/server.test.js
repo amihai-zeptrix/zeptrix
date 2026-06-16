@@ -404,7 +404,7 @@ test("CRM home relationship events include birthdays and account navigation", ()
 
 test("CRM accounts keep account detail intelligence and correspondence controls", () => {
   const app = crmAppSource();
-  const renderAccountsSource = functionSource(app, "renderAccounts", "renderAccountDetail");
+  const renderAccountsSource = functionSource(app, "renderAccounts", "allAccountTags");
   const renderAccountDetailSource = functionSource(app, "renderAccountDetail", "topAccountContacts");
   const renderAccountThreadSource = functionSource(app, "renderAccountThread", "renderReplyComposer");
   const accountCorrespondenceSource = functionSource(app, "accountCorrespondence", "renderAccountThread");
@@ -432,9 +432,11 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   const app = crmAppSource();
   const styles = crmStylesSource();
   const renderContactsSource = functionSource(app, "renderContacts", "filteredContacts");
+  const renderContactTagFilterSource = functionSource(app, "renderContactTagFilter", "renderInlineContactRow");
   const renderInlineContactRowSource = functionSource(app, "renderInlineContactRow", "filteredContacts");
   const renderContactRowSource = functionSource(app, "renderContactRow", "renderContactDetail");
   const renderContactDetailSource = functionSource(app, "renderContactDetail", "contactProfile");
+  const renderTagDialogSource = functionSource(app, "renderTagDialog", "renderWhatsNewDialog");
   const allContactTagsSource = functionSource(app, "allContactTags", "accountTags");
   const setContactTagsSource = functionSource(app, "setContactTags", "setAccountTags");
   const renderModalSource = functionSource(app, "renderModal", "renderTenantForm");
@@ -443,6 +445,12 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
   assert.match(renderContactsSource, /data-action="add-contact"/);
+  assert.match(renderContactsSource, /renderContactTagFilter\(\)/);
+  assert.match(renderContactsSource, /ui\.contactTagFilters\.length/);
+  assert.doesNotMatch(renderContactsSource, /renderImportStrip\(\)/);
+  assert.match(renderContactTagFilterSource, /data-contact-tag-filter/);
+  assert.match(renderContactTagFilterSource, /multiple/);
+  assert.match(renderContactTagFilterSource, /allContactTags\(\)\.map/);
   assert.match(renderContactsSource, /ui\.inlineContactOpen \? renderInlineContactRow\(\) : ""/);
   assert.doesNotMatch(renderContactsSource, /data-action="add-deal">＋ Add contact/);
   assert.doesNotMatch(renderModalSource, /ui\.modal === "contact"/);
@@ -460,6 +468,10 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(renderContactDetailSource, /data-contact-tag-select/);
   assert.match(renderContactDetailSource, /remove-contact-tag/);
   assert.match(renderContactDetailSource, /\.\.\.add new/);
+  assert.match(renderModalSource, /ui\.modal === "tag"/);
+  assert.match(renderTagDialogSource, /data-tag-form/);
+  assert.match(renderTagDialogSource, /Create a new tag/);
+  assert.match(renderTagDialogSource, /data-action="use-tag-suggestion"/);
   assert.match(allContactTagsSource, /tenant\.availableTags/);
   assert.match(setContactTagsSource, /updateDealViaApi\(tenant\.id, existing\.id, nextDeal\)/);
   assert.match(setContactTagsSource, /availableTags: normalizeTags/);
@@ -473,8 +485,12 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(clickHandlerSource, /action === "remove-contact-tag"/);
   assert.doesNotMatch(clickHandlerSource, /ui\.modal = "contact"/);
   assert.match(changeHandlerSource, /data-contact-tag-select/);
-  assert.match(changeHandlerSource, /saveAvailableTag\(prompt\("New contact tag"\)\?\.trim\(\)\)/);
+  assert.match(changeHandlerSource, /openTagDialog\(\{ type: "contact", dealId: deal\.id \}\)/);
+  assert.match(changeHandlerSource, /data-contact-tag-filter/);
   assert.match(changeHandlerSource, /setContactTags\(deal\.id, \[\.\.\.\(deal\.tags \|\| \[\]\), tag\]\)/);
+  assert.match(submitHandlerSource, /data-tag-form/);
+  assert.match(submitHandlerSource, /saveAvailableTag\(tag\)/);
+  assert.match(submitHandlerSource, /setContactTags\(deal\.id, \[\.\.\.\(deal\.tags \|\| \[\]\), savedTag\]\)/);
   assert.match(app, /async function createDealViaApi/);
   assert.match(app, /async function updateDealViaApi/);
   assert.match(app, /async function deleteDealViaApi/);
@@ -490,6 +506,8 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(styles, /\.inline-contact-row/);
   assert.match(styles, /\.contact-tags-short/);
   assert.match(styles, /\.contact-tag-editor/);
+  assert.match(styles, /\.contact-tag-filter/);
+  assert.match(styles, /\.tag-dialog/);
 });
 
 test("CRM deals add with an inline table row instead of a create dialog", () => {
@@ -784,11 +802,32 @@ test("CRM form handling persists campaigns and account tags", () => {
 
   assert.match(changeHandlerSource, /data-campaign-field/);
   assert.match(changeHandlerSource, /data-account-tag-select/);
-  assert.match(changeHandlerSource, /prompt\("New account tag"\)/);
+  assert.match(changeHandlerSource, /openTagDialog\(\{ type: "account", account \}\)/);
   assert.match(submitHandlerSource, /data-campaign-form/);
+  assert.match(submitHandlerSource, /data-tag-form/);
+  assert.match(submitHandlerSource, /setAccountTags\(target\.account, \[\.\.\.accountTags\(target\.account\), savedTag\]\)/);
   assert.match(submitHandlerSource, /const campaigns = tenant\.campaigns \|\| \[\]/);
   assert.match(submitHandlerSource, /campaigns: \[campaign, \.\.\.campaigns\]/);
   assert.match(submitHandlerSource, /status: "Draft"/);
   assert.match(submitHandlerSource, /recurrence: "one-time"/);
   assert.match(submitHandlerSource, /campaigns: tenant\.campaigns/);
+});
+
+test("CRM import options are shown inline from the page header", () => {
+  const app = crmAppSource();
+  const renderPageHeaderSource = functionSource(app, "renderPageHeader", "renderAdmin");
+  const renderContactsSource = functionSource(app, "renderContacts", "renderContactTagFilter");
+  const renderAccountsSource = functionSource(app, "renderAccounts", "allAccountTags");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+
+  assert.match(renderPageHeaderSource, /data-action="export"/);
+  assert.match(renderPageHeaderSource, /data-action="open-import"/);
+  assert.match(renderPageHeaderSource, /ui\.importOpen \? renderImportStrip\(\) : ""/);
+  assert.doesNotMatch(renderContactsSource, /renderImportStrip\(\)/);
+  assert.doesNotMatch(renderAccountsSource, /renderImportStrip\(\)/);
+  assert.match(clickHandlerSource, /ui\.importOpen = !ui\.importOpen/);
+  assert.match(clickHandlerSource, /ui\.importOpen = false/);
+  assert.match(app, /CSV/);
+  assert.match(app, /Salesforce/);
+  assert.match(app, /Zendesk/);
 });
