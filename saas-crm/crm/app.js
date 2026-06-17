@@ -815,8 +815,7 @@ function renderSidebar() {
       ${sideLink("activities", "✓", "Activities", openTasks().length)}
       ${sideLink("inbox", "✉", "Inbox", tenant.communications.length)}
       ${sideLink("reports", "◴", "Reports")}
-      ${sideLink("settings", "⚙", "Settings")}
-      ${sideLink("templates", "✎", "Email templates", mailTemplates(tenant).length)}
+      ${sideLink("settings", "⚙", "Email integration")}
       <div class="side-spacer"></div>
       <button class="side-link" data-action="logout"><span class="icon">⇤</span> Sign out</button>
       <div class="profile">${avatar(currentUser().name)}<div><strong>${escapeHtml(currentUser().name)}</strong><small>${escapeHtml(currentUser().role)}</small></div></div>

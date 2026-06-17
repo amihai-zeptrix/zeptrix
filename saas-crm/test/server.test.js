@@ -663,8 +663,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
-  assert.match(sidebarSource, /sideLink\("settings", "⚙", "Settings"\)/);
-  assert.match(sidebarSource, /sideLink\("templates", "✎", "Email templates"/);
+  assert.match(sidebarSource, /sideLink\("settings", "⚙", "Email integration"\)/);
+  assert.doesNotMatch(sidebarSource, /sideLink\("templates", "✎", "Email templates"/);
   assert.match(topbarSource, /isPlatformAdmin\(\) \? "Search tenants, deals, contacts\.\.\." : "Search deals, accounts, contacts\.\.\."/);
   assert.doesNotMatch(sidebarSource, /data-action="open-settings"><span class="icon">⚙<\/span> Settings/);
   assert.match(renderSectionSource, /ui\.section === "settings"/);
