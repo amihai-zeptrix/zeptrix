@@ -204,6 +204,17 @@ h3 { font-size: 14px; }
 .auth-card h2 { margin-bottom: 7px; }
 .subcopy { color: var(--muted); font-size: 12px; }
 .auth-actions { display: grid; gap: 10px; margin-top: 24px; }
+.auth-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
 .divider { display: flex; align-items: center; gap: 10px; margin: 18px 0; color: var(--muted); font-size: 11px; }
 .divider::before, .divider::after { flex: 1; height: 1px; background: var(--line); content: ""; }
 

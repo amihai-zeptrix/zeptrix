@@ -156,6 +156,19 @@ const defaultGmailIntegration = {
   lastScanAt: "",
 };
 
+const defaultOutgoingEmail = {
+  configured: false,
+  status: "Not configured",
+  host: "",
+  port: 587,
+  secure: false,
+  username: "",
+  fromName: "Zeptrix CRM",
+  fromEmail: "",
+  passwordConfigured: false,
+  updatedAt: "",
+};
+
 let data = loadData();
 let session = loadSession();
 let ui = {
@@ -245,6 +258,7 @@ function normalizeData(nextData) {
     deals: (tenant.deals || []).map((deal) => ({ ...deal, tags: deal.tags || defaultAccountTags(deal) })),
     availableTags: normalizeTags([...(tenant.availableTags || []), ...(tenant.deals || []).flatMap((deal) => deal.tags || defaultAccountTags(deal)), ...defaultTags]),
     mailTemplates: normalizeMailTemplates(tenant.mailTemplates),
+    outgoingEmail: { ...defaultOutgoingEmail, ...(tenant.outgoingEmail || {}) },
     campaigns: (tenant.campaigns?.length ? tenant.campaigns : defaultCampaignsForTenant(tenant)).map((campaign) => ({ recurrence: "one-time", ...campaign })),
     gmailIntegration: { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) },
     users: (tenant.users || []).map((user) => {
@@ -474,6 +488,10 @@ async function loginViaApi(email, password) {
   return apiRequest("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
 }
 
+async function registerViaApi(values) {
+  return apiRequest("/api/auth/register", { method: "POST", body: JSON.stringify(values) });
+}
+
 async function changePasswordViaApi(email, password) {
   return apiRequest("/api/auth/change-password", { method: "POST", body: JSON.stringify({ email, password }) });
 }
@@ -546,6 +564,14 @@ async function saveGmailSettingsViaApi(tenantId, values) {
 
 async function saveConfigurationViaApi(tenantId, values) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/configuration`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+async function saveOutgoingEmailSettingsViaApi(tenantId, values) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/outgoing-email`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+async function sendEmailViaApi(tenantId, values) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/outgoing-email/send`, { method: "POST", body: JSON.stringify(values) });
 }
 
 async function connectGmailViaApi(tenantId) {
@@ -678,7 +704,7 @@ function renderAuth() {
       </section>
       <section class="auth-panel">
         <div class="auth-card">
-          ${ui.authStep === "mfa" ? renderMfa() : renderPasswordLogin()}
+          ${ui.authStep === "mfa" ? renderMfa() : ui.authStep === "register" ? renderRegisterForm() : renderPasswordLogin()}
         </div>
       </section>
     </main>`;
@@ -696,6 +722,24 @@ function renderPasswordLogin() {
       <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required /></div>
       <div class="field"><label>Password</label><input name="password" type="password" required /></div>
       <button class="button primary">Continue</button>
+      ${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}
+    </form>
+    <div class="auth-switch"><span>New to Zeptrix CRM?</span><button type="button" class="button ghost" data-action="show-register">Create workspace</button></div>`;
+}
+
+function renderRegisterForm() {
+  return `
+    <h2>Create workspace</h2>
+    <p class="subcopy">Register yourself as the tenant admin and start with an empty Trial workspace.</p>
+    <form class="auth-actions" data-register-form>
+      <div class="field"><label>Full name</label><input name="fullName" autocomplete="name" required /></div>
+      <div class="field"><label>Work email</label><input name="email" type="email" autocomplete="email" required /></div>
+      <div class="field"><label>Company name</label><input name="company" autocomplete="organization" required /></div>
+      <div class="field"><label>Tenant ID</label><input name="tenantId" placeholder="acme" pattern="[a-zA-Z0-9-]+" /></div>
+      <div class="field"><label>Password</label><input name="password" type="password" minlength="10" autocomplete="new-password" required /></div>
+      <div class="field"><label>Confirm password</label><input name="confirm" type="password" minlength="10" autocomplete="new-password" required /></div>
+      <button class="button primary">Create workspace</button>
+      <button class="button ghost" type="button" data-action="back-login">Back to sign in</button>
       ${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}
     </form>`;
 }
@@ -1551,7 +1595,7 @@ function renderTaskRow(task) {
 
 function renderInbox() {
   const items = [...currentTenant().communications].sort((a, b) => b.date.localeCompare(a.date));
-  return `${renderPageHeader("Inbox", "Keep customer communication attached to every opportunity.")}<div class="section-toolbar"><strong>${items.length} logged interactions</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="compose-email">＋ Log email</button></div><section class="activity-card">${items.map((item) => {
+  return `${renderPageHeader("Inbox", "Keep customer communication attached to every opportunity.")}<div class="section-toolbar"><strong>${items.length} logged interactions</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="compose-email">＋ Send email</button></div><section class="activity-card">${items.map((item) => {
     const deal = currentTenant().deals.find((candidate) => candidate.id === item.dealId);
     const isOpen = String(ui.selectedCommunicationId) === String(item.id);
     return `<div class="communication-row ${isOpen ? "is-open" : ""}"><span class="activity-symbol">${item.type === "Meeting" ? "◴" : "✉"}</span><button class="activity-main" data-open-communication="${item.id}"><span class="list-primary">${escapeHtml(item.subject)}<small>${escapeHtml(deal?.name || "Unlinked")} · ${escapeHtml(deal?.account || "No account")} · ${escapeHtml(item.owner)} · ${escapeHtml(item.tracked)}</small></span></button><span class="muted">${formatTimestamp(item.date)}</span><button class="button small danger" data-action="delete-communication" data-id="${item.id}">Delete</button></div>${isOpen ? renderInboxThread(item, deal) : ""}`;
@@ -1619,7 +1663,7 @@ function renderEmailForm() {
   const template = selectedMailTemplate();
   const subject = mergeMailTemplate(template?.subject || "", deal);
   const body = mergeMailTemplate(template?.body || "", deal);
-  return `<div class="modal-layer center"><form class="modal email-modal" data-email-form><header class="modal-head"><div><h2>Log email</h2><p class="subcopy">Capture the message and attach it to the right opportunity.</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="form-grid">${selectField("Deal", "dealId", currentTenant().deals.map((deal) => [deal.id, deal.name]), dealId)}<div class="field"><label>Template</label><select name="templateId" data-email-template>${templates.map((item) => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(template?.id) ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></div>${selectField("Direction", "direction", [["outbound", "Outbound"], ["inbound", "Inbound"]], "outbound")}${formField("Subject", "subject", subject, "text", true, "full")}<div class="field full"><label>Message</label><textarea name="body" required>${escapeHtml(body)}</textarea></div></div><div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">Log email</button></div></form></div>`;
+  return `<div class="modal-layer center"><form class="modal email-modal" data-email-form><header class="modal-head"><div><h2>Send email</h2><p class="subcopy">Send the message through the configured outgoing server and attach it to the opportunity.</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="form-grid">${selectField("Deal", "dealId", currentTenant().deals.map((deal) => [deal.id, deal.name]), dealId)}<div class="field"><label>Template</label><select name="templateId" data-email-template>${templates.map((item) => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(template?.id) ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></div>${formField("To", "to", deal?.email || "", "email", true)}<input type="hidden" name="direction" value="outbound" />${formField("Subject", "subject", subject, "text", true, "full")}<div class="field full"><label>Message</label><textarea name="body" required>${escapeHtml(body)}</textarea></div></div><div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">Send email</button></div></form></div>`;
 }
 
 function renderImportModal() {
@@ -1636,10 +1680,11 @@ function renderSettingsPage() {
     ${renderPageHeader("Settings", "Configure CRM integrations and workspace behavior.")}
     <nav class="settings-tabs">
       <button class="${ui.settingsTab === "mail" ? "active" : ""}" data-settings-tab="mail">Mail integrations</button>
+      <button class="${ui.settingsTab === "outgoing" ? "active" : ""}" data-settings-tab="outgoing">Outgoing email</button>
       <button class="${ui.settingsTab === "templates" ? "active" : ""}" data-settings-tab="templates">Templates</button>
       <button class="${ui.settingsTab === "configuration" ? "active" : ""}" data-settings-tab="configuration">Configuration</button>
     </nav>
-    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : renderConfigurationSettingsPanel()}`;
+    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : renderConfigurationSettingsPanel()}`;
 }
 
 function renderTemplatesSettingsPanel() {
@@ -1649,6 +1694,28 @@ function renderTemplatesSettingsPanel() {
 
 function renderTemplateForm(template) {
   return `<form class="template-form" data-template-form data-template-id="${escapeHtml(template.id)}"><div class="panel-head compact"><h4>${escapeHtml(template.name)}</h4><button type="button" class="button small danger" data-action="delete-template" data-id="${escapeHtml(template.id)}">Delete</button></div><div class="form-grid">${formField("Template name", "name", template.name, "text", true)}${formField("Subject", "subject", template.subject, "text", true)}<div class="field full"><label>Body</label><textarea name="body" required>${escapeHtml(template.body)}</textarea></div></div><div class="form-actions"><button class="button small primary">Save template</button></div></form>`;
+}
+
+function renderOutgoingEmailSettingsPanel() {
+  const settings = outgoingEmailSettings();
+  const canUseBackend = !!session?.apiToken && session.role !== "demo_user";
+  const disabled = canUseBackend ? "" : "disabled";
+  return `<section class="settings-card outgoing-card"><div class="panel-head"><div><h3>Outgoing email</h3><p class="subcopy">Configure the SMTP server used when CRM sends follow-up email.</p></div><span class="status-pill ${settings.configured ? "stage-won" : "stage-lead"}">${escapeHtml(settings.status)}</span></div>
+    ${canUseBackend ? "" : `<p class="admin-notice">Outgoing email requires signing in to a workspace at /crm.</p>`}
+    <form class="settings-form" data-outgoing-email-form>
+      <div class="form-grid">
+        ${formField("SMTP host", "host", settings.host, "text", true)}
+        ${formField("Port", "port", settings.port, "number", true)}
+        ${formField("Username", "username", settings.username, "text", true)}
+        <div class="field"><label>Password</label><input name="password" type="password" value="" ${settings.passwordConfigured ? "" : "required"} placeholder="${settings.passwordConfigured ? "Leave blank to keep current password" : ""}" /></div>
+        ${formField("From name", "fromName", settings.fromName, "text", true)}
+        ${formField("From email", "fromEmail", settings.fromEmail, "email", true)}
+      </div>
+      <div class="check-list compact">
+        <label class="check-row"><input type="checkbox" name="secure" ${settings.secure ? "checked" : ""} /><span>Use SSL/TLS</span><small>Enable for port 465. Port 587 usually starts plain and upgrades with STARTTLS.</small></label>
+      </div>
+      <div class="form-actions"><span class="subcopy">${settings.passwordConfigured ? "Password is saved securely on the server." : "Password is required before sending email."}</span><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save outgoing email</button></div>
+    </form></section>`;
 }
 
 function renderMailIntegrationsSettings() {
@@ -1736,6 +1803,19 @@ function gmailIntegration(tenant = currentTenant()) {
   return { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) };
 }
 
+function outgoingEmailSettings(tenant = currentTenant()) {
+  return { ...defaultOutgoingEmail, ...(tenant.outgoingEmail || {}) };
+}
+
+function outgoingEmailFormValues(form) {
+  const values = Object.fromEntries(new FormData(form));
+  return {
+    ...values,
+    port: Math.max(1, Math.min(65535, Number(values.port || 587))),
+    secure: Boolean(values.secure),
+  };
+}
+
 function normalizedGmailClientId(value) {
   return String(value || "").replace(/\s+/g, "");
 }
@@ -1801,7 +1881,7 @@ function monthsSince(value) {
 
 function renderDealDrawer(deal) {
   if (!deal) return "";
-  return `<div class="modal-layer"><aside class="drawer"><header class="modal-head"><div><p class="subcopy">Deal details</p></div><button class="close-button" data-action="close">×</button></header><section class="detail-hero">${avatar(deal.owner, "large")}<div><h2>${escapeHtml(deal.name)}</h2><p class="subcopy">${escapeHtml(deal.account)} · ${escapeHtml(deal.contact)}</p></div></section><section class="detail-section"><div class="detail-grid"><div><span class="detail-label">Stage</span><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span></div><div><span class="detail-label">Value</span><strong>${money(deal.value)}</strong></div><div><span class="detail-label">Owner</span><span class="owner-cell">${avatar(deal.owner, "small")}${deal.owner}</span></div><div><span class="detail-label">Close date</span><span>${formatDate(deal.close)}</span></div><div><span class="detail-label">Priority</span><span class="priority priority-${deal.priority.toLowerCase()}">${deal.priority}</span></div><div><span class="detail-label">Email</span><span>${escapeHtml(deal.email || "-")}</span></div></div></section><section class="detail-section"><h3>Notes</h3><p class="subcopy">${escapeHtml(deal.note || "No notes yet.")}</p></section><section class="detail-section"><h3>Communication</h3>${currentTenant().communications.filter((item) => String(item.dealId) === String(deal.id)).map((item) => `<div class="message-card"><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(item.type)} · ${formatTimestamp(item.date)} · ${escapeHtml(item.tracked)}</small><p>${escapeHtml(item.body)}</p></div>`).join("") || `<p class="subcopy">No messages logged yet.</p>`}<button class="button small" data-action="compose-email" data-deal-id="${deal.id}">＋ Log email</button></section><section class="detail-section"><h3>Activity</h3>${currentTenant().tasks.filter((task) => String(task.dealId) === String(deal.id)).map((task) => { const [label, klass] = taskStatus(task); return `<div class="drawer-task"><button class="task-check" data-action="toggle-task" data-id="${task.id}">${task.completed ? "✓" : ""}</button><span>${escapeHtml(task.title)}<small>${formatDate(task.due)}</small></span><span class="priority ${klass}">${label}</span><button class="button small danger" data-action="delete-task" data-id="${task.id}">Delete</button></div>`; }).join("") || `<p class="subcopy">No tasks yet.</p>`}</section><div class="form-actions"><button class="button danger" data-action="delete-deal" data-id="${deal.id}">Delete deal</button><button class="button" data-action="add-task" data-deal-id="${deal.id}">＋ Add task</button><span class="toolbar-spacer"></span><button class="button" data-action="close">Close</button><button class="button primary" data-action="edit-deal" data-id="${deal.id}">Edit deal</button></div></aside></div>`;
+  return `<div class="modal-layer"><aside class="drawer"><header class="modal-head"><div><p class="subcopy">Deal details</p></div><button class="close-button" data-action="close">×</button></header><section class="detail-hero">${avatar(deal.owner, "large")}<div><h2>${escapeHtml(deal.name)}</h2><p class="subcopy">${escapeHtml(deal.account)} · ${escapeHtml(deal.contact)}</p></div></section><section class="detail-section"><div class="detail-grid"><div><span class="detail-label">Stage</span><span class="status-pill ${stageClass[deal.stage]}">${deal.stage}</span></div><div><span class="detail-label">Value</span><strong>${money(deal.value)}</strong></div><div><span class="detail-label">Owner</span><span class="owner-cell">${avatar(deal.owner, "small")}${deal.owner}</span></div><div><span class="detail-label">Close date</span><span>${formatDate(deal.close)}</span></div><div><span class="detail-label">Priority</span><span class="priority priority-${deal.priority.toLowerCase()}">${deal.priority}</span></div><div><span class="detail-label">Email</span><span>${escapeHtml(deal.email || "-")}</span></div></div></section><section class="detail-section"><h3>Notes</h3><p class="subcopy">${escapeHtml(deal.note || "No notes yet.")}</p></section><section class="detail-section"><h3>Communication</h3>${currentTenant().communications.filter((item) => String(item.dealId) === String(deal.id)).map((item) => `<div class="message-card"><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(item.type)} · ${formatTimestamp(item.date)} · ${escapeHtml(item.tracked)}</small><p>${escapeHtml(item.body)}</p></div>`).join("") || `<p class="subcopy">No messages logged yet.</p>`}<button class="button small" data-action="compose-email" data-deal-id="${deal.id}">＋ Send email</button></section><section class="detail-section"><h3>Activity</h3>${currentTenant().tasks.filter((task) => String(task.dealId) === String(deal.id)).map((task) => { const [label, klass] = taskStatus(task); return `<div class="drawer-task"><button class="task-check" data-action="toggle-task" data-id="${task.id}">${task.completed ? "✓" : ""}</button><span>${escapeHtml(task.title)}<small>${formatDate(task.due)}</small></span><span class="priority ${klass}">${label}</span><button class="button small danger" data-action="delete-task" data-id="${task.id}">Delete</button></div>`; }).join("") || `<p class="subcopy">No tasks yet.</p>`}</section><div class="form-actions"><button class="button danger" data-action="delete-deal" data-id="${deal.id}">Delete deal</button><button class="button" data-action="add-task" data-deal-id="${deal.id}">＋ Add task</button><span class="toolbar-spacer"></span><button class="button" data-action="close">Close</button><button class="button primary" data-action="edit-deal" data-id="${deal.id}">Edit deal</button></div></aside></div>`;
 }
 
 function formField(label, name, value = "", type = "text", required = false, klass = "", labelAction = "") {
@@ -1978,6 +2058,7 @@ document.addEventListener("click", async (event) => {
       }
       return;
     }
+    if (action === "show-register") { ui.authStep = "register"; ui.authError = ""; }
     if (action === "back-login") { ui.authStep = "password"; ui.authError = ""; }
     if (action === "logout") { session = null; saveSession(); ui.authStep = "password"; }
     if (action === "open-tenant") { ui.tenantId = id; ui.section = "pipeline"; session.tenantId = id; saveSession(); }
@@ -2397,6 +2478,33 @@ document.addEventListener("submit", async (event) => {
     render();
     return;
   }
+  if (event.target.matches("[data-register-form]")) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.target));
+    if (values.password !== values.confirm) {
+      ui.authError = "Passwords do not match.";
+      render();
+      return;
+    }
+    try {
+      const result = await registerViaApi(values);
+      data.tenants = normalizeData({ ...data, tenants: [...data.tenants, result.tenant] }).tenants;
+      ui.pendingUser = {
+        name: result.user.name,
+        email: result.user.email,
+        role: result.user.role,
+        tenantId: result.user.tenantId,
+        mustChangePassword: result.user.mustChangePassword,
+        apiToken: result.token,
+      };
+      ui.authError = "";
+      ui.authStep = "mfa";
+    } catch (error) {
+      ui.authError = error.message;
+    }
+    render();
+    return;
+  }
   if (event.target.matches("[data-mfa-form]")) {
     event.preventDefault();
     const { code } = Object.fromEntries(new FormData(event.target));
@@ -2452,7 +2560,7 @@ document.addEventListener("submit", async (event) => {
     if (ui.editingTenant) {
       try {
         const result = await updateTenantViaApi(ui.editingTenant.id, values);
-        data.tenants = data.tenants.map((tenant) => tenant.id === ui.editingTenant.id ? { ...tenant, ...result.tenant, users: result.tenant.users?.length ? result.tenant.users : tenant.users, deals: tenant.deals, tasks: tenant.tasks, communications: tenant.communications, campaigns: tenant.campaigns, mailTemplates: tenant.mailTemplates } : tenant);
+        data.tenants = data.tenants.map((tenant) => tenant.id === ui.editingTenant.id ? { ...tenant, ...result.tenant, users: result.tenant.users?.length ? result.tenant.users : tenant.users, deals: tenant.deals, tasks: tenant.tasks, communications: tenant.communications, campaigns: tenant.campaigns, mailTemplates: tenant.mailTemplates, outgoingEmail: tenant.outgoingEmail } : tenant);
         if (ui.tenantId === ui.editingTenant.id) ui.tenantId = ui.editingTenant.id;
       } catch (error) {
         ui.authError = error.message;
@@ -2483,10 +2591,21 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));
     const tenant = currentTenant();
-    const communications = [{ ...values, id: Math.max(0, ...tenant.communications.map((item) => item.id)) + 1, dealId: values.dealId, type: "Email", owner: currentUser().name, tracked: "Logged", date: new Date().toISOString() }, ...tenant.communications];
-    setTenant({ ...tenant, communications });
-    ui.modal = null;
-    ui.emailDealId = null;
+    try {
+      let communication;
+      if (session?.apiToken && session.role !== "demo_user") {
+        const result = await sendEmailViaApi(tenant.id, values);
+        communication = result.communication;
+      } else {
+        communication = { ...values, id: Math.max(0, ...tenant.communications.map((item) => item.id)) + 1, dealId: values.dealId, type: "Email", owner: currentUser().name, tracked: "Local draft", date: new Date().toISOString() };
+      }
+      setTenant({ ...currentTenant(), communications: [communication, ...currentTenant().communications] });
+      ui.modal = null;
+      ui.emailDealId = null;
+      showToast(session?.apiToken && session.role !== "demo_user" ? "Email sent" : "Email saved locally");
+    } catch (error) {
+      showToast(`Could not send email: ${error.message}`);
+    }
     render();
     return;
   }
@@ -2564,6 +2683,23 @@ document.addEventListener("submit", async (event) => {
     ui.section = "settings";
     ui.settingsTab = "mail";
     ui.gmailNotice = "";
+    render();
+    return;
+  }
+  if (event.target.matches("[data-outgoing-email-form]")) {
+    event.preventDefault();
+    const tenant = currentTenant();
+    const values = outgoingEmailFormValues(event.target);
+    try {
+      const result = await saveOutgoingEmailSettingsViaApi(tenant.id, values);
+      setTenant({ ...currentTenant(), outgoingEmail: { ...result.outgoingEmail, status: "Outgoing email settings saved." } });
+      showToast("Outgoing email settings saved");
+    } catch (error) {
+      setTenant({ ...tenant, outgoingEmail: { ...outgoingEmailSettings(tenant), ...values, status: error.message, passwordConfigured: outgoingEmailSettings(tenant).passwordConfigured || Boolean(values.password) } });
+      showToast(error.message);
+    }
+    ui.section = "settings";
+    ui.settingsTab = "outgoing";
     render();
     return;
   }

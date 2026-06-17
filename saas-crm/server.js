@@ -109,6 +109,29 @@ function normalizeTenantPayload(payload) {
   return { ...payload, ownerEmail: payload.ownerEmail || payload.billingEmail };
 }
 
+function normalizeRegistrationPayload(payload = {}) {
+  const fullName = String(payload.fullName || payload.name || "").trim();
+  const company = String(payload.company || payload.tenantName || "").trim();
+  const email = String(payload.email || "").trim().toLowerCase();
+  const password = String(payload.password || "");
+  const slug = slugify(payload.tenantId || payload.slug || company || email.split("@")[1]?.split(".")[0] || "workspace");
+  if (!fullName) return { error: "Full name is required." };
+  if (!company) return { error: "Company name is required." };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "A valid work email is required." };
+  if (password.length < 10) return { error: "Password must be at least 10 characters." };
+  return {
+    fullName,
+    company,
+    email,
+    password,
+    slug,
+    plan: "Growth",
+    status: "Trial",
+    region: "US-East",
+    seats: 3,
+  };
+}
+
 function normalizeDealPayload(payload = {}) {
   const stage = ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"].includes(payload.stage) ? payload.stage : "Lead";
   const priority = ["High", "Medium", "Low"].includes(payload.priority) ? payload.priority : "Medium";
@@ -163,6 +186,41 @@ function validateMailTemplate(values) {
   if (!values.subject) return "Template subject is required.";
   if (!values.body) return "Template body is required.";
   return "";
+}
+
+function normalizeOutgoingEmailSettings(payload = {}) {
+  const port = Math.max(1, Math.min(65535, Number(payload.port || 587)));
+  const fromEmail = String(payload.fromEmail || payload.username || "").trim();
+  const settings = {
+    host: String(payload.host || "").trim(),
+    port,
+    secure: payload.secure === true || payload.secure === "true" || port === 465,
+    username: String(payload.username || "").trim(),
+    password: String(payload.password || "").trim(),
+    fromName: String(payload.fromName || "Zeptrix CRM").trim(),
+    fromEmail,
+  };
+  if (!settings.host) return { error: "Outgoing mail server is required." };
+  if (!settings.username) return { error: "Outgoing mail username is required." };
+  if (!settings.fromEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.fromEmail)) return { error: "A valid from email is required." };
+  return settings;
+}
+
+function normalizeOutgoingMailPayload(payload = {}) {
+  const to = String(payload.to || "").trim();
+  const subject = String(payload.subject || "").trim();
+  const body = String(payload.body || "").trim();
+  const direction = ["inbound", "outbound"].includes(payload.direction) ? payload.direction : "outbound";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { error: "A valid recipient email is required." };
+  if (!subject) return { error: "Subject is required." };
+  if (!body) return { error: "Message is required." };
+  return {
+    dealId: String(payload.dealId || "").trim() || null,
+    to,
+    subject,
+    body,
+    direction,
+  };
 }
 
 function duplicateTenantEmailMessage(email, tenantName, role) {
@@ -397,6 +455,20 @@ async function initDatabase() {
       updated_at timestamptz not null default now()
     )`);
   await dbQuery(`
+    create table if not exists outgoing_email_settings (
+      tenant_id uuid primary key references tenants(id) on delete cascade,
+      host text not null,
+      port integer not null default 587 check (port > 0 and port <= 65535),
+      secure boolean not null default false,
+      username text not null,
+      password_enc text,
+      from_name text not null default 'Zeptrix CRM',
+      from_email citext not null,
+      status text not null default 'Not configured',
+      updated_at timestamptz not null default now(),
+      created_at timestamptz not null default now()
+    )`);
+  await dbQuery(`
     create table if not exists invite_emails (
       id uuid primary key default gen_random_uuid(),
       tenant_id uuid not null references tenants(id) on delete cascade,
@@ -463,6 +535,7 @@ async function initDatabase() {
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists contact_tags_tenant_name_idx on contact_tags(tenant_id, lower(name))`);
   await dbQuery(`create index if not exists mail_templates_tenant_updated_idx on mail_templates(tenant_id, updated_at desc)`);
+  await dbQuery(`create index if not exists outgoing_email_settings_updated_idx on outgoing_email_settings(updated_at desc)`);
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
@@ -766,7 +839,7 @@ async function upsertMailTemplateForTenant(tenantId, payload, templateId = "") {
 }
 
 async function readState(auth) {
-  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult, mailTemplatesResult] = await Promise.all([
+  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
     dbQuery(`select * from users order by created_at`),
     dbQuery(`select * from deals order by created_at`),
@@ -777,6 +850,7 @@ async function readState(auth) {
     dbQuery(`select * from gmail_contact_signals order by created_at desc limit 500`),
     dbQuery(`select * from contact_tags order by lower(name), name`),
     dbQuery(`select * from mail_templates order by updated_at desc`),
+    dbQuery(`select * from outgoing_email_settings`),
   ]);
   const visibleTenants = auth.role === "platform_admin" ? tenantsResult.rows : tenantsResult.rows.filter((tenant) => tenant.id === auth.tenantId);
   return {
@@ -790,12 +864,13 @@ async function readState(auth) {
       gmailSignalResult.rows.filter((signal) => signal.tenant_id === tenant.id),
       contactTagsResult.rows.filter((tag) => tag.tenant_id === tenant.id),
       mailTemplatesResult.rows.filter((template) => template.tenant_id === tenant.id),
+      outgoingEmailResult.rows.find((settings) => settings.tenant_id === tenant.id),
     )),
     inviteEmails: auth.role === "platform_admin" ? invitesResult.rows.map(inviteFromRow) : [],
   };
 }
 
-function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], contactTags = [], mailTemplates = []) {
+function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], contactTags = [], mailTemplates = [], outgoingEmailSettings = null) {
   const normalizedDeals = deals.map(dealFromRow);
   return {
     id: tenant.id,
@@ -813,6 +888,7 @@ function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegra
     gmailIntegration: gmailIntegrationFromRow(gmailIntegration, gmailSignals),
     availableTags: availableContactTags(contactTags, normalizedDeals),
     mailTemplates: mailTemplates.map(mailTemplateFromRow),
+    outgoingEmail: outgoingEmailSettingsFromRow(outgoingEmailSettings),
   };
 }
 
@@ -890,6 +966,21 @@ function mailTemplateFromRow(template) {
     subject: template.subject,
     body: template.body,
     updatedAt: template.updated_at ? template.updated_at.toISOString() : "",
+  };
+}
+
+function outgoingEmailSettingsFromRow(row) {
+  return {
+    configured: !!row?.host,
+    status: row?.status || "Not configured",
+    host: row?.host || "",
+    port: row?.port || 587,
+    secure: !!row?.secure,
+    username: row?.username || "",
+    fromName: row?.from_name || "Zeptrix CRM",
+    fromEmail: row?.from_email || "",
+    passwordConfigured: !!row?.password_enc,
+    updatedAt: row?.updated_at ? row.updated_at.toISOString() : "",
   };
 }
 
@@ -1105,6 +1196,85 @@ async function upsertConfigurationSettings(tenantId, payload) {
     [tenantId, settings.gmailLookbackDays],
   );
   return gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId));
+}
+
+async function upsertOutgoingEmailSettings(tenantId, payload) {
+  const settings = normalizeOutgoingEmailSettings(payload);
+  if (settings.error) {
+    const error = new Error(settings.error);
+    error.statusCode = 400;
+    throw error;
+  }
+  const previous = await dbQuery(`select password_enc from outgoing_email_settings where tenant_id=$1`, [tenantId]);
+  const passwordEnc = settings.password ? encryptToken(settings.password) : previous.rows[0]?.password_enc || null;
+  if (!passwordEnc) {
+    const error = new Error("Outgoing mail password is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const result = await dbQuery(
+    `insert into outgoing_email_settings
+       (tenant_id, host, port, secure, username, password_enc, from_name, from_email, status, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,'Settings saved',now())
+     on conflict (tenant_id) do update set
+       host=excluded.host,
+       port=excluded.port,
+       secure=excluded.secure,
+       username=excluded.username,
+       password_enc=excluded.password_enc,
+       from_name=excluded.from_name,
+       from_email=excluded.from_email,
+       status='Settings saved',
+       updated_at=now()
+     returning *`,
+    [tenantId, settings.host, settings.port, settings.secure, settings.username, passwordEnc, settings.fromName, settings.fromEmail],
+  );
+  return outgoingEmailSettingsFromRow(result.rows[0]);
+}
+
+async function sendCrmEmailForTenant(tenantId, auth, payload) {
+  const message = normalizeOutgoingMailPayload(payload);
+  if (message.error) {
+    const error = new Error(message.error);
+    error.statusCode = 400;
+    throw error;
+  }
+  const settingsResult = await dbQuery(`select * from outgoing_email_settings where tenant_id=$1`, [tenantId]);
+  const settings = settingsResult.rows[0];
+  if (!settings?.password_enc) {
+    const error = new Error("Outgoing email is not configured.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const dealResult = message.dealId
+    ? await dbQuery(`select id from deals where tenant_id=$1 and id=$2`, [tenantId, message.dealId])
+    : { rows: [] };
+  if (message.dealId && !dealResult.rows.length) {
+    const error = new Error("Deal not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: settings.host,
+    port: settings.port,
+    secure: settings.secure,
+    auth: { user: settings.username, pass: decryptToken(settings.password_enc) },
+  });
+  const response = await transporter.sendMail({
+    from: `${settings.from_name || "Zeptrix CRM"} <${settings.from_email}>`,
+    to: message.to,
+    subject: message.subject,
+    text: message.body,
+  });
+  const saved = await dbQuery(
+    `insert into communications (tenant_id, deal_id, type, direction, subject, body, owner, tracked, occurred_at)
+     values ($1,$2,'Email',$3,$4,$5,$6,$7,now())
+     returning *`,
+    [tenantId, message.dealId, message.direction, message.subject, message.body, auth.name || auth.email || "", response.messageId ? `Sent · ${response.messageId}` : "Sent"],
+  );
+  await dbQuery(`update outgoing_email_settings set status='Last email sent', updated_at=now() where tenant_id=$1`, [tenantId]);
+  return { communication: communicationFromRow(saved.rows[0]), messageId: response.messageId || null };
 }
 
 function gmailAuthUrl({ tenantId, userId, clientId, redirectUri, accountEmail }) {
@@ -1512,6 +1682,58 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "POST" && pathname === "/api/auth/register") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const values = normalizeRegistrationPayload(await readBody(req));
+      if (values.error) return json(res, 400, { error: values.error });
+      const duplicate = await dbQuery(
+        `select
+           (select name from tenants where slug=$1 limit 1) as slug_tenant_name,
+           (select t.name
+            from users u join tenants t on t.id=u.tenant_id
+            where lower(u.email)=lower($2)
+            limit 1) as email_tenant_name`,
+        [values.slug, values.email],
+      );
+      if (duplicate.rows[0].slug_tenant_name) return json(res, 409, { error: `Tenant ID "${values.slug}" is already used by ${duplicate.rows[0].slug_tenant_name}.` });
+      if (duplicate.rows[0].email_tenant_name) return json(res, 409, { error: `An account for ${values.email} already exists in ${duplicate.rows[0].email_tenant_name}.` });
+
+      const created = await withTransaction(async (client) => {
+        const tenantRow = await insertTenantWithClient(client, {
+          name: values.company,
+          slug: values.slug,
+          plan: values.plan,
+          status: values.status,
+          region: values.region,
+          seats: values.seats,
+          billingEmail: values.email,
+        });
+        const userRow = await insertUserWithClient(client, tenantRow.id, {
+          name: values.fullName,
+          email: values.email,
+          password: values.password,
+          role: "tenant_admin",
+          mustChangePassword: false,
+          sso: false,
+        });
+        return { tenantRow, userRow };
+      });
+      const user = {
+        id: created.userRow.id,
+        tenantId: created.tenantRow.id,
+        tenantName: created.tenantRow.name,
+        name: created.userRow.name,
+        email: created.userRow.email,
+        role: created.userRow.role,
+        mustChangePassword: false,
+      };
+      return json(res, 201, { user, token: signAuthToken(user), tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []) });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to register workspace.", detail: error.message });
+    }
+  }
+
   if (req.method === "POST" && pathname === "/api/auth/change-password") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -1771,6 +1993,32 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/outgoing-email")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const outgoingEmail = await upsertOutgoingEmailSettings(resolved.tenantId, await readBody(req));
+      return json(res, 200, { outgoingEmail });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save outgoing email settings.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/outgoing-email/send")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const result = await sendCrmEmailForTenant(resolved.tenantId, resolved.auth, await readBody(req));
+      return json(res, 200, result);
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to send email.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail/skip")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -1955,6 +2203,9 @@ module.exports = {
   isAutomatedSenderEmail,
   normalizeDealPayload,
   normalizeGmailSettings,
+  normalizeOutgoingEmailSettings,
+  normalizeOutgoingMailPayload,
+  normalizeRegistrationPayload,
   normalizeTenantPayload,
   parseEmailAddress,
   signAuthToken,

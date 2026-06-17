@@ -123,6 +123,20 @@ create table gmail_integrations (
   updated_at timestamptz not null default now()
 );
 
+create table outgoing_email_settings (
+  tenant_id uuid primary key references tenants(id) on delete cascade,
+  host text not null,
+  port integer not null default 587 check (port > 0 and port <= 65535),
+  secure boolean not null default false,
+  username text not null,
+  password_enc text,
+  from_name text not null default 'Zeptrix CRM',
+  from_email citext not null,
+  status text not null default 'Not configured',
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
 create table gmail_contact_signals (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,

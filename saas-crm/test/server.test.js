@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { decryptToken, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
+const { decryptToken, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -132,6 +132,49 @@ test("tenant payloads default owner login email to billing email for old clients
     normalizeTenantPayload({ billingEmail: "owner@example.com" }).ownerEmail,
     "owner@example.com",
   );
+});
+
+test("self registration creates a tenant admin workspace from the sign-in page", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const server = serverSource();
+  const renderLoginSource = functionSource(app, "renderPasswordLogin", "renderRegisterForm");
+  const renderRegisterSource = functionSource(app, "renderRegisterForm", "renderPasswordChange");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+
+  assert.deepEqual(normalizeRegistrationPayload({
+    fullName: "Ron Cohen",
+    company: "Ron Labs",
+    email: "RON@example.com",
+    password: "StrongPass12",
+  }), {
+    fullName: "Ron Cohen",
+    company: "Ron Labs",
+    email: "ron@example.com",
+    password: "StrongPass12",
+    slug: "ron-labs",
+    plan: "Growth",
+    status: "Trial",
+    region: "US-East",
+    seats: 3,
+  });
+  assert.equal(normalizeRegistrationPayload({ fullName: "Ron", company: "Ron Labs", email: "bad", password: "StrongPass12" }).error, "A valid work email is required.");
+  assert.equal(normalizeRegistrationPayload({ fullName: "Ron", company: "Ron Labs", email: "ron@example.com", password: "short" }).error, "Password must be at least 10 characters.");
+  assert.match(renderLoginSource, /data-action="show-register"/);
+  assert.match(renderRegisterSource, /data-register-form/);
+  assert.match(renderRegisterSource, /Full name/);
+  assert.match(renderRegisterSource, /Tenant ID/);
+  assert.match(renderRegisterSource, /Create workspace/);
+  assert.match(clickHandlerSource, /action === "show-register"/);
+  assert.match(submitHandlerSource, /data-register-form/);
+  assert.match(submitHandlerSource, /registerViaApi\(values\)/);
+  assert.match(submitHandlerSource, /ui\.authStep = "mfa"/);
+  assert.ok(server.includes('pathname === "/api/auth/register"'));
+  assert.match(server, /normalizeRegistrationPayload/);
+  assert.match(server, /insertTenantWithClient/);
+  assert.match(server, /insertUserWithClient/);
+  assert.match(styles, /\.auth-switch/);
 });
 
 test("invite email content includes login details", () => {
@@ -624,6 +667,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSectionSource, /renderTemplatesSettingsPanel\(\)/);
   assert.match(renderSettingsPageSource, /Mail integrations/);
   assert.match(renderSettingsPageSource, /data-settings-tab="mail"/);
+  assert.match(renderSettingsPageSource, /Outgoing email/);
+  assert.match(renderSettingsPageSource, /data-settings-tab="outgoing"/);
+  assert.match(renderSettingsPageSource, /renderOutgoingEmailSettingsPanel/);
   assert.match(renderSettingsPageSource, /Templates/);
   assert.match(renderSettingsPageSource, /data-settings-tab="templates"/);
   assert.match(renderSettingsPageSource, /renderTemplatesSettingsPanel/);
@@ -704,6 +750,65 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(styles, /\.signal-scope/);
   assert.match(styles, /\.gmail-notice\.error/);
   assert.doesNotMatch(styles, /\.gmail-diagnostic/);
+});
+
+test("CRM outgoing email settings and send email flow are wired to SMTP API", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const server = serverSource();
+  const renderSettingsPageSource = functionSource(app, "renderSettingsPage", "renderTemplatesSettingsPanel");
+  const renderOutgoingSource = functionSource(app, "renderOutgoingEmailSettingsPanel", "renderMailIntegrationsSettings");
+  const renderEmailFormSource = functionSource(app, "renderEmailForm", "renderImportModal");
+  const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+
+  assert.deepEqual(normalizeOutgoingEmailSettings({
+    host: "smtp.example.com",
+    port: "465",
+    username: "sales@example.com",
+    password: "secret",
+    fromEmail: "sales@example.com",
+  }), {
+    host: "smtp.example.com",
+    port: 465,
+    secure: true,
+    username: "sales@example.com",
+    password: "secret",
+    fromName: "Zeptrix CRM",
+    fromEmail: "sales@example.com",
+  });
+  assert.equal(normalizeOutgoingEmailSettings({ username: "u", fromEmail: "bad" }).error, "Outgoing mail server is required.");
+  assert.deepEqual(normalizeOutgoingMailPayload({ to: "buyer@example.com", subject: "Hello", body: "Body", direction: "inbound" }), {
+    dealId: null,
+    to: "buyer@example.com",
+    subject: "Hello",
+    body: "Body",
+    direction: "inbound",
+  });
+  assert.equal(normalizeOutgoingMailPayload({ to: "bad", subject: "Hello", body: "Body" }).error, "A valid recipient email is required.");
+  assert.match(app, /const defaultOutgoingEmail/);
+  assert.match(app, /outgoingEmail: \{ \.\.\.defaultOutgoingEmail/);
+  assert.match(app, /async function saveOutgoingEmailSettingsViaApi/);
+  assert.match(app, /async function sendEmailViaApi/);
+  assert.match(renderSettingsPageSource, /ui\.settingsTab === "outgoing"/);
+  assert.match(renderOutgoingSource, /data-outgoing-email-form/);
+  assert.match(renderOutgoingSource, /SMTP host/);
+  assert.match(renderOutgoingSource, /Use SSL\/TLS/);
+  assert.match(renderOutgoingSource, /Save outgoing email/);
+  assert.match(renderEmailFormSource, /<h2>Send email<\/h2>/);
+  assert.match(renderEmailFormSource, /formField\("To", "to", deal\?\.email/);
+  assert.match(renderEmailFormSource, /Send email<\/button>/);
+  assert.doesNotMatch(renderEmailFormSource, /Log email/);
+  assert.match(submitHandlerSource, /sendEmailViaApi\(tenant\.id, values\)/);
+  assert.match(submitHandlerSource, /data-outgoing-email-form/);
+  assert.match(submitHandlerSource, /saveOutgoingEmailSettingsViaApi\(tenant\.id, values\)/);
+  assert.match(server, /create table if not exists outgoing_email_settings/);
+  assert.match(server, /function upsertOutgoingEmailSettings/);
+  assert.match(server, /function sendCrmEmailForTenant/);
+  assert.ok(server.includes('pathname.endsWith("/outgoing-email")'));
+  assert.ok(server.includes('pathname.endsWith("/outgoing-email/send")'));
+  assert.match(server, /transporter\.sendMail/);
+  assert.match(server, /insert into communications/);
+  assert.match(styles, /\.modal\.email-modal/);
 });
 
 test("CRM mail templates can be managed and selected from follow-up email", () => {
