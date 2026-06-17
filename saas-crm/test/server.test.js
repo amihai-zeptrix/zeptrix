@@ -143,17 +143,19 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
-  assert.deepEqual(normalizeRegistrationPayload({
+  const registration = normalizeRegistrationPayload({
     fullName: "Ron Cohen",
     company: "Ron Labs",
     email: "RON@example.com",
     password: "StrongPass12",
-  }), {
+  });
+  assert.match(registration.slug, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  assert.deepEqual({ ...registration, slug: "uuid" }, {
     fullName: "Ron Cohen",
     company: "Ron Labs",
     email: "ron@example.com",
     password: "StrongPass12",
-    slug: "ron-labs",
+    slug: "uuid",
     plan: "Growth",
     status: "Trial",
     region: "US-East",
@@ -164,8 +166,8 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   assert.match(renderLoginSource, /data-action="show-register"/);
   assert.match(renderRegisterSource, /data-register-form/);
   assert.match(renderRegisterSource, /Full name/);
-  assert.match(renderRegisterSource, /Tenant ID/);
-  assert.match(renderRegisterSource, /Create workspace/);
+  assert.doesNotMatch(renderRegisterSource, /Tenant ID/);
+  assert.match(renderRegisterSource, /Register/);
   assert.match(clickHandlerSource, /action === "show-register"/);
   assert.match(submitHandlerSource, /data-register-form/);
   assert.match(submitHandlerSource, /registerViaApi\(values\)/);
@@ -601,6 +603,7 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   const app = crmAppSource();
   const styles = crmStylesSource();
   const sidebarSource = functionSource(app, "renderSidebar", "sideLink");
+  const topbarSource = functionSource(app, "renderTopbar", "renderSection");
   const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
   const renderCampaignsSource = functionSource(app, "renderCampaigns", "renderAccountDetail");
   const renderCampaignDetailSource = functionSource(app, "renderCampaignDetail", "renderAccountDetail");
@@ -652,6 +655,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   const app = crmAppSource();
   const styles = crmStylesSource();
   const sidebarSource = functionSource(app, "renderSidebar", "sideLink");
+  const topbarSource = functionSource(app, "renderTopbar", "renderSection");
   const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
   const renderSettingsPageSource = functionSource(app, "renderSettingsPage", "renderMailIntegrationsSettings");
   const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderConfigurationSettingsPanel");
@@ -660,7 +664,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
   assert.match(sidebarSource, /sideLink\("settings", "⚙", "Settings"\)/);
-  assert.match(sidebarSource, /sideLink\("templates", "✎", "Templates"/);
+  assert.match(sidebarSource, /sideLink\("templates", "✎", "Email templates"/);
+  assert.match(topbarSource, /isPlatformAdmin\(\) \? "Search tenants, deals, contacts\.\.\." : "Search deals, accounts, contacts\.\.\."/);
   assert.doesNotMatch(sidebarSource, /data-action="open-settings"><span class="icon">⚙<\/span> Settings/);
   assert.match(renderSectionSource, /ui\.section === "settings"/);
   assert.match(renderSectionSource, /ui\.section === "templates"/);
@@ -670,7 +675,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSettingsPageSource, /Outgoing email/);
   assert.match(renderSettingsPageSource, /data-settings-tab="outgoing"/);
   assert.match(renderSettingsPageSource, /renderOutgoingEmailSettingsPanel/);
-  assert.match(renderSettingsPageSource, /Templates/);
+  assert.match(renderSettingsPageSource, /Email templates/);
   assert.match(renderSettingsPageSource, /data-settings-tab="templates"/);
   assert.match(renderSettingsPageSource, /renderTemplatesSettingsPanel/);
   assert.match(renderSettingsPageSource, /Configuration/);
@@ -829,8 +834,8 @@ test("CRM mail templates can be managed and selected from follow-up email", () =
   assert.match(app, /function mergeMailTemplate/);
   assert.match(app, /function openFollowUpEmail/);
   assert.match(renderTemplatesSource, /data-template-form/);
-  assert.match(renderTemplatesSource, /New template/);
-  assert.match(renderTemplateFormSource, /Save template/);
+  assert.match(renderTemplatesSource, /New email template/);
+  assert.match(renderTemplateFormSource, /Save email template/);
   assert.match(renderTemplateFormSource, /data-action="delete-template"/);
   assert.match(renderMailSettingsSource, /data-action="follow-up-contact"/);
   assert.match(renderMailSettingsSource, /follow-up-chip/);

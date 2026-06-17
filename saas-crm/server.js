@@ -114,7 +114,6 @@ function normalizeRegistrationPayload(payload = {}) {
   const company = String(payload.company || payload.tenantName || "").trim();
   const email = String(payload.email || "").trim().toLowerCase();
   const password = String(payload.password || "");
-  const slug = slugify(payload.tenantId || payload.slug || company || email.split("@")[1]?.split(".")[0] || "workspace");
   if (!fullName) return { error: "Full name is required." };
   if (!company) return { error: "Company name is required." };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "A valid work email is required." };
@@ -124,7 +123,7 @@ function normalizeRegistrationPayload(payload = {}) {
     company,
     email,
     password,
-    slug,
+    slug: crypto.randomUUID(),
     plan: "Growth",
     status: "Trial",
     region: "US-East",
@@ -1696,7 +1695,7 @@ async function handleApi(req, res) {
             limit 1) as email_tenant_name`,
         [values.slug, values.email],
       );
-      if (duplicate.rows[0].slug_tenant_name) return json(res, 409, { error: `Tenant ID "${values.slug}" is already used by ${duplicate.rows[0].slug_tenant_name}.` });
+      if (duplicate.rows[0].slug_tenant_name) return json(res, 409, { error: `Workspace ID "${values.slug}" is already used by ${duplicate.rows[0].slug_tenant_name}.` });
       if (duplicate.rows[0].email_tenant_name) return json(res, 409, { error: `An account for ${values.email} already exists in ${duplicate.rows[0].email_tenant_name}.` });
 
       const created = await withTransaction(async (client) => {

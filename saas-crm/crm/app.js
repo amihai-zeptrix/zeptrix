@@ -724,21 +724,20 @@ function renderPasswordLogin() {
       <button class="button primary">Continue</button>
       ${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}
     </form>
-    <div class="auth-switch"><span>New to Zeptrix CRM?</span><button type="button" class="button ghost" data-action="show-register">Create workspace</button></div>`;
+    <div class="auth-switch"><span>New to Zeptrix CRM?</span><button type="button" class="button ghost" data-action="show-register">Register</button></div>`;
 }
 
 function renderRegisterForm() {
   return `
-    <h2>Create workspace</h2>
+    <h2>Register</h2>
     <p class="subcopy">Register yourself as the tenant admin and start with an empty Trial workspace.</p>
     <form class="auth-actions" data-register-form>
       <div class="field"><label>Full name</label><input name="fullName" autocomplete="name" required /></div>
       <div class="field"><label>Work email</label><input name="email" type="email" autocomplete="email" required /></div>
       <div class="field"><label>Company name</label><input name="company" autocomplete="organization" required /></div>
-      <div class="field"><label>Tenant ID</label><input name="tenantId" placeholder="acme" pattern="[a-zA-Z0-9-]+" /></div>
       <div class="field"><label>Password</label><input name="password" type="password" minlength="10" autocomplete="new-password" required /></div>
       <div class="field"><label>Confirm password</label><input name="confirm" type="password" minlength="10" autocomplete="new-password" required /></div>
-      <button class="button primary">Create workspace</button>
+      <button class="button primary">Register</button>
       <button class="button ghost" type="button" data-action="back-login">Back to sign in</button>
       ${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}
     </form>`;
@@ -817,7 +816,7 @@ function renderSidebar() {
       ${sideLink("inbox", "✉", "Inbox", tenant.communications.length)}
       ${sideLink("reports", "◴", "Reports")}
       ${sideLink("settings", "⚙", "Settings")}
-      ${sideLink("templates", "✎", "Templates", mailTemplates(tenant).length)}
+      ${sideLink("templates", "✎", "Email templates", mailTemplates(tenant).length)}
       <div class="side-spacer"></div>
       <button class="side-link" data-action="logout"><span class="icon">⇤</span> Sign out</button>
       <div class="profile">${avatar(currentUser().name)}<div><strong>${escapeHtml(currentUser().name)}</strong><small>${escapeHtml(currentUser().role)}</small></div></div>
@@ -831,7 +830,7 @@ function sideLink(section, icon, label, count = "") {
 function renderTopbar() {
   return `
     <header class="topbar">
-      <label class="global-search"><span>⌕</span><input placeholder="Search tenants, deals, contacts..." /><span>⌘ K</span></label>
+      <label class="global-search"><span>⌕</span><input placeholder="${isPlatformAdmin() ? "Search tenants, deals, contacts..." : "Search deals, accounts, contacts..."}" /><span>⌘ K</span></label>
       <span class="top-spacer"></span>
       ${isPlatformAdmin() ? `<select class="button" data-tenant-select>${data.tenants.map((tenant) => `<option value="${tenant.id}" ${tenant.id === ui.tenantId ? "selected" : ""}>${escapeHtml(tenant.name)}</option>`).join("")}</select>` : ""}
       <button class="icon-button" data-action="add-deal" title="Create deal">＋</button>
@@ -850,7 +849,7 @@ function renderSection() {
   if (ui.section === "inbox") return renderInbox();
   if (ui.section === "reports") return `${renderPageHeader("Reports", "Monitor pipeline health and sales performance.")}${renderDashboard()}`;
   if (ui.section === "settings") return renderSettingsPage();
-  if (ui.section === "templates") return `${renderPageHeader("Templates", "Manage reusable mail templates for follow-ups and outreach.")}${renderTemplatesSettingsPanel()}`;
+  if (ui.section === "templates") return `${renderPageHeader("Email templates", "Manage reusable email templates for follow-ups and outreach.")}${renderTemplatesSettingsPanel()}`;
   return renderHome();
 }
 
@@ -1643,7 +1642,7 @@ function renderGmailOAuthGuide() {
 function renderTenantForm() {
   const tenant = ui.editingTenant || { name: "", slug: "", plan: "Growth", status: "Active", region: "US-East", seats: 3, billingEmail: "" };
   const ownerEmail = tenantAdminEmail(tenant) || "";
-  return `<div class="modal-layer center"><form class="modal" data-tenant-form><header class="modal-head"><div><h2>${tenant.id ? "Edit tenant" : "Create tenant"}</h2><p class="subcopy">${tenant.id ? "Change tenant details, login access, and billing metadata." : "Provision a workspace, owner, and empty CRM data set."}</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="form-grid">${formField("Tenant name", "name", tenant.name, "text", true)}${formField("Tenant ID", "slug", tenant.slug, "text", true)}${selectField("Plan", "plan", ["Starter", "Growth", "Enterprise"], tenant.plan)}${selectField("Status", "status", ["Active", "Trial", "Suspended"], tenant.status)}${selectField("Region", "region", ["US-East", "EU-West", "AP-South"], tenant.region)}${formField("Seats", "seats", tenant.seats, "number", true)}${formField("Tenant admin login email", "ownerEmail", ownerEmail, "email", true, "full")}${formField("Billing email", "billingEmail", tenant.billingEmail, "email", true, "full")}</div>${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}<div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">${tenant.id ? "Save tenant" : "Create tenant"}</button></div></form></div>`;
+  return `<div class="modal-layer center"><form class="modal" data-tenant-form><header class="modal-head"><div><h2>${tenant.id ? "Edit tenant" : "Create tenant"}</h2><p class="subcopy">${tenant.id ? "Change tenant details, login access, and billing metadata." : "Provision a workspace, owner, and empty CRM data set."}</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="form-grid">${formField("Tenant name", "name", tenant.name, "text", true)}${formField("Workspace ID", "slug", tenant.slug, "text", true)}${selectField("Plan", "plan", ["Starter", "Growth", "Enterprise"], tenant.plan)}${selectField("Status", "status", ["Active", "Trial", "Suspended"], tenant.status)}${selectField("Region", "region", ["US-East", "EU-West", "AP-South"], tenant.region)}${formField("Seats", "seats", tenant.seats, "number", true)}${formField("Tenant admin login email", "ownerEmail", ownerEmail, "email", true, "full")}${formField("Billing email", "billingEmail", tenant.billingEmail, "email", true, "full")}</div>${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}<div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">${tenant.id ? "Save tenant" : "Create tenant"}</button></div></form></div>`;
 }
 
 function renderDealForm() {
@@ -1681,7 +1680,7 @@ function renderSettingsPage() {
     <nav class="settings-tabs">
       <button class="${ui.settingsTab === "mail" ? "active" : ""}" data-settings-tab="mail">Mail integrations</button>
       <button class="${ui.settingsTab === "outgoing" ? "active" : ""}" data-settings-tab="outgoing">Outgoing email</button>
-      <button class="${ui.settingsTab === "templates" ? "active" : ""}" data-settings-tab="templates">Templates</button>
+      <button class="${ui.settingsTab === "templates" ? "active" : ""}" data-settings-tab="templates">Email templates</button>
       <button class="${ui.settingsTab === "configuration" ? "active" : ""}" data-settings-tab="configuration">Configuration</button>
     </nav>
     ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : renderConfigurationSettingsPanel()}`;
@@ -1689,11 +1688,11 @@ function renderSettingsPage() {
 
 function renderTemplatesSettingsPanel() {
   const templates = mailTemplates();
-  return `<section class="settings-card templates-card"><div class="panel-head"><div><h3>Mail templates</h3><p class="subcopy">Manage reusable messages for follow-ups and account outreach.</p></div></div><div class="template-list">${templates.map((template) => renderTemplateForm(template)).join("")}</div><form class="template-form new-template-form" data-template-form><h4>New template</h4><div class="form-grid">${formField("Template name", "name", "", "text", true)}${formField("Subject", "subject", "", "text", true)}<div class="field full"><label>Body</label><textarea name="body" required placeholder="Hi {{mainContactName}},&#10;&#10;..."></textarea></div></div><div class="token-bar">${templateTokens.map(([token, label]) => `<span class="field-tag">${escapeHtml(label)}: {{${escapeHtml(token)}}}</span>`).join("")}</div><div class="form-actions"><button class="button primary">Create template</button></div></form></section>`;
+  return `<section class="settings-card templates-card"><div class="panel-head"><div><h3>Email templates</h3><p class="subcopy">Manage reusable messages for follow-ups and account outreach.</p></div></div><div class="template-list">${templates.map((template) => renderTemplateForm(template)).join("")}</div><form class="template-form new-template-form" data-template-form><h4>New email template</h4><div class="form-grid">${formField("Template name", "name", "", "text", true)}${formField("Subject", "subject", "", "text", true)}<div class="field full"><label>Body</label><textarea name="body" required placeholder="Hi {{mainContactName}},&#10;&#10;..."></textarea></div></div><div class="token-bar">${templateTokens.map(([token, label]) => `<span class="field-tag">${escapeHtml(label)}: {{${escapeHtml(token)}}}</span>`).join("")}</div><div class="form-actions"><button class="button primary">Create email template</button></div></form></section>`;
 }
 
 function renderTemplateForm(template) {
-  return `<form class="template-form" data-template-form data-template-id="${escapeHtml(template.id)}"><div class="panel-head compact"><h4>${escapeHtml(template.name)}</h4><button type="button" class="button small danger" data-action="delete-template" data-id="${escapeHtml(template.id)}">Delete</button></div><div class="form-grid">${formField("Template name", "name", template.name, "text", true)}${formField("Subject", "subject", template.subject, "text", true)}<div class="field full"><label>Body</label><textarea name="body" required>${escapeHtml(template.body)}</textarea></div></div><div class="form-actions"><button class="button small primary">Save template</button></div></form>`;
+  return `<form class="template-form" data-template-form data-template-id="${escapeHtml(template.id)}"><div class="panel-head compact"><h4>${escapeHtml(template.name)}</h4><button type="button" class="button small danger" data-action="delete-template" data-id="${escapeHtml(template.id)}">Delete</button></div><div class="form-grid">${formField("Template name", "name", template.name, "text", true)}${formField("Subject", "subject", template.subject, "text", true)}<div class="field full"><label>Body</label><textarea name="body" required>${escapeHtml(template.body)}</textarea></div></div><div class="form-actions"><button class="button small primary">Save email template</button></div></form>`;
 }
 
 function renderOutgoingEmailSettingsPanel() {
