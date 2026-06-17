@@ -631,6 +631,72 @@ h3 { font-size: 14px; }
 .inline-contact-row:hover {
   background: #f8faff;
 }
+.contact-edit-panel {
+  display: grid;
+  gap: 16px;
+  margin: 12px 14px 18px 44px;
+  padding: 18px;
+  border: 1px solid #c8dcff;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f8faff 0%, #fff 100%);
+  box-shadow: 0 12px 30px rgba(31, 52, 94, .08);
+}
+.contact-edit-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.contact-edit-head strong {
+  display: block;
+  font-size: 15px;
+}
+.contact-edit-head small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.contact-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
+  gap: 14px 18px;
+}
+.contact-edit-grid label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.contact-edit-grid input,
+.contact-edit-grid select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 13px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+.contact-edit-grid input:focus,
+.contact-edit-grid select:focus {
+  outline: 3px solid #dbe8ff;
+  border-color: #6f9ee8;
+}
+.contact-edit-phone {
+  grid-column: 1 / -1;
+}
+.contact-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 2px;
+}
 .inline-field-stack {
   display: grid;
   gap: 6px;
@@ -877,11 +943,28 @@ h3 { font-size: 14px; }
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
+.home-attention-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.home-attention-section h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.home-attention-section .subcopy {
+  margin: -3px 0 0;
+}
 .home-thread-card {
   min-width: 0;
 }
 .home-thread-card .message-bubble {
   max-width: 92%;
+}
+.home-thread-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
 }
 .home-event-list {
   display: grid;
@@ -1109,6 +1192,25 @@ h3 { font-size: 14px; }
   max-width: 100%;
   padding: 10px 11px;
   border-radius: 8px;
+}
+.email-context-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid #c8dcff;
+  border-radius: 8px;
+  background: #f6f9ff;
+}
+.email-context-card strong {
+  display: block;
+}
+.email-context-card small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-weight: 700;
 }
 .message-bubble small {
   display: block;

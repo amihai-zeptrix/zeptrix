@@ -197,6 +197,7 @@ let ui = {
   taskDealId: null,
   emailDealId: null,
   emailTemplateId: "follow-up-check-in",
+  emailContext: null,
   collapsed: [],
   accountFocus: "",
   selectedContactEmail: "",
@@ -919,27 +920,45 @@ function renderHome() {
     <section class="admin-grid">
       <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(({ account, primaryDeal, count, value, reasons }) => `<button class="metric-row attention-row" data-open-account="${escapeHtml(account)}"><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">High</span></button>`).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
       <article class="widget"><h3>Today's focus</h3><button class="summary-card focus-card" data-action="open-activities"><span class="summary-icon" style="background:var(--orange-soft);color:var(--orange)">◴</span><div><small>Open tasks</small><strong>${tasks.length}</strong></div><span class="summary-trend">Open</span></button></article>
-      <article class="widget"><div class="panel-head"><h3>Correspondence needing attention</h3><span class="thread-actions"><button class="risk-jump-button small" data-action="jump-home-risk-thread" data-tooltip="Jump to red correspondence" aria-label="Jump to red correspondence">!</button><button class="icon-button small" data-action="open-inbox" data-tooltip="Open inbox" aria-label="Open inbox">↗</button></span></div><div class="home-thread-list">${homeCorrespondenceNeedingAttention(tenant).map(renderHomeAttentionThread).join("") || `<p class="empty-state compact">No correspondence needs attention.</p>`}</div></article>
+      <article class="widget">${renderHomeAttentionPanel(tenant)}</article>
       <article class="widget wide"><div class="panel-head"><h3>Relationship events</h3><button class="icon-button small" data-action="open-activities" data-tooltip="Open activities" aria-label="Open activities">↗</button></div><div class="home-event-list">${homeEvents(tenant).map(renderHomeEvent).join("")}</div></article>
     </section>`;
 }
 
-function homeCorrespondenceNeedingAttention(tenant = currentTenant()) {
-  const attentionThreads = gmailAttentionCorrespondence(tenant).map((item) => ({
-    id: `attention-${item.email}`,
-    account: item.account,
-    dealId: "",
-    subject: "Negative wording detected",
-    person: item.contact || item.email,
-    date: item.lastSeenAt || today(),
-    risk: true,
-    followUp: true,
-    messages: [
-      { side: "customer", author: item.contact || item.email, body: `Gmail scan matched: ${item.matches.join(", ") || "negative wording"}.` },
-      { side: "team", author: currentUser().name, body: "Review this correspondence and respond before the relationship risk grows." },
-    ],
-  }));
-  const dormantThreads = gmailDormantContacts(tenant, Number(gmailIntegration(tenant).staleMonths || 3)).map((contact) => {
+function renderHomeAttentionPanel(tenant = currentTenant()) {
+  const followUps = homeContactsNeedingFollowUp(tenant);
+  const attention = homeCorrespondenceRequiringAttention(tenant);
+  const accountThreads = homeAccountCorrespondenceNeedingAttention(tenant);
+  return `<div class="panel-head"><h3>Correspondence needing attention</h3><span class="thread-actions"><button class="risk-jump-button small" data-action="jump-home-risk-thread" data-tooltip="Jump to red correspondence" aria-label="Jump to red correspondence">!</button><button class="icon-button small" data-action="open-inbox" data-tooltip="Open inbox" aria-label="Open inbox">↗</button></span></div>
+    <div class="home-attention-section"><h4>Contacts needing follow-up</h4><p class="subcopy">Contacts with no sent mail in the configured window.</p><div class="home-thread-list">${followUps.map(renderHomeAttentionThread).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}</div></div>
+    <div class="home-attention-section"><h4>Correspondence requiring attention</h4><p class="subcopy">Negative wording found in the latest scan.</p><div class="home-thread-list">${attention.map(renderHomeAttentionThread).join("") || `<p class="empty-state compact">No negative wording found in the latest scan.</p>`}</div></div>
+    ${accountThreads.length ? `<div class="home-attention-section"><h4>Account correspondence signals</h4><p class="subcopy">Open account conversations with approval, renewal, launch, or anger risk.</p><div class="home-thread-list">${accountThreads.map(renderHomeAttentionThread).join("")}</div></div>` : ""}`;
+}
+
+function homeCorrespondenceRequiringAttention(tenant = currentTenant()) {
+  return gmailAttentionCorrespondence(tenant).map((item) => {
+    const deal = tenant.deals.find((candidate) => String(candidate.email || "").toLowerCase() === String(item.email || "").toLowerCase())
+      || tenant.deals.find((candidate) => candidate.account === item.account);
+    return {
+      id: `attention-${item.email}`,
+      account: item.account,
+      dealId: deal?.id || "",
+      email: item.email,
+      subject: "Negative wording detected",
+      person: item.contact || item.email,
+      date: item.lastSeenAt || today(),
+      risk: true,
+      followUp: true,
+      messages: [
+        { side: "customer", author: item.contact || item.email, body: `Gmail scan matched: ${item.matches.join(", ") || "negative wording"}.` },
+        { side: "team", author: currentUser().name, body: "Review this correspondence and respond before the relationship risk grows." },
+      ],
+    };
+  }).slice(0, 3);
+}
+
+function homeContactsNeedingFollowUp(tenant = currentTenant()) {
+  return gmailDormantContacts(tenant, Number(gmailIntegration(tenant).staleMonths || 3)).map((contact) => {
     const deal = tenant.deals.find((item) => String(item.email || "").toLowerCase() === String(contact.email || "").toLowerCase())
       || tenant.deals.find((item) => item.account === contact.account)
       || tenant.deals[0];
@@ -947,6 +966,7 @@ function homeCorrespondenceNeedingAttention(tenant = currentTenant()) {
       id: `dormant-${contact.email}`,
       account: contact.account || deal?.account || contact.email.split("@")[1],
       dealId: deal?.id || "",
+      email: contact.email,
       subject: `No sent email for ${contact.months || 3} months`,
       person: contact.contact || contact.email,
       date: today(),
@@ -957,19 +977,27 @@ function homeCorrespondenceNeedingAttention(tenant = currentTenant()) {
         { side: "team", author: currentUser().name, body: "Send a short check-in from Email integration to restart the relationship." },
       ],
     };
-  });
+  }).slice(0, 3);
+}
+
+function homeAccountCorrespondenceNeedingAttention(tenant = currentTenant()) {
   const attentionDeals = accountsNeedingAttention(tenant).map((item) => item.primaryDeal).slice(0, 3);
-  const accountThreads = attentionDeals.flatMap((deal) => {
+  return attentionDeals.flatMap((deal) => {
     const contacts = topAccountContacts(deal);
     return accountCorrespondence(deal, contacts)
       .filter((thread) => thread.risk || /approval|timeline|launch|renew/i.test(thread.subject))
-      .map((thread) => ({ ...thread, account: deal.account, dealId: deal.id }));
-  });
-  return [...attentionThreads, ...dormantThreads, ...accountThreads].sort((a, b) => Number(b.risk) - Number(a.risk) || Number(b.followUp) - Number(a.followUp)).slice(0, 3);
+      .map((thread) => ({ ...thread, account: deal.account, dealId: deal.id, email: deal.email }));
+  }).slice(0, 3);
+}
+
+function homeCorrespondenceNeedingAttention(tenant = currentTenant()) {
+  return [...homeCorrespondenceRequiringAttention(tenant), ...homeContactsNeedingFollowUp(tenant), ...homeAccountCorrespondenceNeedingAttention(tenant)]
+    .sort((a, b) => Number(b.risk) - Number(a.risk) || Number(b.followUp) - Number(a.followUp))
+    .slice(0, 3);
 }
 
 function renderHomeAttentionThread(thread) {
-  return `<section class="thread-card home-thread-card ${thread.risk ? "risk-thread" : ""}"><header><div><strong>${escapeHtml(thread.subject)}</strong><small>${thread.risk ? "Anger detected · " : ""}${escapeHtml(thread.account)} · ${formatTimestamp(thread.date)}</small></div><span class="thread-actions">${thread.risk ? `<span class="risk-label">Red risk</span>` : ""}<button class="icon-button small" data-open-account="${escapeHtml(thread.account)}" data-tooltip="Open account" aria-label="Open account">↗</button></span></header><div class="thread-messages">${thread.messages.map((message) => `<div class="message-bubble ${message.side}"><small>${escapeHtml(message.author)}</small><p>${escapeHtml(message.body)}</p></div>`).join("")}</div></section>`;
+  return `<section class="thread-card home-thread-card ${thread.risk ? "risk-thread" : ""}"><header><div><strong>${escapeHtml(thread.subject)}</strong><small>${thread.risk ? "Anger detected · " : ""}${escapeHtml(thread.account)} · ${formatTimestamp(thread.date)}</small></div><span class="thread-actions">${thread.risk ? `<span class="risk-label">Red risk</span>` : ""}<button class="icon-button small" data-open-account="${escapeHtml(thread.account)}" data-tooltip="Open account" aria-label="Open account">↗</button></span></header><div class="thread-messages">${thread.messages.map((message) => `<div class="message-bubble ${message.side}"><small>${escapeHtml(message.author)}</small><p>${escapeHtml(message.body)}</p></div>`).join("")}</div><div class="home-thread-actions"><button class="button primary small" data-action="reply-home-correspondence" data-thread-id="${escapeHtml(thread.id)}">Send email</button></div></section>`;
 }
 
 function homeEvents(tenant = currentTenant()) {
@@ -1188,7 +1216,17 @@ function renderContactRow(deal) {
 }
 
 function renderEditContactRow(deal) {
-  return `<form class="list-row contact-row inline-contact-row" data-edit-contact-form data-original-email="${escapeHtml(deal.email)}"><span class="activity-symbol">✎</span><span class="inline-field-stack"><input name="contact" value="${escapeHtml(deal.contact)}" placeholder="Contact name" required /><input name="email" type="email" value="${escapeHtml(deal.email)}" placeholder="Email" required /></span><input name="phone" value="${escapeHtml(deal.phone || "")}" placeholder="Phone" /><input name="account" value="${escapeHtml(deal.account)}" placeholder="Account" required /><select name="owner">${Object.keys(owners).map((owner) => `<option ${owner === deal.owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select><span class="row-actions"><button class="button small primary">Save</button><button type="button" class="button small" data-action="cancel-contact-edit">Cancel</button></span></form>`;
+  return `<form class="contact-edit-panel" data-edit-contact-form data-original-email="${escapeHtml(deal.email)}">
+    <div class="contact-edit-head"><span class="activity-symbol">✎</span><div><strong>Edit contact</strong><small>Update the contact details saved for this account.</small></div></div>
+    <div class="contact-edit-grid">
+      <label><span>Contact name</span><input name="contact" value="${escapeHtml(deal.contact)}" placeholder="Contact name" required /></label>
+      <label><span>Email</span><input name="email" type="email" value="${escapeHtml(deal.email)}" placeholder="Email" required /></label>
+      <label class="contact-edit-phone"><span>Phone number</span><input name="phone" value="${escapeHtml(deal.phone || "")}" placeholder="+1 415 555 0198" /></label>
+      <label><span>Account</span><input name="account" value="${escapeHtml(deal.account)}" placeholder="Account" required /></label>
+      <label><span>Owner</span><select name="owner">${Object.keys(owners).map((owner) => `<option ${owner === deal.owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select></label>
+    </div>
+    <div class="contact-edit-actions"><button class="button primary">Save contact</button><button type="button" class="button" data-action="cancel-contact-edit">Cancel</button></div>
+  </form>`;
 }
 
 function renderCompactContactTags(deal) {
@@ -1616,6 +1654,30 @@ function openFollowUpEmail(email) {
   const deal = currentTenant().deals.find((item) => String(item.email || "").toLowerCase() === String(email || "").toLowerCase()) || currentTenant().deals[0];
   ui.emailDealId = deal?.id || null;
   ui.emailTemplateId = mailTemplates()[0]?.id || "follow-up-check-in";
+  ui.emailContext = null;
+  ui.modal = "email";
+  ui.selected = null;
+}
+
+function openHomeCorrespondenceEmail(threadId) {
+  const tenant = currentTenant();
+  const thread = homeCorrespondenceNeedingAttention(tenant).find((item) => String(item.id) === String(threadId));
+  if (!thread) return;
+  const deal = tenant.deals.find((item) => String(item.id) === String(thread.dealId))
+    || tenant.deals.find((item) => String(item.email || "").toLowerCase() === String(thread.email || "").toLowerCase())
+    || tenant.deals.find((item) => item.account === thread.account)
+    || tenant.deals[0];
+  const transcript = thread.messages.map((message) => `${message.author}: ${message.body}`).join("\n");
+  ui.emailDealId = deal?.id || null;
+  ui.emailTemplateId = mailTemplates()[0]?.id || "follow-up-check-in";
+  ui.emailContext = {
+    to: thread.email || deal?.email || "",
+    subject: `Re: ${thread.subject}`,
+    account: thread.account,
+    person: thread.person || deal?.contact || "",
+    summary: `${thread.subject} · ${thread.account}`,
+    body: `Hi ${deal?.contact || thread.person || "there"},\n\nI saw this needs attention and wanted to follow up directly.\n\nContext:\n${transcript}\n\nBest,\n${currentUser().name}`,
+  };
   ui.modal = "email";
   ui.selected = null;
 }
@@ -1700,9 +1762,11 @@ function renderEmailForm() {
   const deal = currentTenant().deals.find((item) => String(item.id) === String(dealId)) || currentTenant().deals[0];
   const templates = mailTemplates();
   const template = selectedMailTemplate();
-  const subject = mergeMailTemplate(template?.subject || "", deal);
-  const body = mergeMailTemplate(template?.body || "", deal);
-  return `<div class="modal-layer center"><form class="modal email-modal" data-email-form><header class="modal-head"><div><h2>Send email</h2><p class="subcopy">Send the message through the configured outgoing server and attach it to the opportunity.</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="form-grid">${selectField("Deal", "dealId", currentTenant().deals.map((deal) => [deal.id, deal.name]), dealId)}<div class="field"><label>Template</label><select name="templateId" data-email-template>${templates.map((item) => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(template?.id) ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></div>${formField("To", "to", deal?.email || "", "email", true)}<input type="hidden" name="direction" value="outbound" />${formField("Subject", "subject", subject, "text", true, "full")}<div class="field full"><label>Message</label><textarea name="body" required>${escapeHtml(body)}</textarea></div></div><div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">Send email</button></div></form></div>`;
+  const subject = ui.emailContext?.subject || mergeMailTemplate(template?.subject || "", deal);
+  const body = ui.emailContext?.body || mergeMailTemplate(template?.body || "", deal);
+  const to = ui.emailContext?.to || deal?.email || "";
+  const contextCard = ui.emailContext ? `<div class="email-context-card"><span class="summary-icon" style="background: var(--blue-soft); color: var(--blue);">↩</span><div><strong>${escapeHtml(ui.emailContext.summary || "Correspondence context")}</strong><small>${escapeHtml([ui.emailContext.person, ui.emailContext.account].filter(Boolean).join(" · "))}</small></div></div>` : "";
+  return `<div class="modal-layer center"><form class="modal email-modal" data-email-form><header class="modal-head"><div><h2>Send email</h2><p class="subcopy">Send the message through the configured outgoing server and attach it to the opportunity.</p></div><button type="button" class="close-button" data-action="close">×</button></header>${contextCard}<div class="form-grid">${selectField("Deal", "dealId", currentTenant().deals.map((deal) => [deal.id, deal.name]), dealId)}<div class="field"><label>Template</label><select name="templateId" data-email-template>${templates.map((item) => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(template?.id) ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></div>${formField("To", "to", to, "email", true)}<input type="hidden" name="direction" value="outbound" />${formField("Subject", "subject", subject, "text", true, "full")}<div class="field full"><label>Message</label><textarea name="body" required>${escapeHtml(body)}</textarea></div></div><div class="form-actions"><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">Send email</button></div></form></div>`;
 }
 
 function renderImportModal() {
@@ -2149,9 +2213,12 @@ document.addEventListener("click", async (event) => {
     }
     if (action === "cancel-contact-edit") ui.editingContactEmail = "";
     if (action === "add-task") { ui.modal = "task"; ui.taskDealId = taskDealId || null; ui.selected = null; }
-    if (action === "compose-email") { ui.modal = "email"; ui.emailDealId = taskDealId || null; ui.selected = null; }
+    if (action === "compose-email") { ui.modal = "email"; ui.emailDealId = taskDealId || null; ui.emailContext = null; ui.selected = null; }
     if (action === "follow-up-contact") {
       openFollowUpEmail(actionElement.dataset.email);
+    }
+    if (action === "reply-home-correspondence") {
+      openHomeCorrespondenceEmail(actionElement.dataset.threadId);
     }
     if (action === "delete-template") {
       const tenant = currentTenant();
@@ -2315,7 +2382,7 @@ document.addEventListener("click", async (event) => {
         }
       }
     }
-    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.pendingTag = null; ui.importOpen = false; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.editingContactEmail = ""; ui.taskDealId = null; ui.emailDealId = null; ui.authError = ""; ui.adminNotice = ""; }
+    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.pendingTag = null; ui.importOpen = false; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.editingContactEmail = ""; ui.taskDealId = null; ui.emailDealId = null; ui.emailContext = null; ui.authError = ""; ui.adminNotice = ""; }
     if (action === "edit-deal") { ui.selected = null; ui.editing = currentTenant().deals.find((deal) => String(deal.id) === String(id)); ui.modal = "deal"; }
     if (action === "toggle-task") {
       const tenant = currentTenant();
@@ -2440,11 +2507,13 @@ document.addEventListener("change", async (event) => {
   }
   if (event.target.matches("[data-email-template]")) {
     ui.emailTemplateId = event.target.value;
+    ui.emailContext = null;
     render();
     return;
   }
   if (event.target.closest("[data-email-form]") && event.target.name === "dealId") {
     ui.emailDealId = event.target.value;
+    ui.emailContext = null;
     render();
     return;
   }
@@ -2669,6 +2738,7 @@ document.addEventListener("submit", async (event) => {
       setTenant({ ...currentTenant(), communications: [communication, ...currentTenant().communications] });
       ui.modal = null;
       ui.emailDealId = null;
+      ui.emailContext = null;
       showToast(session?.apiToken && session.role !== "demo_user" ? "Email sent" : "Email saved locally");
     } catch (error) {
       showToast(`Could not send email: ${error.message}`);

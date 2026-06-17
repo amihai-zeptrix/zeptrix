@@ -445,9 +445,14 @@ test("CRM named demo routes use the demo tenant instead of admin", () => {
 test("CRM home keeps attention correspondence and relationship event panels", () => {
   const app = crmAppSource();
   const styles = crmStylesSource();
-  const renderHomeSource = functionSource(app, "renderHome", "homeCorrespondenceNeedingAttention");
+  const renderHomeSource = functionSource(app, "renderHome", "renderHomeAttentionPanel");
   const israelGreetingSource = functionSource(app, "israelGreeting", "isPlatformAdmin");
-  const homeAttentionSource = functionSource(app, "homeCorrespondenceNeedingAttention", "renderHomeAttentionThread");
+  const homeAttentionPanelSource = functionSource(app, "renderHomeAttentionPanel", "homeCorrespondenceRequiringAttention");
+  const homeAttentionSource = functionSource(app, "homeCorrespondenceRequiringAttention", "homeContactsNeedingFollowUp");
+  const homeFollowUpSource = functionSource(app, "homeContactsNeedingFollowUp", "homeAccountCorrespondenceNeedingAttention");
+  const homeCombinedSource = functionSource(app, "homeCorrespondenceNeedingAttention", "renderHomeAttentionThread");
+  const renderHomeThreadSource = functionSource(app, "renderHomeAttentionThread", "homeEvents");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const renderHomeEventSource = functionSource(app, "renderHomeEvent", "birthdayDate");
 
   assert.match(renderHomeSource, /israelGreeting\(\)/);
@@ -455,19 +460,32 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(israelGreetingSource, /timeZone: "Asia\/Jerusalem"/);
   assert.match(renderHomeSource, /Accounts that need attention/);
   assert.match(renderHomeSource, /Today's focus/);
-  assert.match(renderHomeSource, /Correspondence needing attention/);
+  assert.match(homeAttentionPanelSource, /Correspondence needing attention/);
   assert.match(renderHomeSource, /Relationship events/);
-  assert.match(renderHomeSource, /jump-home-risk-thread/);
-  assert.match(renderHomeSource, /<article class="widget"><div class="panel-head"><h3>Correspondence needing attention/);
-  assert.match(homeAttentionSource, /gmailDormantContacts\(tenant, Number\(gmailIntegration\(tenant\)\.staleMonths \|\| 3\)\)/);
+  assert.match(renderHomeSource, /renderHomeAttentionPanel\(tenant\)/);
+  assert.match(homeAttentionPanelSource, /jump-home-risk-thread/);
+  assert.match(homeAttentionPanelSource, /Contacts needing follow-up/);
+  assert.match(homeAttentionPanelSource, /Contacts with no sent mail in the configured window\./);
+  assert.match(homeAttentionPanelSource, /No contacts are past the configured threshold\./);
+  assert.match(homeAttentionPanelSource, /Correspondence requiring attention/);
+  assert.match(homeAttentionPanelSource, /No negative wording found in the latest scan\./);
+  assert.match(homeAttentionPanelSource, /homeContactsNeedingFollowUp\(tenant\)/);
+  assert.match(homeAttentionPanelSource, /homeCorrespondenceRequiringAttention\(tenant\)/);
   assert.match(homeAttentionSource, /gmailAttentionCorrespondence\(tenant\)/);
   assert.match(homeAttentionSource, /Negative wording detected/);
   assert.match(homeAttentionSource, /Gmail scan matched/);
-  assert.match(homeAttentionSource, /No sent email for \$\{contact\.months \|\| 3\} months/);
-  assert.match(homeAttentionSource, /has not received an outbound email/);
-  assert.match(homeAttentionSource, /sort\(\(a, b\) => Number\(b\.risk\) - Number\(a\.risk\) \|\| Number\(b\.followUp\) - Number\(a\.followUp\)\)\.slice\(0, 3\)/);
+  assert.match(homeFollowUpSource, /gmailDormantContacts\(tenant, Number\(gmailIntegration\(tenant\)\.staleMonths \|\| 3\)\)/);
+  assert.match(homeFollowUpSource, /No sent email for \$\{contact\.months \|\| 3\} months/);
+  assert.match(homeFollowUpSource, /has not received an outbound email/);
+  assert.match(homeCombinedSource, /sort\(\(a, b\) => Number\(b\.risk\) - Number\(a\.risk\) \|\| Number\(b\.followUp\) - Number\(a\.followUp\)\)/);
+  assert.match(renderHomeThreadSource, /data-action="reply-home-correspondence"/);
+  assert.match(renderHomeThreadSource, /data-thread-id/);
+  assert.match(clickHandlerSource, /action === "reply-home-correspondence"/);
+  assert.match(clickHandlerSource, /openHomeCorrespondenceEmail\(actionElement\.dataset\.threadId\)/);
   assert.match(renderHomeEventSource, /class="event-account" data-open-account/);
   assert.match(styles, /\.home-thread-list \{\s+display: grid;\s+grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(styles, /\.home-attention-section/);
+  assert.match(styles, /\.home-thread-actions/);
   assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
 });
 
@@ -550,6 +568,10 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(renderContactRowSource, /data-action="edit-contact"/);
   assert.match(renderContactRowSource, /renderEditContactRow\(deal\)/);
   assert.match(renderContactRowSource, /data-edit-contact-form/);
+  assert.match(renderContactRowSource, /contact-edit-panel/);
+  assert.match(renderContactRowSource, /contact-edit-grid/);
+  assert.match(renderContactRowSource, /Phone number/);
+  assert.match(renderContactRowSource, /Save contact/);
   assert.match(renderContactRowSource, /data-original-email/);
   assert.match(renderContactDetailSource, /contact-tag-editor/);
   assert.match(renderContactDetailSource, /data-contact-tag-select/);
@@ -598,6 +620,9 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(submitHandlerSource, /Contact added directly from Contacts/);
   assert.match(submitHandlerSource, /ui\.inlineContactOpen = false/);
   assert.match(styles, /\.inline-contact-row/);
+  assert.match(styles, /\.contact-edit-panel/);
+  assert.match(styles, /\.contact-edit-grid/);
+  assert.match(styles, /\.contact-edit-phone/);
   assert.match(styles, /\.contact-tags-short/);
   assert.match(styles, /\.contact-tag-editor/);
   assert.match(styles, /\.contact-tag-filter/);
@@ -840,7 +865,9 @@ test("CRM outgoing email settings and send email flow are wired to SMTP API", ()
   assert.match(renderOutgoingSource, /Use SSL\/TLS/);
   assert.match(renderOutgoingSource, /Save outgoing email/);
   assert.match(renderEmailFormSource, /<h2>Send email<\/h2>/);
-  assert.match(renderEmailFormSource, /formField\("To", "to", deal\?\.email/);
+  assert.match(renderEmailFormSource, /const to = ui\.emailContext\?\.to \|\| deal\?\.email \|\| ""/);
+  assert.match(renderEmailFormSource, /email-context-card/);
+  assert.match(renderEmailFormSource, /formField\("To", "to", to/);
   assert.match(renderEmailFormSource, /Send email<\/button>/);
   assert.doesNotMatch(renderEmailFormSource, /Log email/);
   assert.match(submitHandlerSource, /sendEmailViaApi\(tenant\.id, values\)/);
