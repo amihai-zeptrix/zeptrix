@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { decryptToken, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
+const { decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -380,6 +380,21 @@ test("Gmail message text extraction prefers plain text and falls back to html", 
   assert.equal(extractGmailMessageText({ payload: { mimeType: "text/html", body: { data: html } } }), "HTML body\nIgnored");
 });
 
+test("Gmail attention detection uses a large negative wording lexicon and persists matches", () => {
+  const server = serverSource();
+  const lexiconSource = server.slice(server.indexOf("const NEGATIVE_CORRESPONDENCE_PHRASES"), server.indexOf("const scanProgressById"));
+  const matches = detectNegativeCorrespondence("I am angrey because you've promised a recovery plan and this is still broken.");
+
+  assert.ok(matches.includes("angrey"));
+  assert.ok(matches.includes("you've promised"));
+  assert.ok(matches.includes("still broken"));
+  assert.ok((lexiconSource.match(/"[^"]+"/g) || []).length >= 100);
+  assert.match(server, /attention_correspondence/);
+  assert.match(server, /detectNegativeCorrespondence/);
+  assert.match(server, /Matched: \$\{matches\.join\(", "\)\}/);
+  assert.match(server, /insert into gmail_contact_signals \(tenant_id, signal_type, email, name, account, source, message_id, last_seen_at\)/);
+});
+
 test("API auth tokens and Gmail labels are signed and bounded", () => {
   const token = signAuthToken({ id: "user-123", tenantId: "tenant-123", email: "owner@example.com", role: "tenant_admin" });
   const auth = verifySignedPayload(token);
@@ -444,7 +459,13 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(renderHomeSource, /Relationship events/);
   assert.match(renderHomeSource, /jump-home-risk-thread/);
   assert.match(renderHomeSource, /<article class="widget"><div class="panel-head"><h3>Correspondence needing attention/);
-  assert.match(homeAttentionSource, /sort\(\(a, b\) => Number\(b\.risk\) - Number\(a\.risk\)\)\.slice\(0, 3\)/);
+  assert.match(homeAttentionSource, /gmailDormantContacts\(tenant, Number\(gmailIntegration\(tenant\)\.staleMonths \|\| 3\)\)/);
+  assert.match(homeAttentionSource, /gmailAttentionCorrespondence\(tenant\)/);
+  assert.match(homeAttentionSource, /Negative wording detected/);
+  assert.match(homeAttentionSource, /Gmail scan matched/);
+  assert.match(homeAttentionSource, /No sent email for \$\{contact\.months \|\| 3\} months/);
+  assert.match(homeAttentionSource, /has not received an outbound email/);
+  assert.match(homeAttentionSource, /sort\(\(a, b\) => Number\(b\.risk\) - Number\(a\.risk\) \|\| Number\(b\.followUp\) - Number\(a\.followUp\)\)\.slice\(0, 3\)/);
   assert.match(renderHomeEventSource, /class="event-account" data-open-account/);
   assert.match(styles, /\.home-thread-list \{\s+display: grid;\s+grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
@@ -509,7 +530,9 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(renderContactsSource, /ui\.contactTagFilters\.length/);
   assert.doesNotMatch(renderContactsSource, /renderImportStrip\(\)/);
   assert.match(renderContactTagFilterSource, /data-contact-tag-filter/);
-  assert.match(renderContactTagFilterSource, /multiple/);
+  assert.doesNotMatch(renderContactTagFilterSource, /multiple/);
+  assert.match(renderContactTagFilterSource, /All tags/);
+  assert.match(renderContactTagFilterSource, /tag-filter-menu/);
   assert.match(renderContactTagFilterSource, /allContactTags\(\)\.map/);
   assert.match(renderContactsSource, /ui\.inlineContactOpen \? renderInlineContactRow\(\) : ""/);
   assert.doesNotMatch(renderContactsSource, /data-action="add-deal">＋ Add contact/);
@@ -524,6 +547,10 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(renderContactRowSource, /deal\.phone \|\| "-"/);
   assert.match(renderContactRowSource, /renderCompactContactTags\(deal\)/);
   assert.match(renderContactRowSource, /contact-tags-short/);
+  assert.match(renderContactRowSource, /data-action="edit-contact"/);
+  assert.match(renderContactRowSource, /renderEditContactRow\(deal\)/);
+  assert.match(renderContactRowSource, /data-edit-contact-form/);
+  assert.match(renderContactRowSource, /data-original-email/);
   assert.match(renderContactDetailSource, /contact-tag-editor/);
   assert.match(renderContactDetailSource, /data-contact-tag-select/);
   assert.match(renderContactDetailSource, /remove-contact-tag/);
@@ -542,11 +569,15 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(clickHandlerSource, /action === "add-contact"/);
   assert.match(clickHandlerSource, /ui\.inlineContactOpen = true/);
   assert.match(clickHandlerSource, /action === "cancel-inline-add"/);
+  assert.match(clickHandlerSource, /action === "edit-contact"/);
+  assert.match(clickHandlerSource, /ui\.editingContactEmail = actionElement\.dataset\.email/);
+  assert.match(clickHandlerSource, /action === "cancel-contact-edit"/);
   assert.match(clickHandlerSource, /action === "remove-contact-tag"/);
   assert.doesNotMatch(clickHandlerSource, /ui\.modal = "contact"/);
   assert.match(changeHandlerSource, /data-contact-tag-select/);
   assert.match(changeHandlerSource, /openTagDialog\(\{ type: "contact", dealId: deal\.id \}\)/);
   assert.match(changeHandlerSource, /data-contact-tag-filter/);
+  assert.match(changeHandlerSource, /querySelectorAll\("\[data-contact-tag-filter\]:checked"\)/);
   assert.match(changeHandlerSource, /setContactTags\(deal\.id, \[\.\.\.\(deal\.tags \|\| \[\]\), tag\]\)/);
   assert.match(submitHandlerSource, /data-tag-form/);
   assert.match(submitHandlerSource, /saveAvailableTag\(tag\)/);
@@ -559,6 +590,9 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(serverSource(), /phone text/);
   assert.match(serverSource(), /tags jsonb/);
   assert.match(submitHandlerSource, /data-inline-contact-form/);
+  assert.match(submitHandlerSource, /data-edit-contact-form/);
+  assert.match(submitHandlerSource, /originalEmail/);
+  assert.match(submitHandlerSource, /updateDealViaApi\(tenant\.id, deal\.id, deal\)/);
   assert.match(submitHandlerSource, /createDealViaApi\(tenant\.id, contact\)/);
   assert.match(submitHandlerSource, /phone: values\.phone/);
   assert.match(submitHandlerSource, /Contact added directly from Contacts/);
@@ -567,6 +601,7 @@ test("CRM contacts add with an inline row instead of a dialog", () => {
   assert.match(styles, /\.contact-tags-short/);
   assert.match(styles, /\.contact-tag-editor/);
   assert.match(styles, /\.contact-tag-filter/);
+  assert.match(styles, /\.tag-filter-menu/);
   assert.match(styles, /\.tag-dialog/);
 });
 
@@ -704,7 +739,11 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /Find contacts with no sent mail/);
   assert.match(renderMailSettingsSource, /settings-stack/);
   assert.match(renderMailSettingsSource, /follow-up-card/);
+  assert.match(renderMailSettingsSource, /gmailAttentionCorrespondence\(tenant\)/);
+  assert.match(renderMailSettingsSource, /Correspondence requiring attention/);
+  assert.match(renderMailSettingsSource, /negative wording/);
   assert.ok(renderMailSettingsSource.indexOf("Contacts needing follow-up") < renderMailSettingsSource.indexOf("Gmail signals"));
+  assert.ok(renderMailSettingsSource.indexOf("Contacts needing follow-up") < renderMailSettingsSource.indexOf("Correspondence requiring attention"));
   assert.match(renderMailSettingsSource, /gmail\.readonly/);
   assert.match(app, /staleMonths: 3/);
   assert.match(app, /gmailContactDiscoveries/);
@@ -723,7 +762,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(serverSource(), /gmailNewContactScope\(integration\.labels\)/);
   assert.match(serverSource(), /newer_than:\$\{gmailLookbackDays\}d/);
   assert.match(serverSource(), /format: "metadata"/);
-  assert.match(serverSource(), /unknownMetadata\.slice\(0, GMAIL_NEW_CONTACT_FULL_LIMIT\)/);
+  assert.match(serverSource(), /inboundMetadata\.slice\(0, GMAIL_NEW_CONTACT_FULL_LIMIT\)/);
+  assert.match(serverSource(), /GMAIL_ATTENTION_SIGNAL_LIMIT = 100/);
   assert.match(serverSource(), /format: "full"/);
   assert.match(serverSource(), /add column if not exists phone text/);
   assert.match(serverSource(), /gmail_contact_blacklist/);

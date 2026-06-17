@@ -26,6 +26,23 @@ const GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30;
 const GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000;
 const GMAIL_NEW_CONTACT_FULL_LIMIT = 250;
 const GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250;
+const GMAIL_ATTENTION_SIGNAL_LIMIT = 100;
+const NEGATIVE_CORRESPONDENCE_PHRASES = [
+  "angry", "angrey", "frustrated", "upset", "unhappy", "disappointed", "dissatisfied", "concerned", "worried", "annoyed",
+  "irritated", "furious", "outraged", "mad", "displeased", "unacceptable", "not acceptable", "totally unacceptable", "very disappointed", "deeply disappointed",
+  "you promised", "you've promised", "you have promised", "we were promised", "as promised", "broken promise", "missed promise", "commitment was made", "you committed", "not what we agreed",
+  "missed deadline", "missed the deadline", "late again", "delayed again", "delay", "delayed", "slipped", "slipped again", "behind schedule", "timeline changed",
+  "no response", "no reply", "haven't heard", "have not heard", "still waiting", "waiting for", "ignored", "radio silence", "lack of response", "no update",
+  "escalate", "escalation", "escalating", "need to escalate", "management attention", "executive escalation", "legal", "procurement is asking", "finance is asking", "leadership is asking",
+  "blocker", "blocked", "blocking", "critical blocker", "risk", "at risk", "renewal risk", "churn", "cancel", "cancellation",
+  "terminate", "termination", "refund", "credit", "breach", "breached", "contract issue", "sla", "missed sla", "service level",
+  "bug", "broken", "not working", "doesn't work", "does not work", "failed", "failure", "issue persists", "still broken", "regression",
+  "security concern", "security issue", "compliance concern", "privacy concern", "data issue", "data loss", "incorrect data", "billing issue", "overcharged", "invoice issue",
+  "poor experience", "bad experience", "terrible", "awful", "painful", "confusing", "not satisfied", "not happy", "losing confidence", "lost confidence",
+  "urgent", "asap", "immediately", "today", "by end of day", "last chance", "final notice", "cannot proceed", "cannot move forward", "deal breaker",
+  "not renewing", "won't renew", "will not renew", "switch vendor", "switching vendors", "competitor", "evaluate alternatives", "alternative vendor", "replace", "replacement",
+  "account review", "postmortem", "root cause", "corrective action", "recovery plan", "remediation", "mitigation", "action plan", "where is the update", "why should we renew",
+];
 const scanProgressById = new Map();
 const ses = new SESClient({ region });
 const pool = process.env.DATABASE_URL
@@ -505,7 +522,7 @@ async function initDatabase() {
     create table if not exists gmail_contact_signals (
       id uuid primary key default gen_random_uuid(),
       tenant_id uuid not null references tenants(id) on delete cascade,
-      signal_type text not null check (signal_type in ('new_contact', 'dormant_contact')),
+      signal_type text not null check (signal_type in ('new_contact', 'dormant_contact', 'attention_correspondence')),
       email citext not null,
       name text,
       account text,
@@ -517,6 +534,8 @@ async function initDatabase() {
       created_at timestamptz not null default now(),
       unique(tenant_id, signal_type, email)
     )`);
+  await dbQuery(`alter table gmail_contact_signals drop constraint if exists gmail_contact_signals_signal_type_check`);
+  await dbQuery(`alter table gmail_contact_signals add constraint gmail_contact_signals_signal_type_check check (signal_type in ('new_contact', 'dormant_contact', 'attention_correspondence'))`);
   await dbQuery(`
     create table if not exists gmail_contact_blacklist (
       id uuid primary key default gen_random_uuid(),
@@ -1459,6 +1478,16 @@ function extractGmailMessageText(message = {}) {
   return collected.html.map(htmlToText).map((part) => part.trim()).filter(Boolean).join("\n");
 }
 
+function normalizeAttentionText(value = "") {
+  return String(value || "").toLowerCase().replace(/[’`]/g, "'").replace(/\s+/g, " ").trim();
+}
+
+function detectNegativeCorrespondence(text = "") {
+  const normalized = normalizeAttentionText(text);
+  if (!normalized) return [];
+  return [...new Set(NEGATIVE_CORRESPONDENCE_PHRASES.filter((phrase) => normalized.includes(normalizeAttentionText(phrase))))].slice(0, 12);
+}
+
 function stripQuotedReplies(text = "") {
   const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
   const stopIndex = lines.findIndex((line) => {
@@ -1613,15 +1642,38 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
     unknownMetadata.push({ ...message, parsed });
   }
   updateGmailScanProgress(scanId, { status: "enriching", totalMessages: inboundCandidates.length, scannedMessages, candidatesFound: unknownMetadata.length });
-  const inboundMessages = await mapLimit(unknownMetadata.slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT), 6, async (message) => ({
-    parsed: message.parsed,
+  const fullInboundMessages = await mapLimit(inboundMetadata.slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT), 6, async (message) => ({
+    parsed: parseEmailAddress(headerValue(message, "From")),
     full: await gmailApi(accessToken, `messages/${message.id}`, { format: "full" }),
   }));
+  const fullByMessageId = new Map(fullInboundMessages.map((message) => [message.full.id, message]));
+  const inboundMessages = unknownMetadata
+    .slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT)
+    .map((message) => fullByMessageId.get(message.id))
+    .filter(Boolean)
+    .map((message) => ({ ...message, parsed: message.parsed }));
 
   const newContacts = [];
   for (const message of inboundMessages) {
     newContacts.push({ ...enrichGmailContactFromSignature(message.parsed, extractGmailMessageText(message.full)), messageId: message.full.id });
   }
+  const dealByEmail = new Map(dealsResult.rows.map((row) => [row.email, row]));
+  const attentionCorrespondence = fullInboundMessages
+    .map((message) => {
+      if (!message.parsed || isAutomatedSenderEmail(message.parsed.email)) return null;
+      const text = extractGmailMessageText(message.full);
+      const matches = detectNegativeCorrespondence(`${message.full.snippet || ""}\n${text}`);
+      if (!matches.length) return null;
+      const deal = dealByEmail.get(message.parsed.email);
+      return {
+        email: message.parsed.email,
+        name: deal?.contact || message.parsed.name || message.parsed.email.split("@")[0],
+        account: deal?.account || message.parsed.email.split("@")[1],
+        source: `Matched: ${matches.join(", ")}`,
+        messageId: message.full.id,
+      };
+    })
+    .filter(Boolean);
 
   const dormantChecks = integration.detect_dormant_contacts
     ? await mapLimit(dealsResult.rows.slice(0, 50), 6, async (row) => {
@@ -1647,10 +1699,17 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
         [tenantId, item.email, item.name, item.account, item.source, item.months],
       );
     }
+    for (const item of attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT)) {
+      await client.query(
+        `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, source, message_id, last_seen_at)
+         values ($1,'attention_correspondence',$2,$3,$4,$5,$6,now())`,
+        [tenantId, item.email, item.name, item.account, item.source, item.messageId],
+      );
+    }
     await client.query(`update gmail_integrations set last_scan_at=now(), status='Last scan completed', updated_at=now() where tenant_id=$1`, [tenantId]);
   });
-  const result = { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), scannedMessages: inboundMetadata.length + dormantChecks.length };
-  finishGmailScanProgress(scanId, { scannedMessages: inboundMetadata.length, totalMessages: inboundCandidates.length, candidatesFound: newContacts.length });
+  const result = { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT), scannedMessages: inboundMetadata.length + dormantChecks.length };
+  finishGmailScanProgress(scanId, { scannedMessages: inboundMetadata.length, totalMessages: inboundCandidates.length, candidatesFound: newContacts.length, attentionFound: attentionCorrespondence.length });
   return result;
 }
 
@@ -2191,6 +2250,7 @@ function startServer() {
 if (require.main === module) startServer();
 
 module.exports = {
+  detectNegativeCorrespondence,
   duplicateTenantEmailMessage,
   decryptToken,
   encryptToken,

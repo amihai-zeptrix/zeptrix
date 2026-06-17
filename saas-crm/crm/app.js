@@ -192,6 +192,7 @@ let ui = {
   newGroup: "active",
   inlineDealGroup: null,
   inlineContactOpen: false,
+  editingContactEmail: "",
   importOpen: false,
   taskDealId: null,
   emailDealId: null,
@@ -924,13 +925,47 @@ function renderHome() {
 }
 
 function homeCorrespondenceNeedingAttention(tenant = currentTenant()) {
+  const attentionThreads = gmailAttentionCorrespondence(tenant).map((item) => ({
+    id: `attention-${item.email}`,
+    account: item.account,
+    dealId: "",
+    subject: "Negative wording detected",
+    person: item.contact || item.email,
+    date: item.lastSeenAt || today(),
+    risk: true,
+    followUp: true,
+    messages: [
+      { side: "customer", author: item.contact || item.email, body: `Gmail scan matched: ${item.matches.join(", ") || "negative wording"}.` },
+      { side: "team", author: currentUser().name, body: "Review this correspondence and respond before the relationship risk grows." },
+    ],
+  }));
+  const dormantThreads = gmailDormantContacts(tenant, Number(gmailIntegration(tenant).staleMonths || 3)).map((contact) => {
+    const deal = tenant.deals.find((item) => String(item.email || "").toLowerCase() === String(contact.email || "").toLowerCase())
+      || tenant.deals.find((item) => item.account === contact.account)
+      || tenant.deals[0];
+    return {
+      id: `dormant-${contact.email}`,
+      account: contact.account || deal?.account || contact.email.split("@")[1],
+      dealId: deal?.id || "",
+      subject: `No sent email for ${contact.months || 3} months`,
+      person: contact.contact || contact.email,
+      date: today(),
+      risk: false,
+      followUp: true,
+      messages: [
+        { side: "customer", author: contact.contact || contact.email, body: `${contact.email} has not received an outbound email in ${contact.months || 3} months.` },
+        { side: "team", author: currentUser().name, body: "Send a short check-in from Email integration to restart the relationship." },
+      ],
+    };
+  });
   const attentionDeals = accountsNeedingAttention(tenant).map((item) => item.primaryDeal).slice(0, 3);
-  return attentionDeals.flatMap((deal) => {
+  const accountThreads = attentionDeals.flatMap((deal) => {
     const contacts = topAccountContacts(deal);
     return accountCorrespondence(deal, contacts)
       .filter((thread) => thread.risk || /approval|timeline|launch|renew/i.test(thread.subject))
       .map((thread) => ({ ...thread, account: deal.account, dealId: deal.id }));
-  }).sort((a, b) => Number(b.risk) - Number(a.risk)).slice(0, 3);
+  });
+  return [...attentionThreads, ...dormantThreads, ...accountThreads].sort((a, b) => Number(b.risk) - Number(a.risk) || Number(b.followUp) - Number(a.followUp)).slice(0, 3);
 }
 
 function renderHomeAttentionThread(thread) {
@@ -1117,7 +1152,8 @@ function renderContacts() {
 
 function renderContactTagFilter() {
   const selected = new Set(ui.contactTagFilters);
-  return `<label class="contact-tag-filter"><span>Tags</span><select data-contact-tag-filter multiple size="1">${allContactTags().map((tag) => `<option value="${escapeHtml(tag)}" ${selected.has(tag) ? "selected" : ""}>${escapeHtml(tag)}</option>`).join("")}</select></label>`;
+  const label = selected.size ? `${selected.size} ${selected.size === 1 ? "tag" : "tags"}` : "All tags";
+  return `<details class="contact-tag-filter"><summary><span>Tags</span><strong>${escapeHtml(label)}</strong></summary><div class="tag-filter-menu">${allContactTags().map((tag) => `<label><input type="checkbox" data-contact-tag-filter value="${escapeHtml(tag)}" ${selected.has(tag) ? "checked" : ""} />${escapeHtml(tag)}</label>`).join("")}</div></details>`;
 }
 
 function renderInlineContactRow() {
@@ -1147,7 +1183,12 @@ function filteredContacts(contacts = uniqueBy("email")) {
 
 function renderContactRow(deal) {
   const isOpen = ui.selectedContactEmail === deal.email;
-  return `<div class="list-row contact-row ${isOpen ? "is-open" : ""}">${avatar(deal.owner)}<button class="activity-main" data-open-contact="${escapeHtml(deal.email)}"><span class="list-primary">${escapeHtml(deal.contact)}<small>${escapeHtml(deal.email)}</small></span></button><span class="muted contact-phone">${escapeHtml(deal.phone || "-")}</span>${renderCompactContactTags(deal)}<button class="inline-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button><button class="button small danger" data-action="delete-contact" data-email="${escapeHtml(deal.email)}">Delete</button></div>${isOpen ? renderContactDetail(deal) : ""}`;
+  const isEditing = ui.editingContactEmail === deal.email;
+  return `<div class="list-row contact-row ${isOpen ? "is-open" : ""}">${avatar(deal.owner)}<button class="activity-main" data-open-contact="${escapeHtml(deal.email)}"><span class="list-primary">${escapeHtml(deal.contact)}<small>${escapeHtml(deal.email)}</small></span></button><span class="muted contact-phone">${escapeHtml(deal.phone || "-")}</span>${renderCompactContactTags(deal)}<button class="inline-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button><span class="row-actions"><button class="button small" data-action="edit-contact" data-email="${escapeHtml(deal.email)}">Edit</button><button class="button small danger" data-action="delete-contact" data-email="${escapeHtml(deal.email)}">Delete</button></span></div>${isEditing ? renderEditContactRow(deal) : ""}${isOpen && !isEditing ? renderContactDetail(deal) : ""}`;
+}
+
+function renderEditContactRow(deal) {
+  return `<form class="list-row contact-row inline-contact-row" data-edit-contact-form data-original-email="${escapeHtml(deal.email)}"><span class="activity-symbol">✎</span><span class="inline-field-stack"><input name="contact" value="${escapeHtml(deal.contact)}" placeholder="Contact name" required /><input name="email" type="email" value="${escapeHtml(deal.email)}" placeholder="Email" required /></span><input name="phone" value="${escapeHtml(deal.phone || "")}" placeholder="Phone" /><input name="account" value="${escapeHtml(deal.account)}" placeholder="Account" required /><select name="owner">${Object.keys(owners).map((owner) => `<option ${owner === deal.owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select><span class="row-actions"><button class="button small primary">Save</button><button type="button" class="button small" data-action="cancel-contact-edit">Cancel</button></span></form>`;
 }
 
 function renderCompactContactTags(deal) {
@@ -1726,6 +1767,7 @@ function renderMailIntegrationsSettings() {
   const discoveryStart = (ui.gmailDiscoveryPage - 1) * GMAIL_DISCOVERY_PAGE_SIZE;
   const visibleDiscoveries = discoveries.slice(discoveryStart, discoveryStart + GMAIL_DISCOVERY_PAGE_SIZE);
   const dormant = gmailDormantContacts(tenant, Number(gmail.staleMonths || 3));
+  const attention = gmailAttentionCorrespondence(tenant);
   const canUseGmailBackend = !!session?.apiToken && session.role !== "demo_user";
   const actionDisabled = canUseGmailBackend ? "" : "disabled";
   return `
@@ -1757,6 +1799,10 @@ function renderMailIntegrationsSettings() {
           <div class="panel-head"><div><h3>Contacts needing follow-up</h3><p class="subcopy">Contacts with no sent mail in the configured window.</p></div><span class="summary-icon" style="background: var(--orange-soft); color: var(--orange);">◴</span></div>
           <div class="signal-list">
             ${dormant.map((item) => `<div class="signal-row"><span class="activity-symbol">!</span><button class="activity-main" data-open-contact="${escapeHtml(item.email)}"><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · no sent mail for ${item.months} months</small></span></button><button class="priority priority-high follow-up-chip" data-action="follow-up-contact" data-email="${escapeHtml(item.email)}">Follow up</button></div>`).join("") || `<p class="empty-state compact">No contacts are past the configured threshold.</p>`}
+          </div>
+          <div class="signal-list attention-signal-list">
+            <h4>Correspondence requiring attention</h4>
+            ${attention.map((item) => `<div class="signal-row risk-signal-row"><span class="activity-symbol">!</span><button class="activity-main" data-open-contact="${escapeHtml(item.email)}"><span class="list-primary">${escapeHtml(item.contact)}<small>${escapeHtml(item.account)} · matched ${escapeHtml(item.matches.slice(0, 3).join(", ") || "negative wording")}</small></span></button><button class="priority priority-high follow-up-chip" data-action="follow-up-contact" data-email="${escapeHtml(item.email)}">Respond</button></div>`).join("") || `<p class="empty-state compact">No negative wording found in the latest scan.</p>`}
           </div>
         </article>
       </div>
@@ -1871,6 +1917,20 @@ function gmailDormantContacts(tenant = currentTenant(), thresholdMonths = 3) {
     .slice(0, 6);
 }
 
+function gmailAttentionCorrespondence(tenant = currentTenant()) {
+  const signals = gmailIntegration(tenant).signals || [];
+  return signals
+    .filter((signal) => signal.type === "attention_correspondence")
+    .map((signal) => ({
+      contact: signal.name || signal.email.split("@")[0],
+      email: signal.email,
+      account: signal.account || signal.email.split("@")[1],
+      matches: String(signal.source || "").replace(/^Matched:\s*/i, "").split(",").map((item) => item.trim()).filter(Boolean),
+      lastSeenAt: signal.lastSeenAt || "",
+    }))
+    .slice(0, 6);
+}
+
 function monthsSince(value) {
   const then = new Date(value);
   const now = new Date(`${today()}T12:00:00`);
@@ -1929,6 +1989,7 @@ document.addEventListener("click", async (event) => {
     ui.section = section;
     ui.importOpen = false;
     ui.selectedContactEmail = "";
+    ui.editingContactEmail = "";
     ui.selectedCommunicationId = null;
     ui.selectedCampaignId = null;
     ui.selected = null;
@@ -1945,6 +2006,7 @@ document.addEventListener("click", async (event) => {
   if (contactEmail) {
     ui.section = "contacts";
     ui.selectedContactEmail = ui.selectedContactEmail === contactEmail ? "" : contactEmail;
+    ui.editingContactEmail = "";
     ui.selected = null;
   }
   if (communicationId) {
@@ -2079,6 +2141,13 @@ document.addEventListener("click", async (event) => {
       ui.inlineDealGroup = null;
       ui.inlineContactOpen = false;
     }
+    if (action === "edit-contact") {
+      ui.section = "contacts";
+      ui.editingContactEmail = actionElement.dataset.email || "";
+      ui.inlineContactOpen = false;
+      ui.selectedContactEmail = "";
+    }
+    if (action === "cancel-contact-edit") ui.editingContactEmail = "";
     if (action === "add-task") { ui.modal = "task"; ui.taskDealId = taskDealId || null; ui.selected = null; }
     if (action === "compose-email") { ui.modal = "email"; ui.emailDealId = taskDealId || null; ui.selected = null; }
     if (action === "follow-up-contact") {
@@ -2246,7 +2315,7 @@ document.addEventListener("click", async (event) => {
         }
       }
     }
-    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.pendingTag = null; ui.importOpen = false; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.taskDealId = null; ui.emailDealId = null; ui.authError = ""; ui.adminNotice = ""; }
+    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.pendingTag = null; ui.importOpen = false; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.editingContactEmail = ""; ui.taskDealId = null; ui.emailDealId = null; ui.authError = ""; ui.adminNotice = ""; }
     if (action === "edit-deal") { ui.selected = null; ui.editing = currentTenant().deals.find((deal) => String(deal.id) === String(id)); ui.modal = "deal"; }
     if (action === "toggle-task") {
       const tenant = currentTenant();
@@ -2364,7 +2433,7 @@ document.addEventListener("change", async (event) => {
     return;
   }
   if (event.target.matches("[data-contact-tag-filter]")) {
-    ui.contactTagFilters = [...event.target.selectedOptions].map((option) => option.value);
+    ui.contactTagFilters = [...document.querySelectorAll("[data-contact-tag-filter]:checked")].map((option) => option.value);
     ui.selectedContactEmail = "";
     render();
     return;
@@ -2747,6 +2816,39 @@ document.addEventListener("submit", async (event) => {
       ui.inlineContactOpen = false;
       ui.section = "contacts";
       ui.selectedContactEmail = saved.email;
+      render();
+    } catch (error) {
+      showToast(`Could not save contact: ${error.message}`);
+    }
+    return;
+  }
+  if (event.target.matches("[data-edit-contact-form]")) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.target));
+    const originalEmail = event.target.dataset.originalEmail || "";
+    const tenant = currentTenant();
+    const normalizedEmail = String(values.email || "").trim().toLowerCase();
+    const duplicate = tenant.deals.some((deal) => String(deal.email || "").toLowerCase() === normalizedEmail && String(deal.email || "").toLowerCase() !== originalEmail.toLowerCase());
+    if (duplicate) {
+      showToast(`Could not save contact: ${values.email} already exists`);
+      return;
+    }
+    const updatedDeals = tenant.deals.map((deal) => String(deal.email || "").toLowerCase() === originalEmail.toLowerCase()
+      ? { ...deal, contact: values.contact, email: values.email, phone: values.phone, account: values.account, owner: values.owner, updated: "Just now" }
+      : deal);
+    const changedDeals = updatedDeals.filter((deal, index) => deal !== tenant.deals[index]);
+    try {
+      const savedDeals = [];
+      if (session?.apiToken) {
+        for (const deal of changedDeals) savedDeals.push((await updateDealViaApi(tenant.id, deal.id, deal)).deal);
+      }
+      const deals = session?.apiToken
+        ? tenant.deals.map((deal) => savedDeals.find((saved) => String(saved.id) === String(deal.id)) || deal)
+        : updatedDeals;
+      setTenant({ ...tenant, deals });
+      ui.editingContactEmail = "";
+      ui.selectedContactEmail = values.email;
+      showToast("Contact saved");
       render();
     } catch (error) {
       showToast(`Could not save contact: ${error.message}`);

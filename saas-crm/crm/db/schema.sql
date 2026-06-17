@@ -140,7 +140,7 @@ create table outgoing_email_settings (
 create table gmail_contact_signals (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
-  signal_type text not null check (signal_type in ('new_contact', 'dormant_contact')),
+  signal_type text not null check (signal_type in ('new_contact', 'dormant_contact', 'attention_correspondence')),
   email citext not null,
   name text,
   account text,
