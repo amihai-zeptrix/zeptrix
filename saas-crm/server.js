@@ -296,6 +296,52 @@ function inviteEmailContent({ to, tenantName, temporaryPassword }) {
   return { subject, text, html };
 }
 
+function passwordResetEmailContent({ to, tenantName, temporaryPassword }) {
+  const subject = "Reset your Zeptrix CRM password";
+  const text = [
+    `A password reset was requested for your ${tenantName} Zeptrix CRM account.`,
+    "",
+    `Sign in: ${appBaseUrl}`,
+    `Email: ${to}`,
+    `Temporary password: ${temporaryPassword}`,
+    "",
+    "After signing in, you will be asked to create a new permanent password.",
+    "If you did not request this reset, contact your CRM administrator.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#20242b">
+      <h2>Reset your Zeptrix CRM password</h2>
+      <p>A password reset was requested for your <strong>${escapeHtml(tenantName)}</strong> account.</p>
+      <p><a href="${escapeHtml(appBaseUrl)}">Open Zeptrix CRM</a></p>
+      <p><strong>Email:</strong> ${escapeHtml(to)}<br>
+      <strong>Temporary password:</strong> ${escapeHtml(temporaryPassword)}</p>
+      <p>After signing in, you will be asked to create a new permanent password.</p>
+      <p style="color:#667085">If you did not request this reset, contact your CRM administrator.</p>
+    </div>`;
+  return { subject, text, html };
+}
+
+function mfaRecoveryEmailContent({ to, tenantName, recoveryUrl }) {
+  const subject = "Configure a new Zeptrix CRM authenticator";
+  const text = [
+    `A request was made to configure a new authenticator for your ${tenantName} Zeptrix CRM account.`,
+    "",
+    `Open this link within 30 minutes: ${recoveryUrl}`,
+    "",
+    "You will be asked to scan a new QR code in Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.",
+    "If you did not request this, ignore this email and contact your CRM administrator.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#20242b">
+      <h2>Configure a new authenticator</h2>
+      <p>A request was made to configure a new authenticator for your <strong>${escapeHtml(tenantName)}</strong> account.</p>
+      <p><a href="${escapeHtml(recoveryUrl)}">Configure authenticator</a></p>
+      <p>This link expires in 30 minutes. You will be asked to scan a new QR code in Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.</p>
+      <p style="color:#667085">If you did not request this, ignore this email and contact your CRM administrator.</p>
+    </div>`;
+  return { subject, text, html };
+}
+
 function registrationNotificationContent({ tenantName, userName, userEmail, method }) {
   const subject = `New Zeptrix CRM registration: ${tenantName}`;
   const text = [
@@ -324,12 +370,10 @@ function registrationNotificationContent({ tenantName, userName, userEmail, meth
   return { subject, text, html };
 }
 
-async function sendRegistrationNotification(args) {
-  if (!registrationNotificationEmail) return { status: "disabled", detail: "REGISTRATION_NOTIFICATION_EMAIL is empty." };
-  if (!fromEmail) return { status: "not_configured", detail: "Sender email is not configured." };
-  const content = registrationNotificationContent(args);
+async function sendTransactionalEmail({ to, subject, text, html }) {
+  if (!fromEmail) return { status: "not_configured", messageId: null, detail: "Sender email is not configured." };
   if (emailProvider === "smtp") {
-    if (!smtpUser || !smtpPassword) return { status: "not_configured", detail: "SMTP user or password is not configured." };
+    if (!smtpUser || !smtpPassword) return { status: "not_configured", messageId: null, detail: "SMTP user or password is not configured." };
     const transporter = nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
@@ -338,25 +382,31 @@ async function sendRegistrationNotification(args) {
     });
     const response = await transporter.sendMail({
       from: `Zeptrix CRM <${fromEmail}>`,
-      to: registrationNotificationEmail,
-      subject: content.subject,
-      text: content.text,
-      html: content.html,
+      to,
+      subject,
+      text,
+      html,
     });
     return { status: "sent", messageId: response.messageId || null, detail: `Sent through SMTP (${smtpHost}).` };
   }
   const response = await ses.send(new SendEmailCommand({
     Source: fromEmail,
-    Destination: { ToAddresses: [registrationNotificationEmail] },
+    Destination: { ToAddresses: [to] },
     Message: {
-      Subject: { Charset: "UTF-8", Data: content.subject },
+      Subject: { Charset: "UTF-8", Data: subject },
       Body: {
-        Text: { Charset: "UTF-8", Data: content.text },
-        Html: { Charset: "UTF-8", Data: content.html },
+        Text: { Charset: "UTF-8", Data: text },
+        Html: { Charset: "UTF-8", Data: html },
       },
     },
   }));
   return { status: "sent", messageId: response.MessageId, detail: "Sent through Amazon SES." };
+}
+
+async function sendRegistrationNotification(args) {
+  if (!registrationNotificationEmail) return { status: "disabled", detail: "REGISTRATION_NOTIFICATION_EMAIL is empty." };
+  const content = registrationNotificationContent(args);
+  return sendTransactionalEmail({ to: registrationNotificationEmail, ...content });
 }
 
 async function notifyRegistration(args) {
@@ -1249,6 +1299,16 @@ function verifyPreAuthToken(token) {
   return payload?.purpose === "mfa" ? payload : null;
 }
 
+function signMfaRecoveryToken(user) {
+  const payload = userAuthPayload(user);
+  return signPayload({ purpose: "mfa-recovery", jti: crypto.randomUUID(), userId: payload.id, tenantId: payload.tenantId, email: payload.email, role: payload.role, exp: Date.now() + 30 * 60 * 1000 });
+}
+
+function verifyMfaRecoveryToken(token) {
+  const payload = verifySignedPayload(token);
+  return payload?.purpose === "mfa-recovery" ? payload : null;
+}
+
 function mfaChallengeKey(token) {
   return crypto.createHash("sha256").update(String(token || "")).digest("base64url");
 }
@@ -1403,6 +1463,18 @@ async function userById(userId) {
      from users u join tenants t on t.id=u.tenant_id
      where u.id=$1`,
     [userId],
+  );
+  return result.rows[0] || null;
+}
+
+async function userByEmail(email) {
+  if (!email) return null;
+  const result = await dbQuery(
+    `select u.*, t.id tenant_id, t.name tenant_name
+     from users u join tenants t on t.id=u.tenant_id
+     where lower(u.email)=lower($1)
+     limit 1`,
+    [String(email).trim()],
   );
   return result.rows[0] || null;
 }
@@ -2322,6 +2394,66 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "POST" && pathname === "/api/auth/forgot-password") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { email } = await readBody(req);
+      const user = await userByEmail(email);
+      if (user) {
+        const temporaryPassword = generateTemporaryPassword();
+        await dbQuery(
+          `update users set password_hash=$2, password_change_required=true where id=$1`,
+          [user.id, hashPassword(temporaryPassword)],
+        );
+        const content = passwordResetEmailContent({ to: user.email, tenantName: user.tenant_name, temporaryPassword });
+        const mail = await sendTransactionalEmail({ to: user.email, ...content });
+        if (mail.status !== "sent") console.log(`Password reset email for ${user.email} was not sent: ${mail.detail}`);
+      }
+      return json(res, 200, { ok: true, message: "If an account exists for that email, password reset instructions were sent." });
+    } catch (error) {
+      console.log(`Password reset request failed: ${error.message}`);
+      return json(res, 200, { ok: true, message: "If an account exists for that email, password reset instructions were sent." });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/mfa/recovery-request") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { email } = await readBody(req);
+      const user = await userByEmail(email);
+      if (user) {
+        const recoveryUrl = new URL(appBaseUrl);
+        recoveryUrl.searchParams.set("mfaRecovery", signMfaRecoveryToken(user));
+        const content = mfaRecoveryEmailContent({ to: user.email, tenantName: user.tenant_name, recoveryUrl: recoveryUrl.toString() });
+        const mail = await sendTransactionalEmail({ to: user.email, ...content });
+        if (mail.status !== "sent") console.log(`MFA recovery email for ${user.email} was not sent: ${mail.detail}`);
+      }
+      return json(res, 200, { ok: true, message: "If an account exists for that email, authenticator recovery instructions were sent." });
+    } catch (error) {
+      console.log(`MFA recovery request failed: ${error.message}`);
+      return json(res, 200, { ok: true, message: "If an account exists for that email, authenticator recovery instructions were sent." });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/mfa/recovery-confirm") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { token } = await readBody(req);
+      const recovery = verifyMfaRecoveryToken(token);
+      if (!recovery) return json(res, 401, { error: "Authenticator recovery link expired. Please request a new link." });
+      const user = await userById(recovery.userId);
+      if (!user || String(user.email).toLowerCase() !== String(recovery.email).toLowerCase()) return json(res, 401, { error: "Authenticator recovery link is no longer valid." });
+      await dbQuery(
+        `update users set mfa_secret_enc=null, mfa_confirmed=false, mfa_enabled=true where id=$1`,
+        [user.id],
+      );
+      const updated = await userById(user.id);
+      return json(res, 200, authChallengeForUser(updated));
+    } catch (error) {
+      return json(res, 500, { error: "Unable to configure authenticator recovery.", detail: error.message });
+    }
+  }
+
   if (req.method === "POST" && pathname === "/api/auth/register") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -2911,6 +3043,7 @@ module.exports = {
   authenticatorUri,
   inviteEmailContent,
   isAutomatedSenderEmail,
+  mfaRecoveryEmailContent,
   normalizeDealPayload,
   normalizeGmailSettings,
   normalizeOutgoingEmailSettings,
@@ -2919,9 +3052,11 @@ module.exports = {
   normalizeTenantPayload,
   normalizeWorkflowAutomationSettings,
   parseEmailAddress,
+  passwordResetEmailContent,
   registrationNotificationContent,
   signAuthToken,
   signGoogleAuthState,
+  signMfaRecoveryToken,
   signPreAuthToken,
   staticFilePathForUrlPath,
   smtpInviteMessage,
@@ -2930,6 +3065,7 @@ module.exports = {
   updateTenantWithClient,
   validateTenant,
   verifyGoogleAuthState,
+  verifyMfaRecoveryToken,
   verifyPreAuthToken,
   verifySignedPayload,
   verifyTotpCode,

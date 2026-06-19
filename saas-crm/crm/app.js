@@ -186,6 +186,7 @@ let ui = {
   authStep: "password",
   pendingUser: null,
   authError: "",
+  authNotice: "",
   tenantId: session?.tenantId || "admin",
   section: CRM_SECTION_ROUTE || "admin",
   view: "table",
@@ -546,6 +547,18 @@ async function mfaVerifyViaApi(preAuthToken, code) {
   return apiRequest("/api/auth/mfa/verify", { method: "POST", body: JSON.stringify({ preAuthToken, code }) });
 }
 
+async function forgotPasswordViaApi(email) {
+  return apiRequest("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
+}
+
+async function mfaRecoveryRequestViaApi(email) {
+  return apiRequest("/api/auth/mfa/recovery-request", { method: "POST", body: JSON.stringify({ email }) });
+}
+
+async function mfaRecoveryConfirmViaApi(token) {
+  return apiRequest("/api/auth/mfa/recovery-confirm", { method: "POST", body: JSON.stringify({ token }) });
+}
+
 async function changePasswordViaApi(email, password) {
   return apiRequest("/api/auth/change-password", { method: "POST", body: JSON.stringify({ email, password }) });
 }
@@ -598,11 +611,23 @@ async function consumeGoogleAuthRedirect() {
   const params = new URLSearchParams(window.location.search);
   const authError = params.get("authError");
   const googleAuth = params.get("googleAuth");
-  if (!authError && !googleAuth) return;
+  const mfaRecovery = params.get("mfaRecovery");
+  if (!authError && !googleAuth && !mfaRecovery) return;
   window.history.replaceState({}, "", window.location.pathname);
   if (authError) {
     ui.authError = authError;
     ui.authStep = "password";
+    return;
+  }
+  if (mfaRecovery) {
+    try {
+      const result = await mfaRecoveryConfirmViaApi(mfaRecovery);
+      ui.authNotice = "Authenticator reset. Scan the new QR code and enter the verification code.";
+      await prepareMfaChallenge(result);
+    } catch (error) {
+      ui.authError = error.message;
+      ui.authStep = "mfa-recovery";
+    }
     return;
   }
   try {
@@ -827,7 +852,7 @@ function renderAuth() {
       </section>
       <section class="auth-panel">
         <div class="auth-card">
-          ${ui.authStep === "mfa" ? renderMfa() : ui.authStep === "register" ? renderRegisterForm() : renderPasswordLogin()}
+          ${ui.authStep === "mfa" ? renderMfa() : ui.authStep === "register" ? renderRegisterForm() : ui.authStep === "forgot" ? renderForgotPassword() : ui.authStep === "mfa-recovery" ? renderMfaRecovery() : renderPasswordLogin()}
         </div>
       </section>
     </main>`;
@@ -845,9 +870,24 @@ function renderPasswordLogin() {
       <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required /></div>
       <div class="field"><label>Password</label><input name="password" type="password" required /></div>
       <button class="button primary">Continue</button>
+      <button class="button ghost auth-link-button" type="button" data-action="show-forgot-password">Forgot password?</button>
+      ${ui.authNotice ? `<p class="success">${escapeHtml(ui.authNotice)}</p>` : ""}
       ${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}
     </form>
     <div class="auth-switch"><span>New to Zeptrix CRM?</span><button type="button" class="button ghost" data-action="show-register">Register</button></div>`;
+}
+
+function renderForgotPassword() {
+  return `
+    <h2>Reset password</h2>
+    <p class="subcopy">Enter your login email. If the account exists, we will email a temporary password and ask you to create a new one after login.</p>
+    <form class="auth-actions" data-forgot-password-form>
+      <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required /></div>
+      <button class="button primary">Send reset email</button>
+      <button class="button ghost" type="button" data-action="back-login">Back to sign in</button>
+      ${ui.authNotice ? `<p class="success">${escapeHtml(ui.authNotice)}</p>` : ""}
+      ${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}
+    </form>`;
 }
 
 function renderRegisterForm() {
@@ -906,7 +946,22 @@ function renderMfa() {
     <form class="auth-actions" data-mfa-form>
       <div class="field"><label>Authenticator code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" placeholder="123456" required /></div>
       <button class="button primary">${isSetup ? "Confirm and open CRM" : "Verify and open CRM"}</button>
+      <button class="button ghost auth-link-button" type="button" data-action="show-mfa-recovery">Authenticator not working?</button>
       <button class="button ghost" type="button" data-action="back-login">Back</button>
+      ${ui.authNotice ? `<p class="success">${escapeHtml(ui.authNotice)}</p>` : ""}
+      ${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}
+    </form>`;
+}
+
+function renderMfaRecovery() {
+  return `
+    <h2>Configure authenticator</h2>
+    <p class="subcopy">If your authenticator app is unavailable, enter your login email. We will send a secure link that lets you configure a new authenticator.</p>
+    <form class="auth-actions" data-mfa-recovery-form>
+      <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required /></div>
+      <button class="button primary">Send authenticator link</button>
+      <button class="button ghost" type="button" data-action="back-login">Back to sign in</button>
+      ${ui.authNotice ? `<p class="success">${escapeHtml(ui.authNotice)}</p>` : ""}
       ${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}
     </form>`;
 }
@@ -995,7 +1050,7 @@ function renderPageHeader(title = "Sales pipeline", copy = "Manage deals, track 
   return `
     <div class="page-title-row">
       <div><h1>${title}</h1><p class="subcopy">${copy}</p></div>
-      <div><button class="icon-button help-button" data-action="open-help" data-help-topic="${escapeHtml(helpTopic)}" data-tooltip="Open help" aria-label="Open help">?</button><button class="button" data-action="export">⇩ Export</button><button class="button ${ui.importOpen ? "filter-pill" : ""}" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
+      <div><button class="icon-button whats-new-button" data-action="open-whats-new" data-tooltip="What's new" aria-label="Open what's new">✦</button><button class="icon-button help-button" data-action="open-help" data-help-topic="${escapeHtml(helpTopic)}" data-tooltip="Open help" aria-label="Open help">?</button><button class="button" data-action="export">⇩ Export</button><button class="button ${ui.importOpen ? "filter-pill" : ""}" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
     </div>${ui.importOpen ? renderImportStrip() : ""}`;
 }
 
@@ -2651,6 +2706,11 @@ document.addEventListener("click", async (event) => {
       render();
       return;
     }
+    if (action === "open-whats-new") {
+      ui.modal = "whats-new";
+      render();
+      return;
+    }
     if (action === "open-report-template") {
       ui.section = "reports";
       ui.selectedReportTemplate = actionElement.dataset.reportName || "";
@@ -2714,8 +2774,10 @@ document.addEventListener("click", async (event) => {
       }
       return;
     }
-    if (action === "show-register") { ui.authStep = "register"; ui.authError = ""; }
-    if (action === "back-login") { ui.authStep = "password"; ui.authError = ""; ui.pendingUser = null; }
+    if (action === "show-register") { ui.authStep = "register"; ui.authError = ""; ui.authNotice = ""; }
+    if (action === "show-forgot-password") { ui.authStep = "forgot"; ui.authError = ""; ui.authNotice = ""; ui.pendingUser = null; }
+    if (action === "show-mfa-recovery") { ui.authStep = "mfa-recovery"; ui.authError = ""; ui.authNotice = ""; ui.pendingUser = null; }
+    if (action === "back-login") { ui.authStep = "password"; ui.authError = ""; ui.authNotice = ""; ui.pendingUser = null; }
     if (action === "logout") { session = null; saveSession(); ui.authStep = "password"; }
     if (action === "open-tenant") { ui.tenantId = id; ui.section = "pipeline"; session.tenantId = id; saveSession(); }
     if (action === "add-tenant") { ui.editingTenant = null; ui.authError = ""; ui.adminNotice = ""; ui.modal = "tenant"; }
@@ -2916,7 +2978,7 @@ document.addEventListener("click", async (event) => {
         }
       }
     }
-    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.pendingTag = null; ui.helpTopic = ""; ui.importOpen = false; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.editingContactEmail = ""; ui.taskDealId = null; ui.emailDealId = null; ui.emailContext = null; ui.authError = ""; ui.adminNotice = ""; }
+    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.pendingTag = null; ui.helpTopic = ""; ui.importOpen = false; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.editingContactEmail = ""; ui.taskDealId = null; ui.emailDealId = null; ui.emailContext = null; ui.authError = ""; ui.authNotice = ""; ui.adminNotice = ""; }
     if (action === "edit-deal") { ui.selected = null; ui.editing = currentTenant().deals.find((deal) => String(deal.id) === String(id)); ui.modal = "deal"; }
     if (action === "toggle-task") {
       const tenant = currentTenant();
@@ -3120,6 +3182,7 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));
     try {
+      ui.authNotice = "";
       const result = await loginViaApi(values.email, values.password);
       await prepareMfaChallenge(result);
     } catch {
@@ -3141,6 +3204,21 @@ document.addEventListener("submit", async (event) => {
     render();
     return;
   }
+  if (event.target.matches("[data-forgot-password-form]")) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.target));
+    try {
+      const result = await forgotPasswordViaApi(values.email);
+      ui.authError = "";
+      ui.authNotice = result.message || "If an account exists for that email, password reset instructions were sent.";
+      ui.authStep = "password";
+    } catch (error) {
+      ui.authError = error.message;
+      ui.authNotice = "";
+    }
+    render();
+    return;
+  }
   if (event.target.matches("[data-register-form]")) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.target));
@@ -3154,6 +3232,21 @@ document.addEventListener("submit", async (event) => {
       await prepareMfaChallenge(result);
     } catch (error) {
       ui.authError = error.message;
+    }
+    render();
+    return;
+  }
+  if (event.target.matches("[data-mfa-recovery-form]")) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.target));
+    try {
+      const result = await mfaRecoveryRequestViaApi(values.email);
+      ui.authError = "";
+      ui.authNotice = result.message || "If an account exists for that email, authenticator recovery instructions were sent.";
+      ui.authStep = "password";
+    } catch (error) {
+      ui.authError = error.message;
+      ui.authNotice = "";
     }
     render();
     return;

@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { authChallengeForUser, authenticatorUri, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, registrationNotificationContent, signAuthToken, signGoogleAuthState, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
+const { authChallengeForUser, authenticatorUri, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, mfaRecoveryEmailContent, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, passwordResetEmailContent, registrationNotificationContent, signAuthToken, signGoogleAuthState, signMfaRecoveryToken, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyMfaRecoveryToken, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -274,6 +274,61 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.match(server, /registerMfaAttempt\(preAuthToken\) > 5/);
   assert.match(server, /consumedMfaChallenges\.has/);
   assert.match(server, /consumedMfaChallenges\.add/);
+});
+
+test("login screen supports password reset and authenticator recovery", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const server = serverSource();
+  const renderLoginSource = functionSource(app, "renderPasswordLogin", "renderForgotPassword");
+  const renderForgotPasswordSource = functionSource(app, "renderForgotPassword", "renderRegisterForm");
+  const renderMfaSource = functionSource(app, "renderMfa", "renderMfaSetup");
+  const renderMfaRecoverySource = functionSource(app, "renderMfaRecovery", "renderApp");
+  const redirectSource = functionSource(app, "consumeGoogleAuthRedirect", "findUserByEmail");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+  const passwordEmail = passwordResetEmailContent({ to: "ron@example.com", tenantName: "Ron Labs", temporaryPassword: "Tmp-Example123" });
+  const recoveryEmail = mfaRecoveryEmailContent({ to: "ron@example.com", tenantName: "Ron Labs", recoveryUrl: "https://www.zeptrix.io/crm/?mfaRecovery=token" });
+  const recoveryToken = signMfaRecoveryToken({
+    id: "user-123",
+    tenantId: "tenant-123",
+    tenantName: "Ron Labs",
+    name: "Ron Cohen",
+    email: "ron@example.com",
+    role: "tenant_admin",
+    mustChangePassword: false,
+    mfaEnabled: true,
+    mfaConfirmed: true,
+  });
+
+  assert.match(passwordEmail.subject, /Reset your Zeptrix CRM password/);
+  assert.match(passwordEmail.text, /Temporary password: Tmp-Example123/);
+  assert.match(recoveryEmail.subject, /Configure a new Zeptrix CRM authenticator/);
+  assert.match(recoveryEmail.text, /Open this link within 30 minutes/);
+  assert.equal(verifyMfaRecoveryToken(recoveryToken).purpose, "mfa-recovery");
+  assert.match(renderLoginSource, /data-action="show-forgot-password"/);
+  assert.match(renderForgotPasswordSource, /data-forgot-password-form/);
+  assert.match(renderForgotPasswordSource, /Send reset email/);
+  assert.match(renderMfaSource, /data-action="show-mfa-recovery"/);
+  assert.match(renderMfaRecoverySource, /data-mfa-recovery-form/);
+  assert.match(renderMfaRecoverySource, /Send authenticator link/);
+  assert.match(redirectSource, /mfaRecovery/);
+  assert.match(redirectSource, /mfaRecoveryConfirmViaApi\(mfaRecovery\)/);
+  assert.match(clickHandlerSource, /action === "show-forgot-password"/);
+  assert.match(clickHandlerSource, /action === "show-mfa-recovery"/);
+  assert.match(submitHandlerSource, /data-forgot-password-form/);
+  assert.match(submitHandlerSource, /forgotPasswordViaApi\(values\.email\)/);
+  assert.match(submitHandlerSource, /data-mfa-recovery-form/);
+  assert.match(submitHandlerSource, /mfaRecoveryRequestViaApi\(values\.email\)/);
+  assert.ok(server.includes('pathname === "/api/auth/forgot-password"'));
+  assert.ok(server.includes('pathname === "/api/auth/mfa/recovery-request"'));
+  assert.ok(server.includes('pathname === "/api/auth/mfa/recovery-confirm"'));
+  assert.match(server, /password_change_required=true/);
+  assert.match(server, /mfa_secret_enc=null, mfa_confirmed=false, mfa_enabled=true/);
+  assert.match(server, /signMfaRecoveryToken\(user\)/);
+  assert.match(server, /verifyMfaRecoveryToken\(token\)/);
+  assert.match(styles, /\.success/);
+  assert.match(styles, /\.auth-link-button/);
 });
 
 test("invite email content includes login details", () => {
@@ -1309,6 +1364,8 @@ test("CRM shows an impressive whats new dialog after login", () => {
   const styles = crmStylesSource();
   const renderModalSource = functionSource(app, "renderModal", "renderTenantForm");
   const renderWhatsNewSource = functionSource(app, "renderWhatsNewDialog", "renderTenantForm");
+  const renderPageHeaderSource = functionSource(app, "renderPageHeader", "renderAdmin");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const loginHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
   assert.match(app, /WHATS_NEW_VERSION/);
@@ -1326,8 +1383,12 @@ test("CRM shows an impressive whats new dialog after login", () => {
   assert.match(renderWhatsNewSource, /whats-new-frame/);
   assert.match(renderWhatsNewSource, /data-action="close-whats-new"/);
   assert.match(renderWhatsNewSource, /Open user guide/);
+  assert.match(renderPageHeaderSource, /data-action="open-whats-new"/);
+  assert.match(renderPageHeaderSource, /aria-label="Open what's new"/);
+  assert.match(clickHandlerSource, /action === "open-whats-new"/);
   assert.match(loginHandlerSource, /maybeShowWhatsNew\(\)/);
   assert.match(styles, /\.whats-new-modal/);
+  assert.match(styles, /\.whats-new-button/);
   assert.match(styles, /\.whats-new-window-bar/);
   assert.match(styles, /\.whats-new-frame/);
   assert.match(styles, /\.whats-new-hero/);

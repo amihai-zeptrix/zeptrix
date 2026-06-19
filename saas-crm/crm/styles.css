@@ -306,9 +306,19 @@ h3 { font-size: 14px; }
   background: #f4f8ff;
   font-weight: 900;
 }
+.whats-new-button {
+  border-color: #c7d2fe;
+  color: #3556d8;
+  background: #eef2ff;
+  font-weight: 900;
+}
 .help-button:hover {
   border-color: var(--blue);
   background: #eaf2ff;
+}
+.whats-new-button:hover {
+  border-color: #4a6cf7;
+  background: #e0e7ff;
 }
 
 .button, .icon-button {
@@ -446,6 +456,8 @@ h3 { font-size: 14px; }
 .form-grid .full { grid-column: 1 / -1; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .error { margin-top: 12px; color: var(--red); font-size: 12px; font-weight: 700; }
+.success { margin-top: 12px; color: #18794e; font-size: 12px; font-weight: 800; line-height: 1.45; }
+.auth-link-button { justify-content: center; border-color: transparent; }
 
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
 .summary-card {
