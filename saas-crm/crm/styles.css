@@ -300,6 +300,16 @@ h3 { font-size: 14px; }
 .page { padding: 24px 26px 42px; }
 .page-title-row { display: flex; justify-content: space-between; gap: 22px; }
 .page-title-row > div:last-child { display: flex; gap: 8px; }
+.help-button {
+  border-color: #bcd3ff;
+  color: var(--blue);
+  background: #f4f8ff;
+  font-weight: 900;
+}
+.help-button:hover {
+  border-color: var(--blue);
+  background: #eaf2ff;
+}
 
 .button, .icon-button {
   display: inline-flex;
@@ -1638,6 +1648,54 @@ h3 { font-size: 14px; }
   box-shadow: 0 28px 70px rgba(15, 23, 42, .28), 0 0 0 1px rgba(255, 255, 255, .75) inset;
 }
 .modal.gmail-guide-modal { width: min(660px, calc(100vw - 32px)); }
+.modal.help-modal { width: min(760px, calc(100vw - 32px)); }
+.help-guide {
+  display: grid;
+  gap: 10px;
+}
+.help-guide article {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.help-guide span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--blue);
+  background: var(--blue-soft);
+  font-weight: 900;
+}
+.help-guide p {
+  margin: 3px 0 0;
+  line-height: 1.5;
+}
+.help-guide-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+.help-guide-index button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--muted);
+  background: #fff;
+  font-weight: 800;
+}
+.help-guide-index button.is-selected {
+  border-color: #c8dcff;
+  color: var(--blue);
+  background: var(--blue-soft);
+}
 .toast-stack {
   position: fixed;
   right: 22px;

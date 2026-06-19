@@ -1291,28 +1291,53 @@ test("CRM shows an impressive whats new dialog after login", () => {
   const loginHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
   assert.match(app, /WHATS_NEW_VERSION/);
-  assert.match(app, /mail-automation-2026-06-19/);
+  assert.match(app, /crm-build-order-2026-06-19/);
   assert.match(app, /maybeShowWhatsNew/);
   assert.match(renderModalSource, /ui\.modal === "whats-new"/);
-  assert.match(renderWhatsNewSource, /Mail integration workspace/);
-  assert.match(renderWhatsNewSource, /Inbox signals become CRM action/);
-  assert.match(renderWhatsNewSource, /Gmail connection/);
-  assert.match(renderWhatsNewSource, /New contacts/);
-  assert.match(renderWhatsNewSource, /Follow-up gaps/);
-  assert.match(renderWhatsNewSource, /Risk wording/);
-  assert.match(renderWhatsNewSource, /Workflow automation/);
-  assert.match(renderWhatsNewSource, /Email templates/);
-  assert.match(renderWhatsNewSource, /Outgoing email/);
-  assert.match(renderWhatsNewSource, /Configuration/);
+  assert.match(renderWhatsNewSource, /Account intelligence release/);
+  assert.match(renderWhatsNewSource, /Account timeline/);
+  assert.match(renderWhatsNewSource, /Email tracking/);
+  assert.match(renderWhatsNewSource, /Workflow builder/);
+  assert.match(renderWhatsNewSource, /Custom reports/);
+  assert.match(renderWhatsNewSource, /Support context/);
+  assert.match(renderWhatsNewSource, /Online guide/);
   assert.match(renderWhatsNewSource, /whats-new-window-bar/);
   assert.match(renderWhatsNewSource, /whats-new-frame/);
   assert.match(renderWhatsNewSource, /data-action="close-whats-new"/);
-  assert.match(renderWhatsNewSource, /Open mail integration/);
+  assert.match(renderWhatsNewSource, /Open user guide/);
   assert.match(loginHandlerSource, /maybeShowWhatsNew\(\)/);
   assert.match(styles, /\.whats-new-modal/);
   assert.match(styles, /\.whats-new-window-bar/);
   assert.match(styles, /\.whats-new-frame/);
   assert.match(styles, /\.whats-new-hero/);
+});
+
+test("CRM page headers expose contextual online help", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderPageHeaderSource = functionSource(app, "renderPageHeader", "renderAdmin");
+  const renderModalSource = functionSource(app, "renderModal", "renderTagDialog");
+  const helpContentSource = functionSource(app, "helpContent", "renderHelpDialog");
+  const renderHelpSource = functionSource(app, "renderHelpDialog", "renderGmailOAuthGuide");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+
+  assert.match(app, /function helpTopicForSection/);
+  assert.match(renderPageHeaderSource, /data-action="open-help"/);
+  assert.match(renderPageHeaderSource, /data-help-topic/);
+  assert.match(renderPageHeaderSource, /aria-label="Open help"/);
+  assert.match(renderModalSource, /ui\.modal === "help"/);
+  assert.match(helpContentSource, /Home guide/);
+  assert.match(helpContentSource, /Accounts guide/);
+  assert.match(helpContentSource, /Reports guide/);
+  assert.match(helpContentSource, /Email integration guide/);
+  assert.match(renderHelpSource, /Online user guide/);
+  assert.match(renderHelpSource, /help-guide-index/);
+  assert.match(clickHandlerSource, /action === "open-help"/);
+  assert.match(clickHandlerSource, /ui\.helpTopic = actionElement\.dataset\.helpTopic/);
+  assert.match(styles, /\.help-button/);
+  assert.match(styles, /\.modal\.help-modal/);
+  assert.match(styles, /\.help-guide/);
+  assert.match(styles, /\.help-guide-index/);
 });
 
 test("CRM rejects stale local sessions but does not log out on protected request failures", () => {

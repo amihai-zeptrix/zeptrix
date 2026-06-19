@@ -1,7 +1,7 @@
 const STORAGE_KEY = "zeptrix-saas-crm-v1";
 const SESSION_KEY = "zeptrix-saas-session-v1";
 const WHATS_NEW_KEY = "zeptrix-crm-whats-new-v1";
-const WHATS_NEW_VERSION = "mail-automation-2026-06-19";
+const WHATS_NEW_VERSION = "crm-build-order-2026-06-19";
 const GMAIL_DISCOVERY_PAGE_SIZE = 10;
 const DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS = 30;
 const MFA_CODE = "123456";
@@ -216,6 +216,7 @@ let ui = {
   selectedCommunicationId: null,
   selectedCampaignId: null,
   selectedReportTemplate: "",
+  helpTopic: "",
   pendingTag: null,
   settingsTab: "mail",
   gmailDiscoveryPage: 1,
@@ -974,11 +975,17 @@ function renderSection() {
 }
 
 function renderPageHeader(title = "Sales pipeline", copy = "Manage deals, track progress, and keep your team in sync.") {
+  const helpTopic = helpTopicForSection();
   return `
     <div class="page-title-row">
       <div><h1>${title}</h1><p class="subcopy">${copy}</p></div>
-      <div><button class="button" data-action="export">⇩ Export</button><button class="button ${ui.importOpen ? "filter-pill" : ""}" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
+      <div><button class="icon-button help-button" data-action="open-help" data-help-topic="${escapeHtml(helpTopic)}" data-tooltip="Open help" aria-label="Open help">?</button><button class="button" data-action="export">⇩ Export</button><button class="button ${ui.importOpen ? "filter-pill" : ""}" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
     </div>${ui.importOpen ? renderImportStrip() : ""}`;
+}
+
+function helpTopicForSection(section = ui.section) {
+  const map = { admin: "admin", home: "home", pipeline: "pipeline", accounts: "accounts", campaigns: "campaigns", contacts: "contacts", activities: "activities", inbox: "inbox", reports: "reports", settings: "email-integration", templates: "email-templates" };
+  return map[section] || "home";
 }
 
 function renderAdmin() {
@@ -2122,6 +2129,7 @@ function renderInboxThread(item, deal) {
 
 function renderModal() {
   if (ui.modal === "whats-new") return renderWhatsNewDialog();
+  if (ui.modal === "help") return renderHelpDialog();
   if (ui.modal === "gmail-oauth-guide") return renderGmailOAuthGuide();
   if (ui.modal === "tag") return renderTagDialog();
   if (ui.modal === "tenant") return renderTenantForm();
@@ -2143,7 +2151,28 @@ function renderTagDialog() {
 }
 
 function renderWhatsNewDialog() {
-  return `<div class="modal-layer center whats-new-layer"><section class="modal whats-new-modal"><div class="whats-new-window-bar"><span></span><span></span><span></span><strong>Product update</strong><button class="close-button" data-action="close-whats-new">×</button></div><div class="whats-new-frame"><header class="whats-new-head"><p class="eyebrow">What's new</p><h2>Mail integration workspace</h2><p>Connect Gmail, enrich CRM data from the inbox, detect account risk, and send follow-up email from one place.</p></header><div class="whats-new-hero"><div><strong>Inbox signals become CRM action</strong><p>Gmail scans now discover new contacts, extract signature details, find silent relationships, detect negative wording, and trigger workflow automation for risky accounts.</p></div><span>Mail AI</span></div><div class="whats-new-grid mail-capability-grid"><article><strong>Gmail connection</strong><small>Use secure OAuth to read Gmail with readonly access while keeping refresh tokens encrypted on the server.</small></article><article><strong>New contacts</strong><small>Find unknown people from recent Gmail threads, show phone numbers from signatures, then add or skip with feedback.</small></article><article><strong>Follow-up gaps</strong><small>Spot contacts that have not received outbound mail in the configured time window.</small></article><article><strong>Risk wording</strong><small>Detect angry, blocked, renewal-risk, and escalation language from scanned correspondence.</small></article><article><strong>Workflow automation</strong><small>Create follow-up activities and tag risky accounts automatically after Gmail scans.</small></article><article><strong>Email templates</strong><small>Manage reusable follow-up templates with account and contact merge fields.</small></article><article><strong>Outgoing email</strong><small>Configure SMTP and send customer email directly from CRM follow-up dialogs.</small></article><article><strong>Configuration</strong><small>Control Gmail lookback days and no-mail thresholds from tenant settings.</small></article></div><div class="form-actions"><button class="button" data-action="close-whats-new">Later</button><button class="button primary" data-action="open-gmail-settings">Open mail integration</button></div></div></section></div>`;
+  return `<div class="modal-layer center whats-new-layer"><section class="modal whats-new-modal"><div class="whats-new-window-bar"><span></span><span></span><span></span><strong>Product update</strong><button class="close-button" data-action="close-whats-new">×</button></div><div class="whats-new-frame"><header class="whats-new-head"><p class="eyebrow">What's new</p><h2>Account intelligence release</h2><p>Five major CRM upgrades now connect email, accounts, workflows, reporting, and support into one customer operating view.</p></header><div class="whats-new-hero"><div><strong>Customer context is now connected</strong><p>Gmail threads attach to accounts, visual automation turns risk into actions, reports show bottlenecks, and support tickets surface SLA and sentiment risk.</p></div><span>CRM OS</span></div><div class="whats-new-grid mail-capability-grid"><article><strong>Account timeline</strong><small>Deals, tasks, campaigns, Gmail signals, relationship moments, and correspondence now form one chronological account story.</small></article><article><strong>Email tracking</strong><small>Sent CRM email and imported Gmail threads show source, tracking status, and account attachment.</small></article><article><strong>Workflow builder</strong><small>Visual rules convert dormant contacts and negative wording into activities and risk tags after Gmail scans.</small></article><article><strong>Custom reports</strong><small>Saved reporting templates cover owner forecast, risk boards, campaign impact, and support health.</small></article><article><strong>Support context</strong><small>Zendesk, Freshdesk, and Gmail-label examples show SLA risk, sentiment, and complaints inside account detail.</small></article><article><strong>Online guide</strong><small>Every page has a question-mark help button that opens the relevant CRM guide section.</small></article></div><div class="form-actions"><button class="button" data-action="close-whats-new">Later</button><button class="button primary" data-action="open-help" data-help-topic="home">Open user guide</button></div></div></section></div>`;
+}
+
+function helpContent() {
+  return {
+    home: { title: "Home guide", copy: "Use Home to see today’s focus, accounts needing attention, correspondence risk, follow-up gaps, and relationship events.", steps: ["Open an account from any attention card to review the full context.", "Use the red risk jump icon to move directly to angry or escalation correspondence.", "Click follow-up actions to open a prefilled email dialog."] },
+    pipeline: { title: "Pipeline guide", copy: "Manage active and closed opportunities from table, Kanban, and dashboard views.", steps: ["Use inline Add deal rows for fast entry.", "Switch to Dashboard for stage distribution and forecast.", "Import CSV, Salesforce, or support context from the page header."] },
+    accounts: { title: "Accounts guide", copy: "Accounts combine contacts, timelines, support context, correspondence, tags, and relationship moments.", steps: ["Open Support context to review SLA and sentiment risk.", "Use Account timeline to see deals, tasks, Gmail, campaigns, and milestones together.", "Tags can segment accounts for campaigns and reports."] },
+    campaigns: { title: "Campaigns guide", copy: "Build recurring account campaigns with tag, level, or account-name targeting.", steps: ["Choose an audience, recurrence, subject, and template.", "Use merge tokens like account name and main contact name.", "Click existing campaigns to inspect recipients and preview content."] },
+    contacts: { title: "Contacts guide", copy: "Find people by name, account, email, owner, stage, phone, or tags.", steps: ["Use search and tag filters together.", "Expand a contact for details and linked account navigation.", "Add or edit tags to drive segmentation and campaigns."] },
+    activities: { title: "Activities guide", copy: "Activities are actionable next steps created manually or by workflow automation.", steps: ["Filter open vs all activities.", "Click a task row or check icon to mark it done.", "Workflow automation can create Gmail risk and dormant-contact tasks."] },
+    inbox: { title: "Inbox guide", copy: "Inbox stores CRM-sent email and Gmail-imported account threads.", steps: ["Click a row to expand the correspondence.", "Use tracking pills to see CRM vs Gmail source.", "Open the linked account from the thread header."] },
+    reports: { title: "Reports guide", copy: "Reports provide saved dashboards for forecast, account risk, campaign impact, and support health.", steps: ["Open saved report templates to focus the report board.", "Use Risk and source table to drill into accounts.", "Support health highlights SLA and sentiment pressure."] },
+    "email-integration": { title: "Email integration guide", copy: "Configure Gmail, outgoing email, templates, workflow automation, and tenant settings.", steps: ["Connect Gmail with readonly OAuth to scan recent inbox messages.", "Configure lookback days and no-mail thresholds.", "Use workflow automation to turn scan signals into tasks and tags."] },
+    "email-templates": { title: "Email templates guide", copy: "Manage reusable templates for follow-ups and campaigns.", steps: ["Create templates with merge fields.", "Select templates in the send email dialog.", "Outgoing email settings control actual sending."] },
+    admin: { title: "Admin guide", copy: "Platform admins manage tenants, login emails, password resets, and invite history.", steps: ["Use tenant edit to update owner login and billing metadata.", "Use reset password to send a temporary password.", "Invite email history shows delivery attempts and generated passwords."] },
+  };
+}
+
+function renderHelpDialog() {
+  const topic = helpContent()[ui.helpTopic || helpTopicForSection()] || helpContent().home;
+  return `<div class="modal-layer center"><section class="modal help-modal"><header class="modal-head"><div><p class="eyebrow">Online user guide</p><h2>${escapeHtml(topic.title)}</h2><p class="subcopy">${escapeHtml(topic.copy)}</p></div><button class="close-button" data-action="close">×</button></header><div class="help-guide">${topic.steps.map((step, index) => `<article><span>${index + 1}</span><p>${escapeHtml(step)}</p></article>`).join("")}</div><div class="help-guide-index">${Object.entries(helpContent()).map(([key, item]) => `<button class="${(ui.helpTopic || helpTopicForSection()) === key ? "is-selected" : ""}" data-action="open-help" data-help-topic="${escapeHtml(key)}">${escapeHtml(item.title.replace(" guide", ""))}</button>`).join("")}</div><div class="form-actions"><button class="button primary" data-action="close">Done</button></div></section></div>`;
 }
 
 function renderGmailOAuthGuide() {
@@ -2599,6 +2628,12 @@ document.addEventListener("click", async (event) => {
       ui.selectedContactEmail = "";
       ui.selectedCommunicationId = null;
     }
+    if (action === "open-help") {
+      ui.modal = "help";
+      ui.helpTopic = actionElement.dataset.helpTopic || helpTopicForSection();
+      render();
+      return;
+    }
     if (action === "open-report-template") {
       ui.section = "reports";
       ui.selectedReportTemplate = actionElement.dataset.reportName || "";
@@ -2864,7 +2899,7 @@ document.addEventListener("click", async (event) => {
         }
       }
     }
-    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.pendingTag = null; ui.importOpen = false; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.editingContactEmail = ""; ui.taskDealId = null; ui.emailDealId = null; ui.emailContext = null; ui.authError = ""; ui.adminNotice = ""; }
+    if (action === "close") { ui.modal = null; ui.selected = null; ui.editing = null; ui.editingTenant = null; ui.pendingTag = null; ui.helpTopic = ""; ui.importOpen = false; ui.inlineDealGroup = null; ui.inlineContactOpen = false; ui.editingContactEmail = ""; ui.taskDealId = null; ui.emailDealId = null; ui.emailContext = null; ui.authError = ""; ui.adminNotice = ""; }
     if (action === "edit-deal") { ui.selected = null; ui.editing = currentTenant().deals.find((deal) => String(deal.id) === String(id)); ui.modal = "deal"; }
     if (action === "toggle-task") {
       const tenant = currentTenant();
