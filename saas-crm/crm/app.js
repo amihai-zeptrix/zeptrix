@@ -1005,11 +1005,20 @@ function renderHome() {
     ${renderPageHeader(`${israelGreeting()}, ${currentUser().name.split(" ")[0]}`, `Here is what is happening in ${tenant.name}.`)}
     ${renderSummary()}
     <section class="admin-grid">
-      <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(({ account, primaryDeal, count, value, reasons }) => `<button class="metric-row attention-row" data-open-account="${escapeHtml(account)}"><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">High</span></button>`).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
+      <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(renderHomeAttentionAccount).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>
       <article class="widget"><h3>Today's focus</h3><button class="summary-card focus-card" data-action="open-activities"><span class="summary-icon" style="background:var(--orange-soft);color:var(--orange)">◴</span><div><small>Open tasks</small><strong>${tasks.length}</strong></div><span class="summary-trend">Open</span></button></article>
       <article class="widget">${renderHomeAttentionPanel(tenant)}</article>
       <article class="widget wide"><div class="panel-head"><h3>Relationship events</h3><button class="icon-button small" data-action="open-activities" data-tooltip="Open activities" aria-label="Open activities">↗</button></div><div class="home-event-list">${homeEvents(tenant).map(renderHomeEvent).join("")}</div></article>
     </section>`;
+}
+
+function renderHomeAttentionAccount(item) {
+  const { account, primaryDeal, count, value, reasons, attentionThreadId } = item;
+  const action = attentionThreadId
+    ? `data-action="focus-home-correspondence-account" data-account="${escapeHtml(account)}" data-thread-id="${escapeHtml(attentionThreadId)}"`
+    : `data-open-account="${escapeHtml(account)}"`;
+  const label = attentionThreadId ? "Attention" : "High";
+  return `<button class="metric-row attention-row" ${action}><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">${label}</span></button>`;
 }
 
 function renderHomeAttentionPanel(tenant = currentTenant()) {
@@ -1084,7 +1093,17 @@ function homeCorrespondenceNeedingAttention(tenant = currentTenant()) {
 }
 
 function renderHomeAttentionThread(thread) {
-  return `<section class="thread-card home-thread-card ${thread.risk ? "risk-thread" : ""}"><header><div><strong>${escapeHtml(thread.subject)}</strong><small>${thread.risk ? "Anger detected · " : ""}${escapeHtml(thread.account)} · ${formatTimestamp(thread.date)}</small></div><span class="thread-actions">${thread.risk ? `<span class="risk-label">Red risk</span>` : ""}<button class="icon-button small" data-open-account="${escapeHtml(thread.account)}" data-tooltip="Open account" aria-label="Open account">↗</button></span></header><div class="thread-messages">${thread.messages.map((message) => `<div class="message-bubble ${message.side}"><small>${escapeHtml(message.author)}</small><p>${escapeHtml(message.body)}</p></div>`).join("")}</div><div class="home-thread-actions"><button class="button primary small" data-action="reply-home-correspondence" data-thread-id="${escapeHtml(thread.id)}">Send email</button></div></section>`;
+  return `<section class="thread-card home-thread-card ${thread.risk ? "risk-thread" : ""}" data-home-thread-id="${escapeHtml(thread.id)}" data-home-thread-account="${escapeHtml(thread.account)}"><header><div><strong>${escapeHtml(thread.subject)}</strong><small>${thread.risk ? "Anger detected · " : ""}${escapeHtml(thread.account)} · ${formatTimestamp(thread.date)}</small></div><span class="thread-actions">${thread.risk ? `<span class="risk-label">Red risk</span>` : ""}<button class="icon-button small" data-open-account="${escapeHtml(thread.account)}" data-tooltip="Open account" aria-label="Open account">↗</button></span></header><div class="thread-messages">${thread.messages.map((message) => `<div class="message-bubble ${message.side}"><small>${escapeHtml(message.author)}</small><p>${escapeHtml(message.body)}</p></div>`).join("")}</div><div class="home-thread-actions"><button class="button primary small" data-action="reply-home-correspondence" data-thread-id="${escapeHtml(thread.id)}">Send email</button></div></section>`;
+}
+
+function focusHomeCorrespondenceAccount(account, threadId = "") {
+  const thread = [...document.querySelectorAll("[data-home-thread-id]")].find((item) => (
+    (threadId && item.dataset.homeThreadId === threadId)
+    || (!threadId && item.dataset.homeThreadAccount === account)
+  ));
+  thread?.scrollIntoView({ behavior: "smooth", block: "center" });
+  thread?.classList.add("is-highlighted");
+  setTimeout(() => thread?.classList.remove("is-highlighted"), 1400);
 }
 
 function homeEvents(tenant = currentTenant()) {
@@ -1136,7 +1155,27 @@ function accountsNeedingAttention(tenant = currentTenant()) {
         reasons: accountAttentionReasons(deal),
       });
     });
-  return [...grouped.values()].sort((a, b) => b.value - a.value);
+  for (const thread of homeAccountAttentionCorrelations(tenant)) {
+    const deal = tenant.deals.find((item) => String(item.id) === String(thread.dealId))
+      || tenant.deals.find((item) => item.account === thread.account);
+    if (!deal) continue;
+    const existing = grouped.get(deal.account) || { account: deal.account, primaryDeal: deal, count: 0, value: Number(deal.value || 0), reasons: [] };
+    grouped.set(deal.account, {
+      ...existing,
+      primaryDeal: Number(deal.value) > Number(existing.primaryDeal.value || 0) ? deal : existing.primaryDeal,
+      count: Math.max(existing.count, 1),
+      value: Math.max(existing.value, Number(deal.value || 0)),
+      reasons: [...new Set(["Correspondence needs attention", thread.subject, ...(existing.reasons || [])])].slice(0, 4),
+      attentionThreadId: existing.attentionThreadId || thread.id,
+      correspondenceRisk: true,
+    });
+  }
+  return [...grouped.values()].sort((a, b) => Number(b.correspondenceRisk) - Number(a.correspondenceRisk) || b.value - a.value);
+}
+
+function homeAccountAttentionCorrelations(tenant = currentTenant()) {
+  return [...homeCorrespondenceRequiringAttention(tenant), ...homeContactsNeedingFollowUp(tenant)]
+    .filter((thread) => thread.dealId && tenant.deals.some((deal) => String(deal.id) === String(thread.dealId)));
 }
 
 function accountAttentionReasons(deal) {
@@ -2179,6 +2218,10 @@ document.addEventListener("click", async (event) => {
   if (actionElement) {
     const { action, group, id, dealId: taskDealId } = actionElement.dataset;
     if (action === "google-sso") startGoogleAuth(actionElement.dataset.mode || "login");
+    if (action === "focus-home-correspondence-account") {
+      focusHomeCorrespondenceAccount(actionElement.dataset.account || "", actionElement.dataset.threadId || "");
+      return;
+    }
     if (action === "jump-risk-thread") {
       document.querySelector(".risk-thread")?.scrollIntoView({ behavior: "smooth", block: "center" });
       document.querySelector(".risk-thread")?.classList.add("is-highlighted");

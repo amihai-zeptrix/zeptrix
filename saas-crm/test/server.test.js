@@ -538,6 +538,9 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   const homeFollowUpSource = functionSource(app, "homeContactsNeedingFollowUp", "homeAccountCorrespondenceNeedingAttention");
   const homeCombinedSource = functionSource(app, "homeCorrespondenceNeedingAttention", "renderHomeAttentionThread");
   const renderHomeThreadSource = functionSource(app, "renderHomeAttentionThread", "homeEvents");
+  const renderHomeAccountSource = functionSource(app, "renderHomeAttentionAccount", "renderHomeAttentionPanel");
+  const accountsNeedingAttentionSource = functionSource(app, "accountsNeedingAttention", "accountAttentionReasons");
+  const focusHomeCorrespondenceSource = functionSource(app, "focusHomeCorrespondenceAccount", "homeEvents");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const renderHomeEventSource = functionSource(app, "renderHomeEvent", "birthdayDate");
 
@@ -545,6 +548,7 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.doesNotMatch(renderHomeSource, /Good morning,/);
   assert.match(israelGreetingSource, /timeZone: "Asia\/Jerusalem"/);
   assert.match(renderHomeSource, /Accounts that need attention/);
+  assert.match(renderHomeSource, /attentionAccounts\.map\(renderHomeAttentionAccount\)/);
   assert.match(renderHomeSource, /Today's focus/);
   assert.match(homeAttentionPanelSource, /Correspondence needing attention/);
   assert.match(renderHomeSource, /Relationship events/);
@@ -566,12 +570,24 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(homeCombinedSource, /sort\(\(a, b\) => Number\(b\.risk\) - Number\(a\.risk\) \|\| Number\(b\.followUp\) - Number\(a\.followUp\)\)/);
   assert.match(renderHomeThreadSource, /data-action="reply-home-correspondence"/);
   assert.match(renderHomeThreadSource, /data-thread-id/);
+  assert.match(renderHomeThreadSource, /data-home-thread-id/);
+  assert.match(renderHomeThreadSource, /data-home-thread-account/);
+  assert.match(renderHomeAccountSource, /data-action="focus-home-correspondence-account"/);
+  assert.match(renderHomeAccountSource, /attentionThreadId/);
+  assert.match(accountsNeedingAttentionSource, /homeAccountAttentionCorrelations\(tenant\)/);
+  assert.match(accountsNeedingAttentionSource, /Correspondence needs attention/);
+  assert.match(accountsNeedingAttentionSource, /correspondenceRisk/);
+  assert.match(focusHomeCorrespondenceSource, /querySelectorAll\("\[data-home-thread-id\]"\)/);
+  assert.match(focusHomeCorrespondenceSource, /scrollIntoView/);
   assert.match(clickHandlerSource, /action === "reply-home-correspondence"/);
   assert.match(clickHandlerSource, /openHomeCorrespondenceEmail\(actionElement\.dataset\.threadId\)/);
+  assert.match(clickHandlerSource, /action === "focus-home-correspondence-account"/);
+  assert.match(clickHandlerSource, /focusHomeCorrespondenceAccount\(actionElement\.dataset\.account/);
   assert.match(renderHomeEventSource, /class="event-account" data-open-account/);
   assert.match(styles, /\.home-thread-list \{\s+display: grid;\s+grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(styles, /\.home-attention-section/);
   assert.match(styles, /\.home-thread-actions/);
+  assert.match(styles, /\.thread-card\.is-highlighted/);
   assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
 });
 

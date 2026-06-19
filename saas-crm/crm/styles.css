@@ -1225,6 +1225,10 @@ h3 { font-size: 14px; }
 .thread-card.risk-thread.is-highlighted {
   box-shadow: 0 0 0 4px #fde1e1, 0 18px 38px rgba(166, 50, 50, .18);
 }
+.thread-card.is-highlighted {
+  border-color: #86aaf2;
+  box-shadow: 0 0 0 4px #dbe8ff, 0 18px 38px rgba(68, 115, 223, .16);
+}
 .thread-card header {
   display: flex;
   justify-content: space-between;
