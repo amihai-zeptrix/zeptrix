@@ -1632,6 +1632,10 @@ function renderAccountDetail(accountDeal, accountCount) {
         <h3>Top contacts</h3>
         <div class="contact-grid">${contacts.map(renderAccountContact).join("")}</div>
       </article>
+      <article class="account-panel account-timeline-panel">
+        <div class="panel-head"><div><h3>Account timeline</h3><p class="subcopy">Every customer signal in one chronological story.</p></div><span class="count">${accountTimeline(accountDeal).length}</span></div>
+        <div class="account-timeline">${accountTimeline(accountDeal).map(renderAccountTimelineItem).join("")}</div>
+      </article>
       <article class="account-panel correspondence-panel">
         <div class="panel-head"><h3>Correspondence</h3><button class="icon-button small" data-action="new-correspondence" data-tooltip="Add correspondence" aria-label="Add correspondence">＋</button></div>
         <div class="thread-list">${threads.map(renderAccountThread).join("")}</div>
@@ -1712,6 +1716,117 @@ function relationshipMoments(accountDeal, contacts) {
 
 function renderRelationshipMoment(moment) {
   return `<div class="moment-row"><span class="moment-date">${formatMomentDate(moment.date)}</span><div><strong>${escapeHtml(moment.title)}</strong><small>${escapeHtml(moment.type)} · ${escapeHtml(moment.detail)}</small></div></div>`;
+}
+
+function accountTimeline(accountDeal) {
+  const tenant = currentTenant();
+  const accountDeals = tenant.deals.filter((deal) => deal.account === accountDeal.account);
+  const dealIds = new Set(accountDeals.map((deal) => String(deal.id)));
+  const contacts = topAccountContacts(accountDeal);
+  const items = [];
+  for (const deal of accountDeals) {
+    items.push({
+      id: `deal-${deal.id}`,
+      type: "Deal",
+      tone: deal.priority === "High" ? "risk" : "deal",
+      date: deal.close || today(),
+      title: `${deal.name} target close`,
+      detail: `${deal.stage} · ${money(deal.value)} · ${deal.owner}`,
+      action: "Open deal",
+      dealId: deal.id,
+    });
+  }
+  for (const task of tenant.tasks.filter((task) => dealIds.has(String(task.dealId)))) {
+    items.push({
+      id: `task-${task.id}`,
+      type: task.completed ? "Completed activity" : "Activity",
+      tone: task.completed ? "done" : task.priority === "High" ? "risk" : "activity",
+      date: task.due || today(),
+      title: task.title,
+      detail: `${task.type} · ${task.owner} · ${task.completed ? "done" : "open"}`,
+      action: task.completed ? "" : "Open activities",
+      section: "activities",
+    });
+  }
+  for (const item of tenant.communications.filter((communication) => dealIds.has(String(communication.dealId)))) {
+    items.push({
+      id: `communication-${item.id}`,
+      type: item.type,
+      tone: item.direction === "inbound" ? "email" : "sent",
+      date: item.date,
+      title: item.subject,
+      detail: `${item.direction} · ${item.owner} · ${item.tracked || "tracked"}`,
+      action: "Open inbox",
+      section: "inbox",
+    });
+  }
+  for (const campaign of (tenant.campaigns || []).filter((campaign) => campaignRecipients(campaign.audienceType, campaign.audienceValue).some((deal) => deal.account === accountDeal.account))) {
+    items.push({
+      id: `campaign-${campaign.id}`,
+      type: "Campaign",
+      tone: "campaign",
+      date: campaign.createdAt || today(),
+      title: campaign.name,
+      detail: `${recurrenceLabel(campaign.recurrence)} · ${campaign.status}`,
+      action: "Open campaigns",
+      section: "campaigns",
+    });
+  }
+  for (const moment of relationshipMoments(accountDeal, contacts).slice(0, 6)) {
+    items.push({
+      id: `moment-${moment.type}-${moment.date}`,
+      type: moment.type,
+      tone: moment.type === "Risk" ? "risk" : "moment",
+      date: moment.date,
+      title: moment.title,
+      detail: moment.detail,
+      action: "",
+    });
+  }
+  for (const signal of gmailDormantContacts(tenant).filter((signal) => signal.account === accountDeal.account)) {
+    items.push({
+      id: `gmail-dormant-${signal.email}`,
+      type: "Gmail follow-up",
+      tone: "activity",
+      date: gmailIntegration(tenant).lastScanAt || today(),
+      title: `No sent email for ${signal.months || gmailIntegration(tenant).staleMonths || 3} months`,
+      detail: `${signal.contact || signal.email} · ${signal.email}`,
+      action: "Send email",
+      email: signal.email,
+    });
+  }
+  for (const signal of gmailAttentionCorrespondence(tenant).filter((signal) => signal.account === accountDeal.account)) {
+    items.push({
+      id: `gmail-risk-${signal.email}`,
+      type: "Risk signal",
+      tone: "risk",
+      date: signal.lastSeenAt || gmailIntegration(tenant).lastScanAt || today(),
+      title: "Negative wording detected",
+      detail: `${signal.contact || signal.email} · ${signal.matches.slice(0, 4).join(", ") || "needs review"}`,
+      action: "Respond",
+      email: signal.email,
+    });
+  }
+  return items
+    .sort((a, b) => new Date(b.date || today()) - new Date(a.date || today()))
+    .slice(0, 16);
+}
+
+function renderAccountTimelineItem(item) {
+  const action = item.dealId
+    ? `<button class="button small" data-open-deal="${escapeHtml(item.dealId)}">${escapeHtml(item.action)}</button>`
+    : item.section
+      ? `<button class="button small" data-section="${escapeHtml(item.section)}">${escapeHtml(item.action)}</button>`
+      : item.email
+        ? `<button class="button small primary" data-action="follow-up-contact" data-email="${escapeHtml(item.email)}">${escapeHtml(item.action)}</button>`
+        : "";
+  return `<div class="timeline-item timeline-${escapeHtml(item.tone)}"><span class="timeline-dot"></span><div><small>${escapeHtml(item.type)} · ${formatTimelineDate(item.date)}</small><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.detail)}</p></div>${action}</div>`;
+}
+
+function formatTimelineDate(value) {
+  if (!value) return "No date";
+  const date = String(value).includes("T") ? new Date(value) : new Date(`${value}T12:00:00`);
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
 }
 
 function accountCorrespondence(accountDeal, contacts) {
