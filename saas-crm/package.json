@@ -7,6 +7,7 @@
   "dependencies": {
     "@aws-sdk/client-ses": "^3.600.0",
     "nodemailer": "^8.0.11",
-    "pg": "^8.21.0"
+    "pg": "^8.21.0",
+    "qrcode": "^1.5.4"
   }
 }

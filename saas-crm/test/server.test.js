@@ -230,6 +230,9 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.match(server, /openid email profile/);
   assert.match(server, /verifyGoogleIdentity/);
   assert.match(server, /exchangeGoogleAuthCode/);
+  assert.match(server, /const QRCode = require\("qrcode"\)/);
+  assert.match(server, /QRCode\.toDataURL\(otpauth/);
+  assert.doesNotMatch(server, /chart\.googleapis\.com\/chart/);
   assert.match(server, /alter table users add column if not exists mfa_enabled/);
   assert.match(server, /alter table users add column if not exists google_subject/);
   assert.match(server, /alter table users add column if not exists last_login_at/);

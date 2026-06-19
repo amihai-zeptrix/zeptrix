@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { SendEmailCommand, SESClient } = require("@aws-sdk/client-ses");
 const nodemailer = require("nodemailer");
 const { Pool } = require("pg");
+const QRCode = require("qrcode");
 
 const root = __dirname;
 loadEnv(path.join(root, ".env"));
@@ -2055,7 +2056,7 @@ async function handleApi(req, res) {
       return json(res, 200, {
         secret,
         otpauth,
-        qrUrl: `https://chart.googleapis.com/chart?cht=qr&chs=220x220&chl=${encodeURIComponent(otpauth)}`,
+        qrUrl: await QRCode.toDataURL(otpauth, { errorCorrectionLevel: "M", margin: 1, width: 220 }),
       });
     } catch (error) {
       return json(res, 500, { error: "Unable to prepare MFA setup.", detail: error.message });
