@@ -715,6 +715,7 @@ test("CRM accounts keep account detail intelligence and correspondence controls"
   assert.match(accountTimelineSource, /sort\(\(a, b\) => new Date\(b\.date/);
   assert.match(app, /function normalizeSupportTickets/);
   assert.match(app, /function defaultSupportTicketsForTenant/);
+  assert.match(app, /\!\["admin", "amihai", "demo"\]\.includes\(tenant\.slug\)/);
   assert.match(app, /function supportTicketRisk/);
   assert.match(app, /function accountSupportHealth/);
   assert.match(app, /Support SLA or complaint risk/);

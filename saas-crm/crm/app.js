@@ -346,6 +346,7 @@ function normalizeSupportTickets(tenant) {
 }
 
 function defaultSupportTicketsForTenant(tenant) {
+  if (!["admin", "amihai", "demo"].includes(tenant.slug) && !["admin", "amihai", "demo"].includes(String(tenant.id))) return [];
   const examples = [
     { account: "Orbital Systems", requester: "Liam Brooks", subject: "Security review answer is overdue", status: "Open", priority: "High", source: "Zendesk", sla: "Breach risk today", sentiment: "Frustrated", updatedAt: "2026-06-12T10:15:00" },
     { account: "Nimbus Labs", requester: "Sophie Green", subject: "Procurement needs rollout clarification", status: "Pending", priority: "High", source: "Gmail label", sla: "Due in 6 hours", sentiment: "Angry", updatedAt: "2026-06-11T16:40:00" },
