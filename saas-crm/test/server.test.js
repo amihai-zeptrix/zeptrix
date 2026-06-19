@@ -695,6 +695,10 @@ test("CRM accounts keep account detail intelligence and correspondence controls"
   assert.match(renderAccountDetailSource, /timeline\.map\(renderAccountTimelineItem\)/);
   assert.match(renderAccountDetailSource, /Correspondence/);
   assert.match(renderAccountDetailSource, /Relationship moments/);
+  assert.match(renderAccountDetailSource, /Support context/);
+  assert.match(renderAccountDetailSource, /accountSupportHealth\(accountDeal\.account\)/);
+  assert.match(renderAccountDetailSource, /supportTicketsForAccount\(accountDeal\.account\)/);
+  assert.match(renderAccountDetailSource, /renderSupportTicket/);
   assert.match(renderAccountDetailSource, /account-reason-chips/);
   assert.match(renderAccountDetailSource, /data-account-tag-select/);
   assert.match(renderAccountDetailSource, /remove-account-tag/);
@@ -709,6 +713,11 @@ test("CRM accounts keep account detail intelligence and correspondence controls"
   assert.match(accountTimelineSource, /gmailDormantContacts\(tenant\)/);
   assert.match(accountTimelineSource, /gmailAttentionCorrespondence\(tenant\)/);
   assert.match(accountTimelineSource, /sort\(\(a, b\) => new Date\(b\.date/);
+  assert.match(app, /function normalizeSupportTickets/);
+  assert.match(app, /function defaultSupportTicketsForTenant/);
+  assert.match(app, /function supportTicketRisk/);
+  assert.match(app, /function accountSupportHealth/);
+  assert.match(app, /Support SLA or complaint risk/);
   assert.match(renderAccountTimelineItemSource, /data-open-deal/);
   assert.match(renderAccountTimelineItemSource, /item\.section && item\.action/);
   assert.match(renderAccountTimelineItemSource, /data-section/);
@@ -719,6 +728,9 @@ test("CRM accounts keep account detail intelligence and correspondence controls"
   assert.match(styles, /\.timeline-item/);
   assert.match(styles, /\.timeline-risk/);
   assert.match(styles, /\.correspondence-panel/);
+  assert.match(styles, /\.support-panel/);
+  assert.match(styles, /\.support-ticket/);
+  assert.match(styles, /\.support-ticket\.support-risk/);
   assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
 });
 
@@ -924,12 +936,17 @@ test("CRM reports provide custom dashboards and saved report templates", () => {
   assert.match(renderReportsSource, /Forecast by owner/);
   assert.match(renderReportsSource, /Stage bottlenecks/);
   assert.match(renderReportsSource, /Risk and source table/);
+  assert.match(renderReportsSource, /Support health/);
+  assert.match(renderReportsSource, /supportRiskTickets/);
+  assert.match(renderReportsSource, /CRM \+ Gmail \+ Support/);
   assert.match(renderReportsSource, /accountsNeedingAttention\(tenant\)/);
   assert.match(renderReportsSource, /const deal = item\.primaryDeal/);
   assert.doesNotMatch(renderReportsSource, /item\.deal\./);
   assert.match(renderReportsSource, /data-open-account/);
   assert.match(customReportSource, /Monthly forecast by owner/);
   assert.match(customReportSource, /Account risk board/);
+  assert.match(customReportSource, /Support SLA health/);
+  assert.match(app, /function reportSupportRows/);
   assert.match(customReportSource, /Campaign impact/);
   assert.match(renderSavedReportSource, /data-action="open-report-template"/);
   assert.match(renderSavedReportSource, /data-report-name/);
@@ -1380,5 +1397,7 @@ test("CRM import options are shown inline from the page header", () => {
   assert.match(clickHandlerSource, /ui\.importOpen = false/);
   assert.match(app, /CSV/);
   assert.match(app, /Salesforce/);
-  assert.match(app, /Zendesk/);
+  assert.match(app, /Zendesk\/Freshdesk/);
+  assert.match(app, /support tickets, SLA risk, and sentiment signals/);
+  assert.match(app, /Support health/);
 });

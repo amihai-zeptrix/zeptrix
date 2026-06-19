@@ -276,6 +276,7 @@ function normalizeData(nextData) {
     outgoingEmail: { ...defaultOutgoingEmail, ...(tenant.outgoingEmail || {}) },
     workflowAutomation: { ...defaultWorkflowAutomation, ...(tenant.workflowAutomation || {}) },
     campaigns: (tenant.campaigns?.length ? tenant.campaigns : defaultCampaignsForTenant(tenant)).map((campaign) => ({ recurrence: "one-time", ...campaign })),
+    supportTickets: normalizeSupportTickets(tenant),
     gmailIntegration: { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) },
     users: (tenant.users || []).map((user) => {
       const generatedPassword = user.password || seedPasswords[user.email] || generateTemporaryPassword();
@@ -326,6 +327,33 @@ function defaultCampaignsForTenant(tenant) {
     { id: 3, name: "Renewal value recap", audienceType: "tag", audienceValue: "Renewal", recurrence: "renewal-window", subject: "Value recap before renewal for {{accountName}}", template: "Hi {{mainContactName}},\n\nAhead of {{closeDate}}, I prepared a short recap of outcomes from {{dealName}} and the next value areas for {{accountName}}.\n\nBest,\n{{ownerName}}", status: "Draft", createdAt: "2026-06-12T11:00:00" },
   ];
   return examples.filter((campaign) => campaign.audienceType !== "tag" || tags.has(campaign.audienceValue));
+}
+
+function normalizeSupportTickets(tenant) {
+  const source = tenant.supportTickets?.length ? tenant.supportTickets : defaultSupportTicketsForTenant(tenant);
+  return source.map((ticket, index) => ({
+    id: ticket.id || `ticket-${index + 1}`,
+    account: ticket.account || tenant.deals[index % Math.max(tenant.deals.length, 1)]?.account || "Unassigned account",
+    requester: ticket.requester || tenant.deals.find((deal) => deal.account === ticket.account)?.contact || "Customer",
+    subject: ticket.subject || "Support request",
+    status: ticket.status || "Open",
+    priority: ticket.priority || "Medium",
+    source: ticket.source || "Zendesk",
+    sla: ticket.sla || "On track",
+    sentiment: ticket.sentiment || "Neutral",
+    updatedAt: ticket.updatedAt || daysFromNow(-index - 1),
+  }));
+}
+
+function defaultSupportTicketsForTenant(tenant) {
+  const examples = [
+    { account: "Orbital Systems", requester: "Liam Brooks", subject: "Security review answer is overdue", status: "Open", priority: "High", source: "Zendesk", sla: "Breach risk today", sentiment: "Frustrated", updatedAt: "2026-06-12T10:15:00" },
+    { account: "Nimbus Labs", requester: "Sophie Green", subject: "Procurement needs rollout clarification", status: "Pending", priority: "High", source: "Gmail label", sla: "Due in 6 hours", sentiment: "Angry", updatedAt: "2026-06-11T16:40:00" },
+    { account: "BluePeak Advisory", requester: "Idan Yuval", subject: "Migration checklist question", status: "Open", priority: "Medium", source: "Freshdesk", sla: "On track", sentiment: "Neutral", updatedAt: "2026-06-10T12:20:00" },
+    { account: "Northline Apps", requester: "Yael Ron", subject: "SLA mapping for pilot support", status: "Open", priority: "Medium", source: "Zendesk", sla: "Due tomorrow", sentiment: "Concerned", updatedAt: "2026-06-09T09:10:00" },
+  ];
+  const accounts = new Set((tenant.deals || []).map((deal) => deal.account));
+  return examples.filter((ticket) => accounts.has(ticket.account));
 }
 
 function loadSession() {
@@ -1209,7 +1237,24 @@ function accountAttentionReasons(deal) {
   if (daysUntil(deal.close) <= 30) reasons.push("Close date approaching");
   if (deal.stage === "Negotiation") reasons.push("Commercial approval pending");
   if (deal.priority === "High") reasons.push("High-value stakeholder follow-up");
+  if (supportTicketsForAccount(deal.account).some((ticket) => supportTicketRisk(ticket))) reasons.push("Support SLA or complaint risk");
   return reasons.length ? reasons : ["Engagement needs review"];
+}
+
+function supportTicketsForAccount(account, tenant = currentTenant()) {
+  return (tenant.supportTickets || []).filter((ticket) => ticket.account === account).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
+function supportTicketRisk(ticket) {
+  return ticket.priority === "High" || /breach|angry|frustrated|concerned|overdue/i.test(`${ticket.sla} ${ticket.sentiment} ${ticket.subject}`);
+}
+
+function accountSupportHealth(account, tenant = currentTenant()) {
+  const tickets = supportTicketsForAccount(account, tenant);
+  const risky = tickets.filter(supportTicketRisk);
+  if (!tickets.length) return { label: "No open support context", tone: "stage-won", count: 0, risky: 0 };
+  if (risky.length) return { label: `${risky.length} support risk${risky.length === 1 ? "" : "s"}`, tone: "stage-negotiation", count: tickets.length, risky: risky.length };
+  return { label: `${tickets.length} support ticket${tickets.length === 1 ? "" : "s"} on track`, tone: "stage-qualified", count: tickets.length, risky: 0 };
 }
 
 function renderSummary(deals = currentTenant().deals) {
@@ -1321,6 +1366,7 @@ function renderReports() {
   const deals = tenant.deals;
   const open = deals.filter((deal) => !["Won", "Lost"].includes(deal.stage));
   const riskAccounts = accountsNeedingAttention(tenant);
+  const supportRiskTickets = tenant.supportTickets.filter(supportTicketRisk);
   const savedReports = customReportDefinitions(tenant);
   return `${renderPageHeader("Reports", "Build saved dashboards for forecast, bottlenecks, account risk, and activity health.")}
     <section class="report-hero">
@@ -1329,20 +1375,21 @@ function renderReports() {
         <span>Owner</span><strong>${new Set(deals.map((deal) => deal.owner)).size} owners</strong>
         <span>Stage</span><strong>${stages.filter((stage) => deals.some((deal) => deal.stage === stage)).length} active stages</strong>
         <span>Risk</span><strong>${riskAccounts.length} accounts</strong>
-        <span>Source</span><strong>CRM + Gmail</strong>
+        <span>Source</span><strong>CRM + Gmail + Support</strong>
       </div>
     </section>
     <div class="summary-grid report-summary">
       ${summaryCard("↗", "var(--blue-soft)", "var(--blue)", "Open pipeline", money(total(open)), `${open.length} deals`)}
       ${summaryCard("◎", "var(--mint-soft)", "var(--mint)", "Weighted forecast", money(weightedForecast()), "by stage confidence")}
       ${summaryCard("!", "#fee2e2", "#b91c1c", "Risk accounts", riskAccounts.length, "need review")}
-      ${summaryCard("◴", "var(--orange-soft)", "var(--orange)", "Open activities", openTasks(tenant).length, "team workload")}
+      ${summaryCard("◴", "var(--orange-soft)", "var(--orange)", "Support risks", supportRiskTickets.length, "SLA and sentiment")}
     </div>
     ${ui.selectedReportTemplate ? `<p class="admin-notice">Opened report template: ${escapeHtml(ui.selectedReportTemplate)}</p>` : ""}
     <section class="report-grid">
       <article class="widget wide report-widget"><div class="panel-head"><h3>Saved reports</h3><span class="subcopy">${savedReports.length} templates</span></div><div class="saved-report-list">${savedReports.map(renderSavedReportCard).join("")}</div></article>
       <article class="widget report-widget"><h3>Forecast by owner</h3>${reportOwnerRows(open).map(renderReportMetricRow).join("")}</article>
       <article class="widget report-widget"><h3>Stage bottlenecks</h3>${reportStageRows(open).map(renderReportMetricRow).join("")}</article>
+      <article class="widget report-widget"><h3>Support health</h3>${reportSupportRows(tenant).map(renderReportMetricRow).join("")}</article>
       <article class="widget wide report-widget"><h3>Risk and source table</h3><table class="report-table"><thead><tr><th>Account</th><th>Owner</th><th>Stage</th><th>Risk reason</th><th>Value</th></tr></thead><tbody>${riskAccounts.slice(0, 8).map((item) => { const deal = item.primaryDeal; return `<tr><td><button class="inline-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button></td><td>${escapeHtml(deal.owner)}</td><td>${escapeHtml(deal.stage)}</td><td>${escapeHtml(item.reasons?.[0] || "Needs review")}</td><td>${money(deal.value)}</td></tr>`; }).join("") || `<tr><td colspan="5" class="empty-state">No account risk detected.</td></tr>`}</tbody></table></article>
     </section>`;
 }
@@ -1350,7 +1397,8 @@ function renderReports() {
 function customReportDefinitions(tenant) {
   return [
     { name: "Monthly forecast by owner", description: "Weighted forecast grouped by owner, stage, and expected close date.", filter: "Owner + stage + close month", metric: money(weightedForecast()) },
-    { name: "Account risk board", description: "Accounts with negative correspondence, dormant contacts, high priority deals, or renewal pressure.", filter: "Risk + Gmail + priority", metric: accountsNeedingAttention(tenant).length },
+    { name: "Account risk board", description: "Accounts with negative correspondence, dormant contacts, support tickets, high priority deals, or renewal pressure.", filter: "Risk + Gmail + support", metric: accountsNeedingAttention(tenant).length },
+    { name: "Support SLA health", description: "Zendesk, Freshdesk, and Gmail support labels grouped by account health and sentiment.", filter: "SLA + source + sentiment", metric: tenant.supportTickets.filter(supportTicketRisk).length },
     { name: "Campaign impact", description: "Campaign audiences, tags, recurrence, and related pipeline for outreach planning.", filter: "Campaign + tag + level", metric: tenant.campaigns?.length || 0 },
   ];
 }
@@ -1373,6 +1421,15 @@ function reportStageRows(deals) {
     const stageDeals = deals.filter((deal) => deal.stage === stage);
     return { label: stage, value: total(stageDeals), valueLabel: money(total(stageDeals)), detail: `${stageDeals.length} deals` };
   }).filter((row) => row.value || row.detail !== "0 deals");
+}
+
+function reportSupportRows(tenant) {
+  return Object.entries((tenant.supportTickets || []).reduce((rows, ticket) => {
+    rows[ticket.source] = rows[ticket.source] || { label: ticket.source, count: 0, risky: 0 };
+    rows[ticket.source].count += 1;
+    if (supportTicketRisk(ticket)) rows[ticket.source].risky += 1;
+    return rows;
+  }, {})).map(([, row]) => ({ label: row.label, value: row.risky, valueLabel: `${row.risky}/${row.count}`, detail: "risky tickets" }));
 }
 
 function renderReportMetricRow(row) {
@@ -1601,7 +1658,7 @@ function mergeMailTemplate(value = "", deal = currentTenant().deals[0]) {
 }
 
 function renderImportStrip() {
-  return `<section class="import-strip"><button data-action="import-source" data-source="csv"><strong>CSV</strong><small>Upload accounts and contacts from a spreadsheet</small></button><button data-action="import-source" data-source="salesforce"><strong>Salesforce</strong><small>Sync leads, accounts, contacts, and owners</small></button><button data-action="import-source" data-source="zendesk"><strong>Zendesk</strong><small>Bring support contacts and account context</small></button></section>`;
+  return `<section class="import-strip"><button data-action="import-source" data-source="csv"><strong>CSV</strong><small>Upload accounts and contacts from a spreadsheet</small></button><button data-action="import-source" data-source="salesforce"><strong>Salesforce</strong><small>Sync leads, accounts, contacts, and owners</small></button><button data-action="import-source" data-source="zendesk"><strong>Zendesk/Freshdesk</strong><small>Bring tickets, SLA risk, complaints, and support context</small></button></section>`;
 }
 
 function renderCampaigns() {
@@ -1673,6 +1730,8 @@ function renderAccountDetail(accountDeal, accountCount) {
   const threads = accountCorrespondence(accountDeal, contacts);
   const reasons = accountAttentionReasons(accountDeal);
   const timeline = accountTimeline(accountDeal);
+  const supportHealth = accountSupportHealth(accountDeal.account);
+  const supportTickets = supportTicketsForAccount(accountDeal.account);
   return `
     ${renderPageHeader(accountDeal.account, `${accountDeals.length} active relationship ${accountDeals.length === 1 ? "record" : "records"} · ${money(total(accountDeals))} pipeline value`)}
     <div class="account-focus-banner"><span class="account-mark">${initials(accountDeal.account)}</span><div><strong>Viewing account</strong><small>${escapeHtml(accountDeal.account)} · opened from account intelligence</small></div><button class="button small" data-action="clear-account-focus">Back to account list</button></div>
@@ -1690,6 +1749,7 @@ function renderAccountDetail(accountDeal, accountCount) {
           <span><small>Stage</small><strong>${escapeHtml(accountDeal.stage)}</strong></span>
           <span><small>Owner</small><strong>${escapeHtml(accountDeal.owner)}</strong></span>
           <span><small>Close date</small><strong>${formatDate(accountDeal.close)}</strong></span>
+          <span><small>Support health</small><strong>${escapeHtml(supportHealth.label)}</strong></span>
         </div>
         <div class="account-summary-actions"><button class="risk-jump-button" data-action="jump-risk-thread" data-tooltip="Jump to anger correspondence" aria-label="Jump to anger correspondence">!</button><span>Anger correspondence detected</span></div>
       </article>
@@ -1701,6 +1761,10 @@ function renderAccountDetail(accountDeal, accountCount) {
         <div class="panel-head"><div><h3>Account timeline</h3><p class="subcopy">Every customer signal in one chronological story.</p></div><span class="count">${timeline.length}</span></div>
         <div class="account-timeline">${timeline.map(renderAccountTimelineItem).join("")}</div>
       </article>
+      <article class="account-panel support-panel">
+        <div class="panel-head"><div><h3>Support context</h3><p class="subcopy">Zendesk, Freshdesk, and Gmail support labels tied to the account.</p></div><span class="status-pill ${supportHealth.tone}">${escapeHtml(supportHealth.label)}</span></div>
+        <div class="support-ticket-list">${supportTickets.map(renderSupportTicket).join("") || `<p class="empty-state compact">No support tickets linked to this account.</p>`}</div>
+      </article>
       <article class="account-panel correspondence-panel">
         <div class="panel-head"><h3>Correspondence</h3><button class="icon-button small" data-action="new-correspondence" data-tooltip="Add correspondence" aria-label="Add correspondence">＋</button></div>
         <div class="thread-list">${threads.map(renderAccountThread).join("")}</div>
@@ -1710,6 +1774,10 @@ function renderAccountDetail(accountDeal, accountCount) {
         <div class="moment-list">${relationshipMoments(accountDeal, contacts).map(renderRelationshipMoment).join("")}</div>
       </article>
     </section>`;
+}
+
+function renderSupportTicket(ticket) {
+  return `<div class="support-ticket ${supportTicketRisk(ticket) ? "support-risk" : ""}"><span class="activity-symbol">${ticket.source === "Gmail label" ? "✉" : "!"}</span><div><strong>${escapeHtml(ticket.subject)}</strong><small>${escapeHtml(ticket.requester)} · ${escapeHtml(ticket.source)} · ${formatTimestamp(ticket.updatedAt)}</small><p>${escapeHtml(ticket.status)} · ${escapeHtml(ticket.priority)} priority · SLA: ${escapeHtml(ticket.sla)} · sentiment: ${escapeHtml(ticket.sentiment)}</p></div></div>`;
 }
 
 function topAccountContacts(accountDeal) {
@@ -2110,7 +2178,7 @@ function renderEmailForm() {
 }
 
 function renderImportModal() {
-  return `<div class="modal-layer center"><section class="modal import-modal"><header class="modal-head"><div><h2>Import accounts and contacts</h2><p class="subcopy">Bring relationship data in from files and connected systems.</p></div><button class="close-button" data-action="close">×</button></header><div class="import-options"><button data-action="import-source" data-source="csv"><strong>CSV import</strong><small>Map columns like account, contact, email, phone, owner, and stage.</small></button><button data-action="import-source" data-source="salesforce"><strong>Salesforce sync</strong><small>Import leads, accounts, contacts, opportunities, owners, and stages.</small></button><button data-action="import-source" data-source="zendesk"><strong>Zendesk sync</strong><small>Import organizations, requesters, support context, and sentiment signals.</small></button></div><div class="import-preview"><h3>Demo mapping preview</h3><div class="import-map"><span>Source field</span><span>Zeptrix field</span><span>Confidence</span><strong>Company / Organization</strong><strong>Account</strong><em>High</em><strong>Name / Requester</strong><strong>Contact</strong><em>High</em><strong>Email</strong><strong>Email</strong><em>High</em><strong>Owner / Assignee</strong><strong>Owner</strong><em>Medium</em></div></div></section></div>`;
+  return `<div class="modal-layer center"><section class="modal import-modal"><header class="modal-head"><div><h2>Import accounts and contacts</h2><p class="subcopy">Bring relationship data in from files and connected systems.</p></div><button class="close-button" data-action="close">×</button></header><div class="import-options"><button data-action="import-source" data-source="csv"><strong>CSV import</strong><small>Map columns like account, contact, email, phone, owner, and stage.</small></button><button data-action="import-source" data-source="salesforce"><strong>Salesforce sync</strong><small>Import leads, accounts, contacts, opportunities, owners, and stages.</small></button><button data-action="import-source" data-source="zendesk"><strong>Zendesk/Freshdesk sync</strong><small>Import organizations, requesters, support tickets, SLA risk, and sentiment signals.</small></button></div><div class="import-preview"><h3>Demo mapping preview</h3><div class="import-map"><span>Source field</span><span>Zeptrix field</span><span>Confidence</span><strong>Company / Organization</strong><strong>Account</strong><em>High</em><strong>Name / Requester</strong><strong>Contact</strong><em>High</em><strong>Email</strong><strong>Email</strong><em>High</em><strong>Ticket priority / SLA</strong><strong>Support health</strong><em>High</em><strong>Owner / Assignee</strong><strong>Owner</strong><em>Medium</em></div></div></section></div>`;
 }
 
 function renderSettings() {

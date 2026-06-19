@@ -1471,6 +1471,44 @@ h3 { font-size: 14px; }
   min-height: 360px;
   flex-direction: column;
 }
+.support-panel {
+  min-height: 300px;
+}
+.support-ticket-list {
+  display: grid;
+  gap: 9px;
+}
+.support-ticket {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.support-ticket strong,
+.support-ticket small,
+.support-ticket p {
+  display: block;
+  min-width: 0;
+}
+.support-ticket small,
+.support-ticket p {
+  color: var(--muted);
+}
+.support-ticket p {
+  margin: 5px 0 0;
+  line-height: 1.4;
+}
+.support-ticket.support-risk {
+  border-color: #efb4b4;
+  background: #fff7f7;
+}
+.support-ticket.support-risk .activity-symbol {
+  color: #b91c1c;
+  background: #fee2e2;
+}
 .moment-list {
   display: grid;
   gap: 9px;
