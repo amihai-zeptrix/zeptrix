@@ -613,6 +613,7 @@ h3 { font-size: 14px; }
   text-align: left;
 }
 .saved-report-card:hover { border-color: #c8dcff; background: #f6f9ff; }
+.saved-report-card.is-selected { border-color: var(--blue); box-shadow: 0 0 0 3px #e7f0ff; }
 .saved-report-card small { color: var(--muted); line-height: 1.45; }
 .saved-report-card span { color: var(--blue); font-size: 11px; font-weight: 900; }
 .saved-report-card em { align-self: end; color: #172033; font: normal 900 20px Manrope, sans-serif; }

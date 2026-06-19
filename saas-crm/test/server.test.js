@@ -912,9 +912,12 @@ test("CRM reports provide custom dashboards and saved report templates", () => {
   const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
   const renderReportsSource = functionSource(app, "renderReports", "customReportDefinitions");
   const customReportSource = functionSource(app, "customReportDefinitions", "renderSavedReportCard");
+  const renderSavedReportSource = functionSource(app, "renderSavedReportCard", "reportOwnerRows");
   const ownerRowsSource = functionSource(app, "reportOwnerRows", "reportStageRows");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
 
   assert.match(renderSectionSource, /ui\.section === "reports"\) return renderReports\(\)/);
+  assert.match(app, /selectedReportTemplate: ""/);
   assert.match(app, /function renderReports/);
   assert.match(renderReportsSource, /Custom reporting/);
   assert.match(renderReportsSource, /savedReports\.map\(renderSavedReportCard\)/);
@@ -922,13 +925,21 @@ test("CRM reports provide custom dashboards and saved report templates", () => {
   assert.match(renderReportsSource, /Stage bottlenecks/);
   assert.match(renderReportsSource, /Risk and source table/);
   assert.match(renderReportsSource, /accountsNeedingAttention\(tenant\)/);
+  assert.match(renderReportsSource, /const deal = item\.primaryDeal/);
+  assert.doesNotMatch(renderReportsSource, /item\.deal\./);
   assert.match(renderReportsSource, /data-open-account/);
   assert.match(customReportSource, /Monthly forecast by owner/);
   assert.match(customReportSource, /Account risk board/);
   assert.match(customReportSource, /Campaign impact/);
+  assert.match(renderSavedReportSource, /data-action="open-report-template"/);
+  assert.match(renderSavedReportSource, /data-report-name/);
+  assert.match(renderSavedReportSource, /is-selected/);
+  assert.match(clickHandlerSource, /action === "open-report-template"/);
+  assert.match(clickHandlerSource, /ui\.selectedReportTemplate = actionElement\.dataset\.reportName/);
   assert.match(ownerRowsSource, /data\.stageProbabilities/);
   assert.match(styles, /\.report-hero/);
   assert.match(styles, /\.saved-report-card/);
+  assert.match(styles, /\.saved-report-card\.is-selected/);
   assert.match(styles, /\.report-metric-row/);
   assert.match(styles, /\.report-table/);
 });

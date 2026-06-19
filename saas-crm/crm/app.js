@@ -215,6 +215,7 @@ let ui = {
   selectedContactEmail: "",
   selectedCommunicationId: null,
   selectedCampaignId: null,
+  selectedReportTemplate: "",
   pendingTag: null,
   settingsTab: "mail",
   gmailDiscoveryPage: 1,
@@ -1337,11 +1338,12 @@ function renderReports() {
       ${summaryCard("!", "#fee2e2", "#b91c1c", "Risk accounts", riskAccounts.length, "need review")}
       ${summaryCard("◴", "var(--orange-soft)", "var(--orange)", "Open activities", openTasks(tenant).length, "team workload")}
     </div>
+    ${ui.selectedReportTemplate ? `<p class="admin-notice">Opened report template: ${escapeHtml(ui.selectedReportTemplate)}</p>` : ""}
     <section class="report-grid">
       <article class="widget wide report-widget"><div class="panel-head"><h3>Saved reports</h3><span class="subcopy">${savedReports.length} templates</span></div><div class="saved-report-list">${savedReports.map(renderSavedReportCard).join("")}</div></article>
       <article class="widget report-widget"><h3>Forecast by owner</h3>${reportOwnerRows(open).map(renderReportMetricRow).join("")}</article>
       <article class="widget report-widget"><h3>Stage bottlenecks</h3>${reportStageRows(open).map(renderReportMetricRow).join("")}</article>
-      <article class="widget wide report-widget"><h3>Risk and source table</h3><table class="report-table"><thead><tr><th>Account</th><th>Owner</th><th>Stage</th><th>Risk reason</th><th>Value</th></tr></thead><tbody>${riskAccounts.slice(0, 8).map((item) => `<tr><td><button class="inline-link" data-open-account="${escapeHtml(item.deal.account)}">${escapeHtml(item.deal.account)}</button></td><td>${escapeHtml(item.deal.owner)}</td><td>${escapeHtml(item.deal.stage)}</td><td>${escapeHtml(item.reasons[0] || "Needs review")}</td><td>${money(item.deal.value)}</td></tr>`).join("") || `<tr><td colspan="5" class="empty-state">No account risk detected.</td></tr>`}</tbody></table></article>
+      <article class="widget wide report-widget"><h3>Risk and source table</h3><table class="report-table"><thead><tr><th>Account</th><th>Owner</th><th>Stage</th><th>Risk reason</th><th>Value</th></tr></thead><tbody>${riskAccounts.slice(0, 8).map((item) => { const deal = item.primaryDeal; return `<tr><td><button class="inline-link" data-open-account="${escapeHtml(deal.account)}">${escapeHtml(deal.account)}</button></td><td>${escapeHtml(deal.owner)}</td><td>${escapeHtml(deal.stage)}</td><td>${escapeHtml(item.reasons?.[0] || "Needs review")}</td><td>${money(deal.value)}</td></tr>`; }).join("") || `<tr><td colspan="5" class="empty-state">No account risk detected.</td></tr>`}</tbody></table></article>
     </section>`;
 }
 
@@ -1354,7 +1356,7 @@ function customReportDefinitions(tenant) {
 }
 
 function renderSavedReportCard(report) {
-  return `<button class="saved-report-card" data-action="open-report-template"><strong>${escapeHtml(report.name)}</strong><small>${escapeHtml(report.description)}</small><span>${escapeHtml(report.filter)}</span><em>${escapeHtml(String(report.metric))}</em></button>`;
+  return `<button class="saved-report-card ${ui.selectedReportTemplate === report.name ? "is-selected" : ""}" data-action="open-report-template" data-report-name="${escapeHtml(report.name)}"><strong>${escapeHtml(report.name)}</strong><small>${escapeHtml(report.description)}</small><span>${escapeHtml(report.filter)}</span><em>${escapeHtml(String(report.metric))}</em></button>`;
 }
 
 function reportOwnerRows(deals) {
@@ -2527,6 +2529,11 @@ document.addEventListener("click", async (event) => {
       ui.accountFocus = "";
       ui.selectedContactEmail = "";
       ui.selectedCommunicationId = null;
+    }
+    if (action === "open-report-template") {
+      ui.section = "reports";
+      ui.selectedReportTemplate = actionElement.dataset.reportName || "";
+      showToast(`${ui.selectedReportTemplate || "Report"} template opened`);
     }
     if (action === "insert-template-token") {
       const token = `{{${actionElement.dataset.token}}}`;
