@@ -477,6 +477,7 @@ test("Gmail attention detection uses a large negative wording lexicon and persis
 test("Gmail scan attaches known account threads to CRM communications with tracking metadata", () => {
   const server = serverSource();
   const app = crmAppSource();
+  const styles = crmStylesSource();
   const schema = fs.readFileSync(path.join(__dirname, "..", "crm", "db", "schema.sql"), "utf8");
   const scanSource = server.slice(server.indexOf("async function scanGmailForTenant"), server.indexOf("async function handleRequest"));
   const rowMapperSource = functionSource(server, "communicationFromRow", "gmailIntegrationFromRow");
@@ -1028,6 +1029,7 @@ test("CRM settings include Gmail mail integration controls", () => {
 test("CRM workflow automation persists rules and runs after Gmail risk scan", () => {
   const server = serverSource();
   const app = crmAppSource();
+  const styles = crmStylesSource();
   const schema = fs.readFileSync(path.join(__dirname, "..", "crm", "db", "schema.sql"), "utf8");
   const normalized = normalizeWorkflowAutomationSettings({
     enabled: false,
@@ -1063,10 +1065,23 @@ test("CRM workflow automation persists rules and runs after Gmail risk scan", ()
   assert.match(app, /defaultWorkflowAutomation/);
   assert.match(app, /workflowAutomation: \{ \.\.\.defaultWorkflowAutomation/);
   assert.match(app, /function renderWorkflowAutomationSettingsPanel/);
+  assert.match(app, /function renderWorkflowRuleCard/);
+  assert.match(app, /class="workflow-builder"/);
+  assert.match(app, /Negative wording detected/);
+  assert.match(app, /No sent email in threshold/);
+  assert.match(app, /Account risk is visible/);
+  assert.match(app, /workflow-connector/);
   assert.match(app, /Run automation after Gmail scan/);
   assert.match(app, /Mark risky accounts/);
   assert.match(app, /Tasks created/);
   assert.match(app, /workflowAutomationFormValues/);
+  assert.match(app, /name="\$\{fieldName\}"/);
+  assert.match(app, /attentionDueDays/);
+  assert.match(app, /dormantDueDays/);
+  assert.match(styles, /\.workflow-builder/);
+  assert.match(styles, /\.workflow-rule-card/);
+  assert.match(styles, /\.workflow-connector/);
+  assert.match(styles, /\.workflow-action/);
 });
 
 test("CRM outgoing email settings and send email flow are wired to SMTP API", () => {

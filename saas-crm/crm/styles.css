@@ -1839,6 +1839,95 @@ h3 { font-size: 14px; }
 .automation-card {
   max-width: 980px;
 }
+.workflow-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr) 24px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d8e1ef;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f8fbff 0%, #fff 100%);
+}
+.workflow-connector {
+  align-self: center;
+  justify-self: center;
+  color: var(--blue);
+  font-weight: 900;
+}
+.workflow-rule-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+.workflow-rule-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.workflow-node {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.workflow-node span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 900;
+}
+.workflow-risk .workflow-node span {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.workflow-tag .workflow-node span {
+  background: #dcfce7;
+  color: #166534;
+}
+.workflow-action {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid #e3eaf4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.workflow-action small {
+  color: var(--muted);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.workflow-action label {
+  display: grid;
+  grid-template-columns: auto minmax(72px, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.workflow-action input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+  font: inherit;
+}
+.workflow-action em {
+  color: var(--muted);
+  font-style: normal;
+}
 .automation-preview {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1859,6 +1948,14 @@ h3 { font-size: 14px; }
 }
 .automation-preview strong {
   font: 800 20px Manrope, sans-serif;
+}
+@media (max-width: 980px) {
+  .workflow-builder {
+    grid-template-columns: 1fr;
+  }
+  .workflow-connector {
+    transform: rotate(90deg);
+  }
 }
 .field label {
   display: flex;

@@ -2185,15 +2185,17 @@ function renderWorkflowAutomationSettingsPanel() {
   return `<section class="settings-card automation-card">
     <div class="panel-head"><div><h3>Workflow automation</h3><p class="subcopy">Turn email risk signals into account actions automatically after each Gmail scan.</p></div><span class="status-pill ${automation.enabled ? "stage-won" : "stage-lead"}">${automation.enabled ? "Enabled" : "Paused"}</span></div>
     <form class="settings-form" data-workflow-automation-form>
+      <div class="workflow-builder">
+        ${renderWorkflowRuleCard("Negative wording detected", "Gmail scan finds anger, escalation, blocked, renewal-risk, or cancellation language.", "Create a high-priority response activity", automation.createFollowUpTasks, "attentionDueDays", automation.attentionDueDays, "days", "risk")}
+        <span class="workflow-connector">→</span>
+        ${renderWorkflowRuleCard("No sent email in threshold", "A known contact has not received an outbound Gmail message in the configured window.", "Create a follow-up activity", automation.createFollowUpTasks, "dormantDueDays", automation.dormantDueDays, "days", "follow")}
+        <span class="workflow-connector">→</span>
+        ${renderWorkflowRuleCard("Account risk is visible", "Related accounts are tagged and surface in Accounts that need attention.", `Apply ${automation.riskTag || "At risk"} tag`, automation.tagRiskAccounts, "riskTag", automation.riskTag, "tag", "tag")}
+      </div>
       <div class="check-list compact">
         <label class="check-row"><input type="checkbox" name="enabled" ${automation.enabled ? "checked" : ""} /><span>Run automation after Gmail scan</span><small>Uses the current Gmail scan results. No separate background job is required.</small></label>
         <label class="check-row"><input type="checkbox" name="createFollowUpTasks" ${automation.createFollowUpTasks ? "checked" : ""} /><span>Create follow-up activities</span><small>Dormant contacts get email tasks; negative wording gets high-priority response tasks.</small></label>
         <label class="check-row"><input type="checkbox" name="tagRiskAccounts" ${automation.tagRiskAccounts ? "checked" : ""} /><span>Mark risky accounts</span><small>Accounts tied to negative correspondence are tagged for account review.</small></label>
-      </div>
-      <div class="form-grid">
-        ${formField("Risk account tag", "riskTag", automation.riskTag, "text", true)}
-        ${formField("Dormant contact task due in days", "dormantDueDays", automation.dormantDueDays, "number", true)}
-        ${formField("Risk response task due in days", "attentionDueDays", automation.attentionDueDays, "number", true)}
       </div>
       <div class="automation-preview">
         <span><small>Last run</small><strong>${automation.lastRunAt ? formatTimestamp(automation.lastRunAt) : "Not run yet"}</strong></span>
@@ -2204,6 +2206,21 @@ function renderWorkflowAutomationSettingsPanel() {
       <div class="form-actions"><span class="subcopy">Saved rules apply on the next Gmail scan.</span><span class="toolbar-spacer"></span><button class="button primary">Save workflow automation</button></div>
     </form>
   </section>`;
+}
+
+function renderWorkflowRuleCard(trigger, condition, action, enabled, fieldName, fieldValue, fieldType, tone) {
+  const input = fieldType === "tag"
+    ? `<input name="${fieldName}" value="${escapeHtml(fieldValue)}" aria-label="${escapeHtml(action)}" />`
+    : `<input name="${fieldName}" type="number" min="${fieldName === "attentionDueDays" ? 0 : 1}" max="${fieldName === "attentionDueDays" ? 14 : 30}" value="${Number(fieldValue)}" aria-label="${escapeHtml(action)}" />`;
+  return `<article class="workflow-rule-card workflow-${tone}">
+    <div class="workflow-node"><span>${tone === "risk" ? "!" : tone === "tag" ? "#" : "↗"}</span><strong>${escapeHtml(trigger)}</strong></div>
+    <p>${escapeHtml(condition)}</p>
+    <div class="workflow-action">
+      <small>${enabled ? "Active action" : "Paused action"}</small>
+      <strong>${escapeHtml(action)}</strong>
+      <label><span>${fieldType === "tag" ? "Tag name" : "Due in"}</span>${input}${fieldType === "tag" ? "" : `<em>days</em>`}</label>
+    </div>
+  </article>`;
 }
 
 function renderConfigurationSettingsPanel() {
