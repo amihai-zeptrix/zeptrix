@@ -906,6 +906,33 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   assert.match(styles, /\.account-tag-editor/);
 });
 
+test("CRM reports provide custom dashboards and saved report templates", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
+  const renderReportsSource = functionSource(app, "renderReports", "customReportDefinitions");
+  const customReportSource = functionSource(app, "customReportDefinitions", "renderSavedReportCard");
+  const ownerRowsSource = functionSource(app, "reportOwnerRows", "reportStageRows");
+
+  assert.match(renderSectionSource, /ui\.section === "reports"\) return renderReports\(\)/);
+  assert.match(app, /function renderReports/);
+  assert.match(renderReportsSource, /Custom reporting/);
+  assert.match(renderReportsSource, /savedReports\.map\(renderSavedReportCard\)/);
+  assert.match(renderReportsSource, /Forecast by owner/);
+  assert.match(renderReportsSource, /Stage bottlenecks/);
+  assert.match(renderReportsSource, /Risk and source table/);
+  assert.match(renderReportsSource, /accountsNeedingAttention\(tenant\)/);
+  assert.match(renderReportsSource, /data-open-account/);
+  assert.match(customReportSource, /Monthly forecast by owner/);
+  assert.match(customReportSource, /Account risk board/);
+  assert.match(customReportSource, /Campaign impact/);
+  assert.match(ownerRowsSource, /data\.stageProbabilities/);
+  assert.match(styles, /\.report-hero/);
+  assert.match(styles, /\.saved-report-card/);
+  assert.match(styles, /\.report-metric-row/);
+  assert.match(styles, /\.report-table/);
+});
+
 test("CRM settings include Gmail mail integration controls", () => {
   const app = crmAppSource();
   const styles = crmStylesSource();

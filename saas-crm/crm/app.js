@@ -937,7 +937,7 @@ function renderSection() {
   if (ui.section === "campaigns") return renderCampaigns();
   if (ui.section === "activities") return renderActivities();
   if (ui.section === "inbox") return renderInbox();
-  if (ui.section === "reports") return `${renderPageHeader("Reports", "Monitor pipeline health and sales performance.")}${renderDashboard()}`;
+  if (ui.section === "reports") return renderReports();
   if (ui.section === "settings") return renderSettingsPage();
   if (ui.section === "templates") return `${renderPageHeader("Email templates", "Manage reusable email templates for follow-ups and outreach.")}${renderTemplatesSettingsPanel()}`;
   return renderHome();
@@ -1313,6 +1313,68 @@ function renderDashboard() {
       <article class="widget"><h3>Win rate</h3><div style="padding:28px 0;text-align:center"><strong style="font:800 46px Manrope;color:var(--mint)">${winRate}%</strong><p class="subcopy">${closed.length} closed deals measured</p></div></article>
       <article class="widget"><h3>Forecast</h3><div style="padding:24px 0"><small class="muted">Weighted pipeline</small><strong style="display:block;margin:8px 0;font:800 30px Manrope">${money(weightedForecast())}</strong><p class="subcopy">Based on editable stage confidence and expected close dates.</p></div></article>
     </section>`;
+}
+
+function renderReports() {
+  const tenant = currentTenant();
+  const deals = tenant.deals;
+  const open = deals.filter((deal) => !["Won", "Lost"].includes(deal.stage));
+  const riskAccounts = accountsNeedingAttention(tenant);
+  const savedReports = customReportDefinitions(tenant);
+  return `${renderPageHeader("Reports", "Build saved dashboards for forecast, bottlenecks, account risk, and activity health.")}
+    <section class="report-hero">
+      <div><p class="eyebrow">Custom reporting</p><h2>${money(weightedForecast())} weighted forecast</h2><p>Saved reports combine pipeline, Gmail risk, activities, campaigns, and account tags into one management view.</p></div>
+      <div class="report-filter-panel">
+        <span>Owner</span><strong>${new Set(deals.map((deal) => deal.owner)).size} owners</strong>
+        <span>Stage</span><strong>${stages.filter((stage) => deals.some((deal) => deal.stage === stage)).length} active stages</strong>
+        <span>Risk</span><strong>${riskAccounts.length} accounts</strong>
+        <span>Source</span><strong>CRM + Gmail</strong>
+      </div>
+    </section>
+    <div class="summary-grid report-summary">
+      ${summaryCard("↗", "var(--blue-soft)", "var(--blue)", "Open pipeline", money(total(open)), `${open.length} deals`)}
+      ${summaryCard("◎", "var(--mint-soft)", "var(--mint)", "Weighted forecast", money(weightedForecast()), "by stage confidence")}
+      ${summaryCard("!", "#fee2e2", "#b91c1c", "Risk accounts", riskAccounts.length, "need review")}
+      ${summaryCard("◴", "var(--orange-soft)", "var(--orange)", "Open activities", openTasks(tenant).length, "team workload")}
+    </div>
+    <section class="report-grid">
+      <article class="widget wide report-widget"><div class="panel-head"><h3>Saved reports</h3><span class="subcopy">${savedReports.length} templates</span></div><div class="saved-report-list">${savedReports.map(renderSavedReportCard).join("")}</div></article>
+      <article class="widget report-widget"><h3>Forecast by owner</h3>${reportOwnerRows(open).map(renderReportMetricRow).join("")}</article>
+      <article class="widget report-widget"><h3>Stage bottlenecks</h3>${reportStageRows(open).map(renderReportMetricRow).join("")}</article>
+      <article class="widget wide report-widget"><h3>Risk and source table</h3><table class="report-table"><thead><tr><th>Account</th><th>Owner</th><th>Stage</th><th>Risk reason</th><th>Value</th></tr></thead><tbody>${riskAccounts.slice(0, 8).map((item) => `<tr><td><button class="inline-link" data-open-account="${escapeHtml(item.deal.account)}">${escapeHtml(item.deal.account)}</button></td><td>${escapeHtml(item.deal.owner)}</td><td>${escapeHtml(item.deal.stage)}</td><td>${escapeHtml(item.reasons[0] || "Needs review")}</td><td>${money(item.deal.value)}</td></tr>`).join("") || `<tr><td colspan="5" class="empty-state">No account risk detected.</td></tr>`}</tbody></table></article>
+    </section>`;
+}
+
+function customReportDefinitions(tenant) {
+  return [
+    { name: "Monthly forecast by owner", description: "Weighted forecast grouped by owner, stage, and expected close date.", filter: "Owner + stage + close month", metric: money(weightedForecast()) },
+    { name: "Account risk board", description: "Accounts with negative correspondence, dormant contacts, high priority deals, or renewal pressure.", filter: "Risk + Gmail + priority", metric: accountsNeedingAttention(tenant).length },
+    { name: "Campaign impact", description: "Campaign audiences, tags, recurrence, and related pipeline for outreach planning.", filter: "Campaign + tag + level", metric: tenant.campaigns?.length || 0 },
+  ];
+}
+
+function renderSavedReportCard(report) {
+  return `<button class="saved-report-card" data-action="open-report-template"><strong>${escapeHtml(report.name)}</strong><small>${escapeHtml(report.description)}</small><span>${escapeHtml(report.filter)}</span><em>${escapeHtml(String(report.metric))}</em></button>`;
+}
+
+function reportOwnerRows(deals) {
+  return Object.entries(deals.reduce((rows, deal) => {
+    rows[deal.owner] = rows[deal.owner] || { label: deal.owner, value: 0, count: 0 };
+    rows[deal.owner].value += Number(deal.value || 0) * ((data.stageProbabilities[deal.stage] || 0) / 100);
+    rows[deal.owner].count += 1;
+    return rows;
+  }, {})).map(([, row]) => ({ ...row, valueLabel: money(row.value), detail: `${row.count} open deals` })).sort((a, b) => b.value - a.value);
+}
+
+function reportStageRows(deals) {
+  return stages.map((stage) => {
+    const stageDeals = deals.filter((deal) => deal.stage === stage);
+    return { label: stage, value: total(stageDeals), valueLabel: money(total(stageDeals)), detail: `${stageDeals.length} deals` };
+  }).filter((row) => row.value || row.detail !== "0 deals");
+}
+
+function renderReportMetricRow(row) {
+  return `<div class="report-metric-row"><span><strong>${escapeHtml(row.label)}</strong><small>${escapeHtml(row.detail)}</small></span><b>${escapeHtml(row.valueLabel)}</b></div>`;
 }
 
 function renderContacts() {
