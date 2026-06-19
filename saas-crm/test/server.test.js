@@ -540,6 +540,8 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   const renderHomeThreadSource = functionSource(app, "renderHomeAttentionThread", "homeEvents");
   const renderHomeAccountSource = functionSource(app, "renderHomeAttentionAccount", "renderHomeAttentionPanel");
   const accountsNeedingAttentionSource = functionSource(app, "accountsNeedingAttention", "accountAttentionReasons");
+  const correlationSource = functionSource(app, "homeAccountAttentionCorrelations", "isOpenDeal");
+  const isOpenDealSource = functionSource(app, "isOpenDeal", "accountAttentionReasons");
   const focusHomeCorrespondenceSource = functionSource(app, "focusHomeCorrespondenceAccount", "homeEvents");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const renderHomeEventSource = functionSource(app, "renderHomeEvent", "birthdayDate");
@@ -574,9 +576,15 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(renderHomeThreadSource, /data-home-thread-account/);
   assert.match(renderHomeAccountSource, /data-action="focus-home-correspondence-account"/);
   assert.match(renderHomeAccountSource, /attentionThreadId/);
+  assert.match(renderHomeAccountSource, /data-open-account="\$\{escapeHtml\(account\)\}"/);
+  assert.match(renderHomeAccountSource, /correlated-attention-row/);
   assert.match(accountsNeedingAttentionSource, /homeAccountAttentionCorrelations\(tenant\)/);
   assert.match(accountsNeedingAttentionSource, /Correspondence needs attention/);
   assert.match(accountsNeedingAttentionSource, /correspondenceRisk/);
+  assert.match(accountsNeedingAttentionSource, /isOpenDeal\(deal\)/);
+  assert.match(correlationSource, /thread\.dealId/);
+  assert.doesNotMatch(homeFollowUpSource, /\|\| tenant\.deals\[0\]/);
+  assert.match(isOpenDealSource, /!\["Won", "Lost"\]\.includes\(deal\.stage\)/);
   assert.match(focusHomeCorrespondenceSource, /querySelectorAll\("\[data-home-thread-id\]"\)/);
   assert.match(focusHomeCorrespondenceSource, /scrollIntoView/);
   assert.match(clickHandlerSource, /action === "reply-home-correspondence"/);
@@ -587,6 +595,8 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(styles, /\.home-thread-list \{\s+display: grid;\s+grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(styles, /\.home-attention-section/);
   assert.match(styles, /\.home-thread-actions/);
+  assert.match(styles, /\.correlated-attention-row/);
+  assert.match(styles, /\.attention-main/);
   assert.match(styles, /\.thread-card\.is-highlighted/);
   assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
 });

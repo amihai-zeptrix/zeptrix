@@ -987,6 +987,22 @@ h3 { font-size: 14px; }
   background: transparent;
   text-align: left;
 }
+.correlated-attention-row {
+  padding: 0;
+}
+.attention-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
 .attention-row .list-primary { flex: 1; }
 .attention-reasons {
   display: flex;

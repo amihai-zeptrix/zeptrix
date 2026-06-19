@@ -1014,11 +1014,10 @@ function renderHome() {
 
 function renderHomeAttentionAccount(item) {
   const { account, primaryDeal, count, value, reasons, attentionThreadId } = item;
-  const action = attentionThreadId
-    ? `data-action="focus-home-correspondence-account" data-account="${escapeHtml(account)}" data-thread-id="${escapeHtml(attentionThreadId)}"`
-    : `data-open-account="${escapeHtml(account)}"`;
   const label = attentionThreadId ? "Attention" : "High";
-  return `<button class="metric-row attention-row" ${action}><span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">${label}</span></button>`;
+  const content = `<span class="list-primary">${escapeHtml(account)}<small>${escapeHtml(primaryDeal.name)} · ${escapeHtml(primaryDeal.contact)}${count > 1 ? ` · ${count} open deals` : ""}</small><span class="attention-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</span></span><strong>${money(value)}</strong><span class="priority priority-high">${label}</span>`;
+  if (!attentionThreadId) return `<button class="metric-row attention-row" data-open-account="${escapeHtml(account)}">${content}</button>`;
+  return `<div class="metric-row attention-row correlated-attention-row"><button class="attention-main" data-action="focus-home-correspondence-account" data-account="${escapeHtml(account)}" data-thread-id="${escapeHtml(attentionThreadId)}">${content}</button><button class="icon-button small" data-open-account="${escapeHtml(account)}" data-tooltip="Open account" aria-label="Open account">↗</button></div>`;
 }
 
 function renderHomeAttentionPanel(tenant = currentTenant()) {
@@ -1056,8 +1055,7 @@ function homeCorrespondenceRequiringAttention(tenant = currentTenant()) {
 function homeContactsNeedingFollowUp(tenant = currentTenant()) {
   return gmailDormantContacts(tenant, Number(gmailIntegration(tenant).staleMonths || 3)).map((contact) => {
     const deal = tenant.deals.find((item) => String(item.email || "").toLowerCase() === String(contact.email || "").toLowerCase())
-      || tenant.deals.find((item) => item.account === contact.account)
-      || tenant.deals[0];
+      || tenant.deals.find((item) => item.account === contact.account);
     return {
       id: `dormant-${contact.email}`,
       account: contact.account || deal?.account || contact.email.split("@")[1],
@@ -1144,7 +1142,7 @@ function birthdayDate(seed) {
 function accountsNeedingAttention(tenant = currentTenant()) {
   const grouped = new Map();
   tenant.deals
-    .filter((deal) => deal.priority === "High" && !["Won", "Lost"].includes(deal.stage))
+    .filter((deal) => deal.priority === "High" && isOpenDeal(deal))
     .forEach((deal) => {
       const existing = grouped.get(deal.account) || { account: deal.account, primaryDeal: deal, count: 0, value: 0 };
       grouped.set(deal.account, {
@@ -1158,6 +1156,7 @@ function accountsNeedingAttention(tenant = currentTenant()) {
   for (const thread of homeAccountAttentionCorrelations(tenant)) {
     const deal = tenant.deals.find((item) => String(item.id) === String(thread.dealId))
       || tenant.deals.find((item) => item.account === thread.account);
+    if (!deal || !isOpenDeal(deal)) continue;
     if (!deal) continue;
     const existing = grouped.get(deal.account) || { account: deal.account, primaryDeal: deal, count: 0, value: Number(deal.value || 0), reasons: [] };
     grouped.set(deal.account, {
@@ -1176,6 +1175,10 @@ function accountsNeedingAttention(tenant = currentTenant()) {
 function homeAccountAttentionCorrelations(tenant = currentTenant()) {
   return [...homeCorrespondenceRequiringAttention(tenant), ...homeContactsNeedingFollowUp(tenant)]
     .filter((thread) => thread.dealId && tenant.deals.some((deal) => String(deal.id) === String(thread.dealId)));
+}
+
+function isOpenDeal(deal) {
+  return deal && !["Won", "Lost"].includes(deal.stage);
 }
 
 function accountAttentionReasons(deal) {
