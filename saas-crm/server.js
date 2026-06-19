@@ -108,6 +108,31 @@ function readBody(req) {
   });
 }
 
+function redactAuditValue(name, value) {
+  return /(password|secret|token|code|temporary|authorization|credential)/i.test(name) ? "[redacted]" : String(value ?? "").slice(0, 500);
+}
+
+function sanitizedAuditMap(value, maxEntries = 40) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .slice(0, maxEntries)
+      .map(([key, item]) => [String(key).slice(0, 80), redactAuditValue(key, item)]),
+  );
+}
+
+function sanitizeAuditDetails(details) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return {};
+  const sanitized = {};
+  if ("section" in details) sanitized.section = String(details.section || "").slice(0, 80);
+  if ("label" in details) sanitized.label = String(details.label || "").slice(0, 160);
+  if ("editedTenantId" in details) sanitized.editedTenantId = String(details.editedTenantId || "").slice(0, 80);
+  if ("editedTenantName" in details) sanitized.editedTenantName = String(details.editedTenantName || "").slice(0, 160);
+  if (details.dataset && typeof details.dataset === "object") sanitized.dataset = sanitizedAuditMap(details.dataset, 20);
+  if (details.fields && typeof details.fields === "object") sanitized.fields = sanitizedAuditMap(details.fields, 50);
+  return sanitized;
+}
+
 function slugify(value) {
   return String(value || "")
     .toLowerCase()
@@ -2425,6 +2450,8 @@ async function handleApi(req, res) {
       const tenant = await dbQuery(`select id, name from tenants where id::text=$1 or slug=$1`, [tenantId]);
       if (!tenant.rows.length) return json(res, 404, { error: "Tenant not found." });
       const details = typeof body.details === "object" && body.details ? body.details : {};
+      if (Buffer.byteLength(JSON.stringify(details), "utf8") > 50_000) return json(res, 413, { error: "Audit details are too large." });
+      const sanitizedDetails = sanitizeAuditDetails(details);
       const result = await dbQuery(
         `insert into audit_logs (tenant_id, user_id, user_email, user_role, event_type, operation, target, details)
          values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
@@ -2437,7 +2464,7 @@ async function handleApi(req, res) {
           String(body.eventType || "ui_event").slice(0, 80),
           String(body.operation || "unknown").slice(0, 160),
           String(body.target || "").slice(0, 220),
-          JSON.stringify(details),
+          JSON.stringify(sanitizedDetails),
         ],
       );
       return json(res, 201, { auditLog: auditLogFromRow({ ...result.rows[0], tenant_name: tenant.rows[0].name }) });

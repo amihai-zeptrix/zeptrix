@@ -684,6 +684,8 @@ test("CRM admin page exposes tenant invite and audit tabs", () => {
   assert.match(renderAdminAuditSource, /audit records/);
   assert.match(renderAdminAuditSource, /renderAuditLogRow/);
   assert.match(renderAdminAuditSource, /tenantName/);
+  assert.match(renderAdminAuditSource, /function auditFieldSummary/);
+  assert.match(renderAdminAuditSource, /Object\.entries\(fields \|\| \{\}\)\.slice\(0, 8\)/);
   assert.match(clickHandlerSource, /dataset\.adminTab/);
   assert.match(clickHandlerSource, /ui\.adminTab = adminTab/);
   assert.match(styles, /\.admin-tabs/);
@@ -703,8 +705,13 @@ test("CRM audit log persists UI actions and form fields for admin review", () =>
   assert.match(server, /audit_logs_created_idx/);
   assert.match(server, /audit_logs_tenant_created_idx/);
   assert.match(server, /function auditLogFromRow/);
+  assert.match(server, /function sanitizeAuditDetails/);
+  assert.match(server, /function sanitizedAuditMap/);
+  assert.match(server, /Audit details are too large/);
+  assert.match(server, /Buffer\.byteLength\(JSON\.stringify\(details\), "utf8"\) > 50_000/);
   assert.match(server, /pathname === "\/api\/audit"/);
   assert.match(server, /insert into audit_logs \(tenant_id, user_id, user_email, user_role, event_type, operation, target, details\)/);
+  assert.match(server, /JSON\.stringify\(sanitizedDetails\)/);
   assert.match(server, /auth\.role === "platform_admin" \? auditLogResult\.rows\.map\(auditLogFromRow\) : \[\]/);
   assert.match(schema, /create table audit_logs/);
   assert.match(schema, /create index audit_logs_tenant_created_idx/);
@@ -713,6 +720,8 @@ test("CRM audit log persists UI actions and form fields for admin review", () =>
   assert.match(app, /function recordAuditEvent/);
   assert.match(app, /function auditClickEvent/);
   assert.match(app, /function auditSubmitEvent/);
+  assert.match(app, /function auditTenantIdForForm/);
+  assert.match(app, /form\.matches\("\[data-tenant-form\]"\) && ui\.editingTenant\?\.id/);
   assert.match(app, /redactAuditValue/);
   assert.match(app, /password\|secret\|token\|code/);
   assert.match(clickHandlerSource, /auditClickEvent\(\{ clickTarget: event\.target/);
@@ -720,6 +729,7 @@ test("CRM audit log persists UI actions and form fields for admin review", () =>
   assert.match(app, /eventType: "button_click"/);
   assert.match(app, /eventType: "form_submit"/);
   assert.match(app, /fields: auditFormFields\(form\)/);
+  assert.match(app, /target: editingTenant\?\.id \? `tenant:\$\{editingTenant\.id\}` : marker/);
 });
 
 test("CRM home keeps attention correspondence and relationship event panels", () => {

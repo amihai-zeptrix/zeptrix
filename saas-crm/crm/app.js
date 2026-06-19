@@ -543,6 +543,11 @@ function auditTenantIdForTarget(target = null) {
   return currentTenant()?.id || session?.tenantId || "";
 }
 
+function auditTenantIdForForm(form) {
+  if (isPlatformAdmin() && form.matches("[data-tenant-form]") && ui.editingTenant?.id) return ui.editingTenant.id;
+  return currentTenant()?.id || session?.tenantId || "";
+}
+
 function localAuditLog(payload) {
   const tenant = data.tenants.find((item) => item.id === payload.tenantId) || currentTenant();
   data.auditLogs = [
@@ -610,12 +615,13 @@ function auditClickEvent({ clickTarget, section, view, dealId, account, contactE
 function auditSubmitEvent(form) {
   if (!session) return;
   const marker = [...form.attributes].find((attribute) => attribute.name.startsWith("data-") && attribute.value === "")?.name || "form";
+  const editingTenant = form.matches("[data-tenant-form]") ? ui.editingTenant : null;
   recordAuditEvent({
-    tenantId: currentTenant()?.id || session.tenantId,
+    tenantId: auditTenantIdForForm(form),
     eventType: "form_submit",
     operation: marker.replace(/^data-/, "").replace(/-form$/, ""),
-    target: marker,
-    details: { section: ui.section, fields: auditFormFields(form) },
+    target: editingTenant?.id ? `tenant:${editingTenant.id}` : marker,
+    details: { section: ui.section, editedTenantId: editingTenant?.id || "", editedTenantName: editingTenant?.name || "", fields: auditFormFields(form) },
   });
 }
 
@@ -1205,8 +1211,15 @@ function renderAdminAuditLog() {
     </section>`;
 }
 
+function auditFieldSummary(fields = {}) {
+  const entries = Object.entries(fields || {}).slice(0, 8);
+  if (!entries.length) return "";
+  const summary = entries.map(([key, value]) => `${key}: ${String(value ?? "").slice(0, 80)}`).join(", ");
+  return ` · fields: ${summary}`;
+}
+
 function renderAuditLogRow(item) {
-  const fields = item.details?.fields ? ` · fields: ${Object.keys(item.details.fields).join(", ")}` : "";
+  const fields = auditFieldSummary(item.details?.fields);
   return `<div class="audit-row"><span class="activity-symbol">◷</span><span class="list-primary">${escapeHtml(item.operation)}<small>${escapeHtml(item.tenantName || "Unknown tenant")} · ${escapeHtml(item.userEmail || "unknown user")} · ${escapeHtml(item.eventType)}${escapeHtml(fields)}</small></span><span class="muted">${formatTimestamp(item.createdAt)}</span><code>${escapeHtml(item.target || "-")}</code></div>`;
 }
 
