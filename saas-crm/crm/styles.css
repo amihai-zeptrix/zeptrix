@@ -1705,6 +1705,30 @@ h3 { font-size: 14px; }
 .detail-label { display: block; margin-bottom: 3px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
 .message-card { padding: 11px; border: 1px solid var(--line); border-radius: 7px; margin-bottom: 8px; }
 .message-card small { display: block; margin: 3px 0 7px; color: var(--muted); }
+.tracking-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #475569;
+  background: #eef2f6;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.tracking-sent {
+  color: #166534;
+  background: #dcfce7;
+}
+.tracking-gmail {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+.tracking-logged {
+  color: #475569;
+  background: #f1f5f9;
+}
 .drawer-task { display: grid; grid-template-columns: 24px 1fr 90px 82px; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
 .drawer-task small { display: block; color: var(--muted); }
 .check-list { display: grid; gap: 9px; }

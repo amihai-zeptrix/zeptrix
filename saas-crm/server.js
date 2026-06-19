@@ -568,6 +568,11 @@ async function initDatabase() {
       body text,
       owner text,
       tracked text,
+      tracking_status text not null default 'Logged',
+      opened_at timestamptz,
+      replied_at timestamptz,
+      gmail_thread_id text,
+      source text not null default 'crm',
       occurred_at timestamptz not null default now()
     )`);
   await dbQuery(`
@@ -673,6 +678,11 @@ async function initDatabase() {
   await dbQuery(`alter table gmail_contact_signals add column if not exists phone text`);
   await dbQuery(`alter table deals add column if not exists phone text`);
   await dbQuery(`alter table deals add column if not exists tags jsonb not null default '[]'::jsonb`);
+  await dbQuery(`alter table communications add column if not exists tracking_status text not null default 'Logged'`);
+  await dbQuery(`alter table communications add column if not exists opened_at timestamptz`);
+  await dbQuery(`alter table communications add column if not exists replied_at timestamptz`);
+  await dbQuery(`alter table communications add column if not exists gmail_thread_id text`);
+  await dbQuery(`alter table communications add column if not exists source text not null default 'crm'`);
   await dbQuery(`alter table gmail_integrations add column if not exists gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365)`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists contact_tags_tenant_name_idx on contact_tags(tenant_id, lower(name))`);
@@ -681,6 +691,7 @@ async function initDatabase() {
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
+  await dbQuery(`create index if not exists communications_tenant_thread_idx on communications(tenant_id, gmail_thread_id)`);
   await dbQuery(`create index if not exists workflow_automations_updated_idx on workflow_automations(updated_at desc)`);
   await seedDatabase();
 }
@@ -1103,6 +1114,11 @@ function communicationFromRow(item) {
     date: item.occurred_at.toISOString(),
     owner: item.owner || "",
     tracked: item.tracked || "",
+    trackingStatus: item.tracking_status || item.tracked || "Logged",
+    openedAt: item.opened_at ? item.opened_at.toISOString() : "",
+    repliedAt: item.replied_at ? item.replied_at.toISOString() : "",
+    gmailThreadId: item.gmail_thread_id || "",
+    source: item.source || "crm",
   };
 }
 
@@ -1562,10 +1578,10 @@ async function sendCrmEmailForTenant(tenantId, auth, payload) {
     text: message.body,
   });
   const saved = await dbQuery(
-    `insert into communications (tenant_id, deal_id, type, direction, subject, body, owner, tracked, occurred_at)
-     values ($1,$2,'Email',$3,$4,$5,$6,$7,now())
+    `insert into communications (tenant_id, deal_id, type, direction, subject, body, owner, tracked, tracking_status, source, occurred_at)
+     values ($1,$2,'Email',$3,$4,$5,$6,$7,$8,'crm',now())
      returning *`,
-    [tenantId, message.dealId, message.direction, message.subject, message.body, auth.name || auth.email || "", response.messageId ? `Sent · ${response.messageId}` : "Sent"],
+    [tenantId, message.dealId, message.direction, message.subject, message.body, auth.name || auth.email || "", response.messageId ? `Sent · ${response.messageId}` : "Sent", response.messageId ? "Sent via SMTP" : "Sent"],
   );
   await dbQuery(`update outgoing_email_settings set status='Last email sent', updated_at=now() where tenant_id=$1`, [tenantId]);
   return { communication: communicationFromRow(saved.rows[0]), messageId: response.messageId || null };
@@ -2147,6 +2163,23 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
       };
     })
     .filter(Boolean);
+  const gmailAccountThreads = fullInboundMessages
+    .map((message) => {
+      if (!message.parsed || isAutomatedSenderEmail(message.parsed.email)) return null;
+      const deal = dealByEmail.get(message.parsed.email);
+      if (!deal) return null;
+      const text = extractGmailMessageText(message.full).slice(0, 1800);
+      return {
+        deal,
+        email: message.parsed.email,
+        name: deal.contact || message.parsed.name || message.parsed.email.split("@")[0],
+        subject: headerValue(message.full, "Subject") || message.full.snippet || "Gmail conversation",
+        body: text || message.full.snippet || "Imported from Gmail scan.",
+        messageId: message.full.id,
+        threadId: message.full.threadId || message.full.id,
+      };
+    })
+    .filter(Boolean);
 
   const dormantChecks = integration.detect_dormant_contacts
     ? await mapLimit(dealsResult.rows.slice(0, 50), 6, async (row) => {
@@ -2177,6 +2210,17 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
         `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, source, message_id, last_seen_at)
          values ($1,'attention_correspondence',$2,$3,$4,$5,$6,now())`,
         [tenantId, item.email, item.name, item.account, item.source, item.messageId],
+      );
+    }
+    for (const item of gmailAccountThreads.slice(0, 75)) {
+      await client.query(
+        `insert into communications
+           (tenant_id, deal_id, type, direction, subject, body, owner, tracked, tracking_status, replied_at, gmail_thread_id, source, occurred_at)
+         select $1,$2,'Email','inbound',$3,$4,$5,$6,$7,now(),$8,'gmail',now()
+         where not exists (
+           select 1 from communications where tenant_id=$1 and gmail_thread_id=$8
+         )`,
+        [tenantId, item.deal.id, item.subject, item.body, item.name, `Gmail thread · ${item.threadId}`, "Imported from Gmail", item.threadId],
       );
     }
     await client.query(`update gmail_integrations set last_scan_at=now(), status='Last scan completed', updated_at=now() where tenant_id=$1`, [tenantId]);

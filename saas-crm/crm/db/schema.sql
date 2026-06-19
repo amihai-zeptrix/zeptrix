@@ -101,6 +101,11 @@ create table communications (
   subject text not null,
   body text,
   tracked text,
+  tracking_status text not null default 'Logged',
+  opened_at timestamptz,
+  replied_at timestamptz,
+  gmail_thread_id text,
+  source text not null default 'crm',
   occurred_at timestamptz not null default now()
 );
 
@@ -171,6 +176,7 @@ create index deals_tenant_stage_idx on deals(tenant_id, stage);
 create index deals_tenant_owner_idx on deals(tenant_id, owner_id);
 create index activities_tenant_due_idx on activities(tenant_id, due_date, completed);
 create index communications_tenant_deal_idx on communications(tenant_id, deal_id, occurred_at desc);
+create index communications_tenant_thread_idx on communications(tenant_id, gmail_thread_id);
 create index invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc);
 create index gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc);
 

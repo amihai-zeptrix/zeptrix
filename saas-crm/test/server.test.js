@@ -474,6 +474,43 @@ test("Gmail attention detection uses a large negative wording lexicon and persis
   assert.match(server, /insert into gmail_contact_signals \(tenant_id, signal_type, email, name, account, source, message_id, last_seen_at\)/);
 });
 
+test("Gmail scan attaches known account threads to CRM communications with tracking metadata", () => {
+  const server = serverSource();
+  const app = crmAppSource();
+  const schema = fs.readFileSync(path.join(__dirname, "..", "crm", "db", "schema.sql"), "utf8");
+  const scanSource = server.slice(server.indexOf("async function scanGmailForTenant"), server.indexOf("async function handleRequest"));
+  const rowMapperSource = functionSource(server, "communicationFromRow", "gmailIntegrationFromRow");
+  const accountTimelineSource = functionSource(app, "accountTimeline", "renderAccountTimelineItem");
+  const renderAccountThreadSource = functionSource(app, "renderAccountThread", "renderReplyComposer");
+  const renderInboxSource = functionSource(app, "renderInbox", "renderInboxThread");
+  const renderInboxThreadSource = functionSource(app, "renderInboxThread", "renderModal");
+
+  assert.match(server, /tracking_status text not null default 'Logged'/);
+  assert.match(server, /gmail_thread_id text/);
+  assert.match(server, /source text not null default 'crm'/);
+  assert.match(server, /add column if not exists tracking_status/);
+  assert.match(server, /add column if not exists gmail_thread_id/);
+  assert.match(server, /communications_tenant_thread_idx/);
+  assert.match(schema, /tracking_status text not null default 'Logged'/);
+  assert.match(schema, /gmail_thread_id text/);
+  assert.match(schema, /communications_tenant_thread_idx/);
+  assert.match(rowMapperSource, /trackingStatus: item\.tracking_status/);
+  assert.match(rowMapperSource, /gmailThreadId: item\.gmail_thread_id/);
+  assert.match(rowMapperSource, /source: item\.source/);
+  assert.match(scanSource, /const gmailAccountThreads = fullInboundMessages/);
+  assert.match(scanSource, /dealByEmail\.get\(message\.parsed\.email\)/);
+  assert.match(scanSource, /insert into communications/);
+  assert.match(scanSource, /tracking_status, replied_at, gmail_thread_id, source/);
+  assert.match(scanSource, /where not exists/);
+  assert.match(scanSource, /Imported from Gmail/);
+  assert.match(accountTimelineSource, /communicationTrackingLabel\(item\)/);
+  assert.match(renderAccountThreadSource, /Gmail · attached/);
+  assert.match(renderInboxSource, /renderTrackingPill\(item\)/);
+  assert.match(renderInboxThreadSource, /thread \$\{escapeHtml\(item\.gmailThreadId\)\}/);
+  assert.match(app, /function communicationTrackingLabel/);
+  assert.match(app, /function renderTrackingPill/);
+});
+
 test("API auth tokens and Gmail labels are signed and bounded", () => {
   const token = signAuthToken({ id: "user-123", tenantId: "tenant-123", email: "owner@example.com", role: "tenant_admin" });
   const auth = verifySignedPayload(token);
@@ -1079,6 +1116,8 @@ test("CRM outgoing email settings and send email flow are wired to SMTP API", ()
   assert.ok(server.includes('pathname.endsWith("/outgoing-email/send")'));
   assert.match(server, /transporter\.sendMail/);
   assert.match(server, /insert into communications/);
+  assert.match(server, /tracking_status, source, occurred_at/);
+  assert.match(server, /Sent via SMTP/);
   assert.match(styles, /\.modal\.email-modal/);
 });
 
