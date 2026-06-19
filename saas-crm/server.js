@@ -2286,21 +2286,43 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
     for (const item of newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT)) {
       await client.query(
         `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, phone, source, message_id, last_seen_at)
-         values ($1,'new_contact',$2,$3,$4,$5,$6,$7,now())`,
+         values ($1,'new_contact',$2,$3,$4,$5,$6,$7,now())
+         on conflict (tenant_id, signal_type, email) do update set
+           name=excluded.name,
+           account=excluded.account,
+           phone=excluded.phone,
+           source=excluded.source,
+           message_id=excluded.message_id,
+           last_seen_at=excluded.last_seen_at,
+           created_at=now()`,
         [tenantId, item.email, item.name, item.account || "", item.phone || "", gmailContactSignalSource(item), item.messageId],
       );
     }
     for (const item of dormant.slice(0, 50)) {
       await client.query(
         `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, source, months, last_seen_at)
-         values ($1,'dormant_contact',$2,$3,$4,$5,$6,now())`,
+         values ($1,'dormant_contact',$2,$3,$4,$5,$6,now())
+         on conflict (tenant_id, signal_type, email) do update set
+           name=excluded.name,
+           account=excluded.account,
+           source=excluded.source,
+           months=excluded.months,
+           last_seen_at=excluded.last_seen_at,
+           created_at=now()`,
         [tenantId, item.email, item.name, item.account, item.source, item.months],
       );
     }
     for (const item of attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT)) {
       await client.query(
         `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, source, message_id, last_seen_at)
-         values ($1,'attention_correspondence',$2,$3,$4,$5,$6,now())`,
+         values ($1,'attention_correspondence',$2,$3,$4,$5,$6,now())
+         on conflict (tenant_id, signal_type, email) do update set
+           name=excluded.name,
+           account=excluded.account,
+           source=excluded.source,
+           message_id=excluded.message_id,
+           last_seen_at=excluded.last_seen_at,
+           created_at=now()`,
         [tenantId, item.email, item.name, item.account, item.source, item.messageId],
       );
     }

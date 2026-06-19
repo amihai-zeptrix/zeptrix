@@ -563,6 +563,9 @@ test("Gmail attention detection uses a large negative wording lexicon and persis
   assert.match(server, /detectNegativeCorrespondence/);
   assert.match(server, /Matched: \$\{matches\.join\(", "\)\}/);
   assert.match(server, /insert into gmail_contact_signals \(tenant_id, signal_type, email, name, account, source, message_id, last_seen_at\)/);
+  assert.match(server, /on conflict \(tenant_id, signal_type, email\) do update set/);
+  assert.match(server, /message_id=excluded\.message_id/);
+  assert.match(server, /months=excluded\.months/);
 });
 
 test("Gmail scan attaches known account threads to CRM communications with tracking metadata", () => {
