@@ -1133,14 +1133,23 @@ test("CRM shows an impressive whats new dialog after login", () => {
   const loginHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
   assert.match(app, /WHATS_NEW_VERSION/);
-  assert.match(app, /gmail-scan-paging-2026-06-15/);
+  assert.match(app, /mail-automation-2026-06-19/);
   assert.match(app, /maybeShowWhatsNew/);
   assert.match(renderModalSource, /ui\.modal === "whats-new"/);
-  assert.match(renderWhatsNewSource, /Gmail integration/);
-  assert.match(renderWhatsNewSource, /Populate accounts/);
+  assert.match(renderWhatsNewSource, /Mail integration workspace/);
+  assert.match(renderWhatsNewSource, /Inbox signals become CRM action/);
+  assert.match(renderWhatsNewSource, /Gmail connection/);
+  assert.match(renderWhatsNewSource, /New contacts/);
+  assert.match(renderWhatsNewSource, /Follow-up gaps/);
+  assert.match(renderWhatsNewSource, /Risk wording/);
+  assert.match(renderWhatsNewSource, /Workflow automation/);
+  assert.match(renderWhatsNewSource, /Email templates/);
+  assert.match(renderWhatsNewSource, /Outgoing email/);
+  assert.match(renderWhatsNewSource, /Configuration/);
   assert.match(renderWhatsNewSource, /whats-new-window-bar/);
   assert.match(renderWhatsNewSource, /whats-new-frame/);
   assert.match(renderWhatsNewSource, /data-action="close-whats-new"/);
+  assert.match(renderWhatsNewSource, /Open mail integration/);
   assert.match(loginHandlerSource, /maybeShowWhatsNew\(\)/);
   assert.match(styles, /\.whats-new-modal/);
   assert.match(styles, /\.whats-new-window-bar/);
