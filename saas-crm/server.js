@@ -1332,11 +1332,13 @@ function userAuthPayload(user) {
 
 function authChallengeForUser(user) {
   const payload = userAuthPayload(user);
+  const mfaRequired = !!payload.mfaEnabled;
   return {
     user: payload,
-    preAuthToken: signPreAuthToken(payload),
-    mfaRequired: !!payload.mfaEnabled,
-    mfaSetupRequired: !!payload.mfaEnabled && !payload.mfaConfirmed,
+    preAuthToken: mfaRequired ? signPreAuthToken(payload) : "",
+    mfaRequired,
+    mfaSetupRequired: mfaRequired && !payload.mfaConfirmed,
+    token: mfaRequired ? "" : signAuthToken(payload),
   };
 }
 

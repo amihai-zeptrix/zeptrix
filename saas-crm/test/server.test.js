@@ -142,6 +142,8 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   const renderRegisterSource = functionSource(app, "renderRegisterForm", "renderPasswordChange");
   const renderMfaSource = functionSource(app, "renderMfa", "renderMfaSetup");
   const renderMfaSetupSource = functionSource(app, "renderMfaSetup", "renderApp");
+  const prepareMfaSource = functionSource(app, "prepareMfaChallenge", "consumeGoogleAuthRedirect");
+  const completeAuthSource = functionSource(app, "completeAuthSession", "consumeGoogleAuthRedirect");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
@@ -192,6 +194,10 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   assert.match(submitHandlerSource, /data-register-form/);
   assert.match(submitHandlerSource, /registerViaApi\(values\)/);
   assert.match(submitHandlerSource, /prepareMfaChallenge\(result\)/);
+  assert.match(prepareMfaSource, /!ui\.pendingUser\.mfaRequired && ui\.pendingUser\.apiToken/);
+  assert.match(prepareMfaSource, /await completeAuthSession\(ui\.pendingUser\)/);
+  assert.match(completeAuthSource, /apiToken: user\.apiToken \|\| ""/);
+  assert.match(completeAuthSource, /await loadStateFromApi\(\)/);
   assert.match(app, /async function mfaSetupViaApi/);
   assert.match(app, /async function mfaVerifyViaApi/);
   assert.match(app, /consumeGoogleAuthRedirect\(\)\.finally/);
@@ -228,14 +234,29 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
     mfaEnabled: true,
     mfaConfirmed: false,
   });
+  const nonMfaChallenge = authChallengeForUser({
+    id: "user-456",
+    tenantId: "tenant-456",
+    tenantName: "Tenant 2",
+    name: "T2 User",
+    email: "t2@example.com",
+    role: "tenant_admin",
+    mustChangePassword: false,
+    mfaEnabled: false,
+    mfaConfirmed: false,
+  });
   const secret = "JBSWY3DPEHPK3PXP";
   const code = totpCode(secret);
   const state = signGoogleAuthState("register");
 
   assert.equal(challenge.mfaRequired, true);
   assert.equal(challenge.mfaSetupRequired, true);
+  assert.equal(challenge.token, "");
   assert.equal(verifyPreAuthToken(challenge.preAuthToken).purpose, "mfa");
   assert.match(verifyPreAuthToken(challenge.preAuthToken).jti, /^[0-9a-f-]{36}$/i);
+  assert.equal(nonMfaChallenge.mfaRequired, false);
+  assert.equal(nonMfaChallenge.preAuthToken, "");
+  assert.equal(verifySignedPayload(nonMfaChallenge.token).tenantId, "tenant-456");
   assert.equal(verifyGoogleAuthState(state).mode, "register");
   assert.match(authenticatorUri({ secret, email: "ron@example.com" }), /^otpauth:\/\/totp\/Zeptrix%20CRM/);
   assert.equal(verifyTotpCode(secret, code), true);

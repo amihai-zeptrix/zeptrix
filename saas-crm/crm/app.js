@@ -571,11 +571,27 @@ function pendingUserFromChallenge(result) {
 async function prepareMfaChallenge(result) {
   if (result.tenant) data.tenants = normalizeData({ ...data, tenants: [...data.tenants.filter((tenant) => tenant.id !== result.tenant.id), result.tenant] }).tenants;
   ui.pendingUser = pendingUserFromChallenge(result);
+  if (!ui.pendingUser.mfaRequired && ui.pendingUser.apiToken) {
+    await completeAuthSession(ui.pendingUser);
+    return;
+  }
   if (ui.pendingUser.mfaSetupRequired && ui.pendingUser.preAuthToken) {
     ui.pendingUser.mfaSetup = await mfaSetupViaApi(ui.pendingUser.preAuthToken);
   }
   ui.authError = "";
   ui.authStep = "mfa";
+}
+
+async function completeAuthSession(user) {
+  session = { email: user.email, name: user.name, role: user.role, tenantId: user.tenantId, forcePasswordChange: !!user.mustChangePassword, apiToken: user.apiToken || "" };
+  ui.tenantId = session.tenantId;
+  ui.section = isPlatformAdmin() ? "admin" : "home";
+  ui.authError = "";
+  ui.authStep = "password";
+  ui.pendingUser = null;
+  saveSession();
+  await loadStateFromApi();
+  maybeShowWhatsNew();
 }
 
 async function consumeGoogleAuthRedirect() {
@@ -3159,14 +3175,7 @@ document.addEventListener("submit", async (event) => {
         render();
         return;
     }
-    session = { email: ui.pendingUser.email, name: ui.pendingUser.name, role: ui.pendingUser.role, tenantId: ui.pendingUser.tenantId, forcePasswordChange: !!ui.pendingUser.mustChangePassword, apiToken: ui.pendingUser.apiToken || "" };
-    ui.tenantId = session.tenantId;
-    ui.section = isPlatformAdmin() ? "admin" : "home";
-    ui.authError = "";
-    ui.authStep = "password";
-    saveSession();
-    await loadStateFromApi();
-    maybeShowWhatsNew();
+    await completeAuthSession(ui.pendingUser);
     render();
     return;
   }
