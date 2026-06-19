@@ -2210,8 +2210,8 @@ function renderWorkflowAutomationSettingsPanel() {
 
 function renderWorkflowRuleCard(trigger, condition, action, enabled, fieldName, fieldValue, fieldType, tone) {
   const input = fieldType === "tag"
-    ? `<input name="${fieldName}" value="${escapeHtml(fieldValue)}" aria-label="${escapeHtml(action)}" />`
-    : `<input name="${fieldName}" type="number" min="${fieldName === "attentionDueDays" ? 0 : 1}" max="${fieldName === "attentionDueDays" ? 14 : 30}" value="${Number(fieldValue)}" aria-label="${escapeHtml(action)}" />`;
+    ? `<input name="${fieldName}" value="${escapeHtml(fieldValue)}" aria-label="${escapeHtml(action)}" required />`
+    : `<input name="${fieldName}" type="number" min="${fieldName === "attentionDueDays" ? 0 : 1}" max="${fieldName === "attentionDueDays" ? 14 : 30}" value="${Number(fieldValue)}" aria-label="${escapeHtml(action)}" required />`;
   return `<article class="workflow-rule-card workflow-${tone}">
     <div class="workflow-node"><span>${tone === "risk" ? "!" : tone === "tag" ? "#" : "↗"}</span><strong>${escapeHtml(trigger)}</strong></div>
     <p>${escapeHtml(condition)}</p>
@@ -2265,13 +2265,15 @@ function gmailFormValues(form) {
 
 function workflowAutomationFormValues(form) {
   const values = Object.fromEntries(new FormData(form));
+  const dormantDueDays = values.dormantDueDays === "" ? defaultWorkflowAutomation.dormantDueDays : values.dormantDueDays;
+  const attentionDueDays = values.attentionDueDays === "" ? defaultWorkflowAutomation.attentionDueDays : values.attentionDueDays;
   return {
     enabled: Boolean(values.enabled),
     createFollowUpTasks: Boolean(values.createFollowUpTasks),
     tagRiskAccounts: Boolean(values.tagRiskAccounts),
     riskTag: values.riskTag || defaultWorkflowAutomation.riskTag,
-    dormantDueDays: Math.max(1, Math.min(30, Number(values.dormantDueDays || defaultWorkflowAutomation.dormantDueDays))),
-    attentionDueDays: Math.max(0, Math.min(14, Number(values.attentionDueDays ?? defaultWorkflowAutomation.attentionDueDays))),
+    dormantDueDays: Math.max(1, Math.min(30, Number(dormantDueDays || defaultWorkflowAutomation.dormantDueDays))),
+    attentionDueDays: Math.max(0, Math.min(14, Number(attentionDueDays ?? defaultWorkflowAutomation.attentionDueDays))),
   };
 }
 

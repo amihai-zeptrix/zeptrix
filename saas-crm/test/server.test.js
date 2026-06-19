@@ -1076,8 +1076,11 @@ test("CRM workflow automation persists rules and runs after Gmail risk scan", ()
   assert.match(app, /Tasks created/);
   assert.match(app, /workflowAutomationFormValues/);
   assert.match(app, /name="\$\{fieldName\}"/);
+  assert.match(app, /aria-label="\$\{escapeHtml\(action\)\}" required/);
   assert.match(app, /attentionDueDays/);
   assert.match(app, /dormantDueDays/);
+  assert.match(app, /values\.attentionDueDays === "" \? defaultWorkflowAutomation\.attentionDueDays/);
+  assert.match(app, /values\.dormantDueDays === "" \? defaultWorkflowAutomation\.dormantDueDays/);
   assert.match(styles, /\.workflow-builder/);
   assert.match(styles, /\.workflow-rule-card/);
   assert.match(styles, /\.workflow-connector/);
