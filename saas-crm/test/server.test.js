@@ -499,12 +499,15 @@ test("Gmail scan attaches known account threads to CRM communications with track
   assert.match(rowMapperSource, /source: item\.source/);
   assert.match(scanSource, /select distinct on \(lower\(email\)\) id, lower\(email\) email, contact, account/);
   assert.match(scanSource, /const gmailAccountThreads = fullInboundMessages/);
+  assert.match(scanSource, /const latestGmailAccountThreads = \[\.\.\.gmailAccountThreads\.reduce/);
+  assert.match(scanSource, /threads\.set\(item\.threadId, item\)/);
   assert.match(scanSource, /dealByEmail\.get\(message\.parsed\.email\)/);
   assert.match(scanSource, /item\.deal\.id/);
   assert.match(scanSource, /insert into communications/);
   assert.match(scanSource, /tracking_status, replied_at, gmail_thread_id, source/);
   assert.match(scanSource, /with updated as/);
   assert.match(scanSource, /update communications/);
+  assert.match(scanSource, /latestGmailAccountThreads\.slice\(0, 75\)/);
   assert.match(scanSource, /where tenant_id=\$1 and gmail_thread_id=\$8/);
   assert.match(scanSource, /where not exists \(select 1 from updated\)/);
   assert.match(scanSource, /Imported from Gmail/);

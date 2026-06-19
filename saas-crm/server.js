@@ -2180,6 +2180,11 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
       };
     })
     .filter(Boolean);
+  const latestGmailAccountThreads = [...gmailAccountThreads.reduce((threads, item) => {
+    const existing = threads.get(item.threadId);
+    if (!existing || String(item.messageId).localeCompare(String(existing.messageId)) > 0) threads.set(item.threadId, item);
+    return threads;
+  }, new Map()).values()];
 
   const dormantChecks = integration.detect_dormant_contacts
     ? await mapLimit(dealsResult.rows.slice(0, 50), 6, async (row) => {
@@ -2212,7 +2217,7 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
         [tenantId, item.email, item.name, item.account, item.source, item.messageId],
       );
     }
-    for (const item of gmailAccountThreads.slice(0, 75)) {
+    for (const item of latestGmailAccountThreads.slice(0, 75)) {
       await client.query(
         `with updated as (
            update communications
