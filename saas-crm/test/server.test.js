@@ -641,6 +641,9 @@ test("CRM accounts keep account detail intelligence and correspondence controls"
   assert.match(renderAccountDetailSource, /Top contacts/);
   assert.match(renderAccountDetailSource, /Account timeline/);
   assert.match(renderAccountDetailSource, /accountTimeline\(accountDeal\)/);
+  assert.match(renderAccountDetailSource, /const timeline = accountTimeline\(accountDeal\)/);
+  assert.match(renderAccountDetailSource, /timeline\.length/);
+  assert.match(renderAccountDetailSource, /timeline\.map\(renderAccountTimelineItem\)/);
   assert.match(renderAccountDetailSource, /Correspondence/);
   assert.match(renderAccountDetailSource, /Relationship moments/);
   assert.match(renderAccountDetailSource, /account-reason-chips/);
@@ -658,6 +661,7 @@ test("CRM accounts keep account detail intelligence and correspondence controls"
   assert.match(accountTimelineSource, /gmailAttentionCorrespondence\(tenant\)/);
   assert.match(accountTimelineSource, /sort\(\(a, b\) => new Date\(b\.date/);
   assert.match(renderAccountTimelineItemSource, /data-open-deal/);
+  assert.match(renderAccountTimelineItemSource, /item\.section && item\.action/);
   assert.match(renderAccountTimelineItemSource, /data-section/);
   assert.match(renderAccountTimelineItemSource, /data-action="follow-up-contact"/);
   assert.match(accountCorrespondenceSource, /Escalation: angry about delays/);

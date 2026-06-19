@@ -1608,6 +1608,7 @@ function renderAccountDetail(accountDeal, accountCount) {
   const contacts = topAccountContacts(accountDeal);
   const threads = accountCorrespondence(accountDeal, contacts);
   const reasons = accountAttentionReasons(accountDeal);
+  const timeline = accountTimeline(accountDeal);
   return `
     ${renderPageHeader(accountDeal.account, `${accountDeals.length} active relationship ${accountDeals.length === 1 ? "record" : "records"} · ${money(total(accountDeals))} pipeline value`)}
     <div class="account-focus-banner"><span class="account-mark">${initials(accountDeal.account)}</span><div><strong>Viewing account</strong><small>${escapeHtml(accountDeal.account)} · opened from account intelligence</small></div><button class="button small" data-action="clear-account-focus">Back to account list</button></div>
@@ -1633,8 +1634,8 @@ function renderAccountDetail(accountDeal, accountCount) {
         <div class="contact-grid">${contacts.map(renderAccountContact).join("")}</div>
       </article>
       <article class="account-panel account-timeline-panel">
-        <div class="panel-head"><div><h3>Account timeline</h3><p class="subcopy">Every customer signal in one chronological story.</p></div><span class="count">${accountTimeline(accountDeal).length}</span></div>
-        <div class="account-timeline">${accountTimeline(accountDeal).map(renderAccountTimelineItem).join("")}</div>
+        <div class="panel-head"><div><h3>Account timeline</h3><p class="subcopy">Every customer signal in one chronological story.</p></div><span class="count">${timeline.length}</span></div>
+        <div class="account-timeline">${timeline.map(renderAccountTimelineItem).join("")}</div>
       </article>
       <article class="account-panel correspondence-panel">
         <div class="panel-head"><h3>Correspondence</h3><button class="icon-button small" data-action="new-correspondence" data-tooltip="Add correspondence" aria-label="Add correspondence">＋</button></div>
@@ -1815,7 +1816,7 @@ function accountTimeline(accountDeal) {
 function renderAccountTimelineItem(item) {
   const action = item.dealId
     ? `<button class="button small" data-open-deal="${escapeHtml(item.dealId)}">${escapeHtml(item.action)}</button>`
-    : item.section
+    : item.section && item.action
       ? `<button class="button small" data-section="${escapeHtml(item.section)}">${escapeHtml(item.action)}</button>`
       : item.email
         ? `<button class="button small primary" data-action="follow-up-contact" data-email="${escapeHtml(item.email)}">${escapeHtml(item.action)}</button>`
