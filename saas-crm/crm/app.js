@@ -455,7 +455,7 @@ function pollGmailScanProgress(tenantId, scanId) {
       ui.gmailScanProgress = { ...(ui.gmailScanProgress || {}), status: "progress unavailable", error: error.message, active: true };
       render();
     }
-  }, 5000);
+  }, 2000);
 }
 
 function showToast(message) {
@@ -2409,7 +2409,7 @@ function renderGmailScanProgress() {
   const scanned = Number(progress.scannedMessages || 0);
   const total = Number(progress.totalMessages || 0);
   const detail = total ? `${scanned} of ${total} emails scanned` : `${scanned} emails scanned`;
-  return `<div class="gmail-progress"><strong>Scanning Gmail...</strong><span>${escapeHtml(detail)}</span><small>Updating every 5 seconds while the scan runs.</small></div>`;
+  return `<div class="gmail-progress"><strong>Scanning Gmail...</strong><span>${escapeHtml(detail)}</span><small>Updating every 2 seconds while the scan runs.</small></div>`;
 }
 
 function renderWorkflowAutomationSettingsPanel() {
@@ -2880,6 +2880,7 @@ document.addEventListener("click", async (event) => {
         if (progressTimer) window.clearInterval(progressTimer);
         ui.gmailScanProgress = { active: false, status: "complete", scannedMessages: result.scannedMessages || 0, totalMessages: result.scannedMessages || 0 };
         setTenant({ ...currentTenant(), gmailIntegration: result.gmailIntegration });
+        if (result.warning) showToast(result.warning);
         if (result.automationSummary) showToast(`Automation created ${Number(result.automationSummary.tasksCreated || 0)} tasks and updated ${Number(result.automationSummary.accountsTagged || 0)} account tags`);
         await loadStateFromApi();
         ui.gmailDiscoveryPage = 1;

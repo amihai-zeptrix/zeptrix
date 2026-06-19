@@ -2316,7 +2316,13 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
     }
     await client.query(`update gmail_integrations set last_scan_at=now(), status='Last scan completed', updated_at=now() where tenant_id=$1`, [tenantId]);
   });
-  const automationSummary = await applyWorkflowAutomationToGmailSignals(tenantId, { dormant: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT) });
+  let automationSummary = null;
+  try {
+    automationSummary = await applyWorkflowAutomationToGmailSignals(tenantId, { dormant: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT) });
+  } catch (error) {
+    console.log(`Gmail scan completed but workflow automation failed for tenant ${tenantId}: ${error.message}`);
+    automationSummary = { tasksCreated: 0, accountsTagged: 0, error: error.message };
+  }
   const result = { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT), automationSummary, scannedMessages: inboundMetadata.length + dormantChecks.length };
   finishGmailScanProgress(scanId, { scannedMessages: inboundMetadata.length, totalMessages: inboundCandidates.length, candidatesFound: newContacts.length, attentionFound: attentionCorrespondence.length, automationSummary });
   return result;
@@ -2953,8 +2959,25 @@ async function handleApi(req, res) {
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
       const result = await scanGmailForTenant(resolved.tenantId, { scanId });
-      const integration = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [resolved.tenantId]);
-      return json(res, 200, { ...result, gmailIntegration: gmailIntegrationFromRow(integration.rows[0], await readGmailSignals(resolved.tenantId)) });
+      try {
+        const integration = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [resolved.tenantId]);
+        return json(res, 200, { ...result, gmailIntegration: gmailIntegrationFromRow(integration.rows[0], await readGmailSignals(resolved.tenantId)) });
+      } catch (error) {
+        console.log(`Gmail scan completed but response hydration failed for tenant ${resolved.tenantId}: ${error.message}`);
+        return json(res, 200, {
+          ...result,
+          warning: `Gmail scan completed, but refreshed signals could not be loaded: ${error.message}`,
+          gmailIntegration: {
+            enabled: true,
+            status: "Last scan completed. Refresh to load the latest Gmail signals.",
+            signals: [
+              ...result.newContacts.map((item) => ({ ...item, type: "new_contact" })),
+              ...result.dormantContacts.map((item) => ({ ...item, type: "dormant_contact" })),
+              ...result.attentionCorrespondence.map((item) => ({ ...item, type: "attention_correspondence" })),
+            ],
+          },
+        });
+      }
     } catch (error) {
       finishGmailScanProgress(scanId, { status: "failed", error: error.message });
       return json(res, 502, { error: "Unable to scan Gmail.", detail: error.message });

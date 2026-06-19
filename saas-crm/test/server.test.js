@@ -1145,6 +1145,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /Preparing Google authorization/);
   assert.match(app, /Redirecting to Google authorization/);
   assert.match(app, /Scanning Gmail\.\.\./);
+  assert.match(app, /\}, 2000\);/);
+  assert.match(app, /Updating every 2 seconds while the scan runs\./);
+  assert.match(app, /if \(result\.warning\) showToast\(result\.warning\)/);
   assert.match(app, /Automation created \$\{Number\(result\.automationSummary\.tasksCreated/);
   assert.match(app, /await loadStateFromApi\(\)/);
   assert.match(app, /Gmail settings saved\./);
@@ -1152,6 +1155,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /ui\.modal === "gmail-oauth-guide"/);
   assert.match(app, /Google Cloud Console/);
   assert.match(serverSource(), /if \(!integration\.account_email \|\| profile\.emailAddress\?\.toLowerCase\(\) !== String\(integration\.account_email\)\.toLowerCase\(\)\)/);
+  assert.match(serverSource(), /Gmail scan completed but workflow automation failed/);
+  assert.match(serverSource(), /Gmail scan completed but response hydration failed/);
+  assert.match(serverSource(), /Last scan completed\. Refresh to load the latest Gmail signals\./);
   assert.match(clickHandlerSource, /data-settings-tab/);
   assert.match(clickHandlerSource, /action === "connect-gmail"/);
   assert.match(clickHandlerSource, /action === "scan-gmail"/);
