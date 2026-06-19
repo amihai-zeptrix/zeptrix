@@ -2105,7 +2105,7 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
   const staleMonths = Math.max(1, Number(integration.stale_months || 3));
   const gmailLookbackDays = Math.max(1, Math.min(365, Number(integration.gmail_lookback_days || GMAIL_NEW_CONTACT_LOOKBACK_DAYS)));
   const [dealsResult, blacklistResult, inboundList] = await Promise.all([
-    dbQuery(`select distinct lower(email) email, contact, account from deals where tenant_id=$1 and email is not null and email<>''`, [tenantId]),
+    dbQuery(`select distinct on (lower(email)) id, lower(email) email, contact, account from deals where tenant_id=$1 and email is not null and email<>'' order by lower(email), updated_at desc`, [tenantId]),
     dbQuery(`select lower(email::text) email from gmail_contact_blacklist where tenant_id=$1`, [tenantId]),
     integration.detect_new_contacts
       ? listGmailMessages(accessToken, { q: `${gmailNewContactScope(integration.labels)} newer_than:${gmailLookbackDays}d -in:sent` }, GMAIL_NEW_CONTACT_METADATA_LIMIT)
@@ -2214,12 +2214,23 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
     }
     for (const item of gmailAccountThreads.slice(0, 75)) {
       await client.query(
-        `insert into communications
+        `with updated as (
+           update communications
+              set deal_id=$2,
+                  subject=$3,
+                  body=$4,
+                  owner=$5,
+                  tracked=$6,
+                  tracking_status=$7,
+                  replied_at=now(),
+                  occurred_at=now()
+            where tenant_id=$1 and gmail_thread_id=$8
+            returning id
+         )
+         insert into communications
            (tenant_id, deal_id, type, direction, subject, body, owner, tracked, tracking_status, replied_at, gmail_thread_id, source, occurred_at)
          select $1,$2,'Email','inbound',$3,$4,$5,$6,$7,now(),$8,'gmail',now()
-         where not exists (
-           select 1 from communications where tenant_id=$1 and gmail_thread_id=$8
-         )`,
+          where not exists (select 1 from updated)`,
         [tenantId, item.deal.id, item.subject, item.body, item.name, `Gmail thread · ${item.threadId}`, "Imported from Gmail", item.threadId],
       );
     }
