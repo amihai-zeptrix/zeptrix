@@ -108,8 +108,15 @@ function readBody(req) {
   });
 }
 
+const AUDIT_VALUE_ALLOWLIST = new Set([
+  "account", "enabled", "gmailLookbackDays", "group", "priority", "recurrence", "region", "seats", "stage", "status", "type", "value",
+  "close", "due", "staleMonths", "detectNewContacts", "detectDormantContacts", "createFollowUpTasks", "tagRiskAccounts", "dormantDueDays", "attentionDueDays",
+]);
+
 function redactAuditValue(name, value) {
-  return /(password|secret|token|code|temporary|authorization|credential)/i.test(name) ? "[redacted]" : String(value ?? "").slice(0, 500);
+  const field = String(name || "");
+  if (!AUDIT_VALUE_ALLOWLIST.has(field) || /(password|secret|token|code|temporary|authorization|credential|email|phone|body|subject|message|note|template|client|smtp|label|uri|url|name|contact|owner|user)/i.test(field)) return "[redacted]";
+  return String(value ?? "").slice(0, 500);
 }
 
 function sanitizedAuditMap(value, maxEntries = 40) {
@@ -125,6 +132,7 @@ function sanitizeAuditDetails(details) {
   if (!details || typeof details !== "object" || Array.isArray(details)) return {};
   const sanitized = {};
   if ("section" in details) sanitized.section = String(details.section || "").slice(0, 80);
+  if ("status" in details) sanitized.status = String(details.status || "").slice(0, 40);
   if ("label" in details) sanitized.label = String(details.label || "").slice(0, 160);
   if ("editedTenantId" in details) sanitized.editedTenantId = String(details.editedTenantId || "").slice(0, 80);
   if ("editedTenantName" in details) sanitized.editedTenantName = String(details.editedTenantName || "").slice(0, 160);
@@ -1313,6 +1321,28 @@ function auditLogFromRow(row) {
     details: row.details || {},
     createdAt: row.created_at ? row.created_at.toISOString() : "",
   };
+}
+
+async function recordServerAudit({ auth, tenantId, eventType = "server_mutation", operation, target = "", details = {} }) {
+  if (!pool || !auth) return;
+  try {
+    await dbQuery(
+      `insert into audit_logs (tenant_id, user_id, user_email, user_role, event_type, operation, target, details)
+       values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+      [
+        tenantId || null,
+        auth.userId || null,
+        auth.email || "",
+        auth.role || "",
+        eventType,
+        String(operation || "unknown").slice(0, 160),
+        String(target || "").slice(0, 220),
+        JSON.stringify(sanitizeAuditDetails(details)),
+      ],
+    );
+  } catch (error) {
+    console.log(`Audit log write failed for ${operation}: ${error.message}`);
+  }
 }
 
 async function authenticateUser(email, password) {
@@ -2714,7 +2744,8 @@ async function handleApi(req, res) {
   if (req.method === "POST" && pathname === "/api/tenants") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!requirePlatformAdmin(req, res)) return;
+      const auth = requirePlatformAdmin(req, res);
+      if (!auth) return;
       const payload = normalizeTenantPayload(await readBody(req));
       const validationError = validateTenant(payload);
       if (validationError) return json(res, 400, { error: validationError });
@@ -2752,6 +2783,7 @@ async function handleApi(req, res) {
         to: payload.ownerEmail,
         temporaryPassword,
       });
+      await recordServerAudit({ auth, tenantId: created.tenantRow.id, operation: "create-tenant", target: `tenant:${created.tenantRow.id}`, details: { fields: payload } });
 
       return json(res, 201, {
         tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []),
@@ -2768,7 +2800,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const deal = await upsertDealForTenant(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const deal = await upsertDealForTenant(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "create-deal", target: `deal:${deal.id}`, details: { fields: payload } });
       return json(res, 201, { deal });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save contact or deal.", detail: error.statusCode ? undefined : error.message });
@@ -2783,8 +2817,10 @@ async function handleApi(req, res) {
       const dealId = decodeURIComponent(parts.at(-1));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const deal = await upsertDealForTenant(resolved.tenantId, await readBody(req), dealId);
+      const payload = await readBody(req);
+      const deal = await upsertDealForTenant(resolved.tenantId, payload, dealId);
       if (!deal) return json(res, 404, { error: "Deal not found." });
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-deal", target: `deal:${deal.id}`, details: { fields: payload } });
       return json(res, 200, { deal });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to update contact or deal.", detail: error.statusCode ? undefined : error.message });
@@ -2801,6 +2837,7 @@ async function handleApi(req, res) {
       if (!resolved) return;
       const result = await dbQuery(`delete from deals where tenant_id=$1 and id=$2 returning id`, [resolved.tenantId, dealId]);
       if (!result.rows.length) return json(res, 404, { error: "Deal not found." });
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "delete-deal", target: `deal:${result.rows[0].id}` });
       return json(res, 200, { ok: true, id: result.rows[0].id });
     } catch (error) {
       return json(res, 500, { error: "Unable to delete contact or deal.", detail: error.message });
@@ -2815,6 +2852,7 @@ async function handleApi(req, res) {
       if (!resolved) return;
       const body = await readBody(req);
       const tags = await createContactTagForTenant(resolved.tenantId, body.name || body.tag);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "create-tag", target: `tag:${String(body.name || body.tag || "").slice(0, 80)}`, details: { fields: body } });
       return json(res, 201, { tags });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save tag.", detail: error.statusCode ? undefined : error.message });
@@ -2827,7 +2865,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const template = await upsertMailTemplateForTenant(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const template = await upsertMailTemplateForTenant(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "create-mail-template", target: `template:${template.id}`, details: { fields: payload } });
       return json(res, 201, { template });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save mail template.", detail: error.statusCode ? undefined : error.message });
@@ -2842,8 +2882,10 @@ async function handleApi(req, res) {
       const templateId = decodeURIComponent(parts.at(-1));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const template = await upsertMailTemplateForTenant(resolved.tenantId, await readBody(req), templateId);
+      const payload = await readBody(req);
+      const template = await upsertMailTemplateForTenant(resolved.tenantId, payload, templateId);
       if (!template) return json(res, 404, { error: "Mail template not found." });
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-mail-template", target: `template:${template.id}`, details: { fields: payload } });
       return json(res, 200, { template });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to update mail template.", detail: error.statusCode ? undefined : error.message });
@@ -2860,6 +2902,7 @@ async function handleApi(req, res) {
       if (!resolved) return;
       const result = await dbQuery(`delete from mail_templates where tenant_id=$1 and id=$2 returning id`, [resolved.tenantId, templateId]);
       if (!result.rows.length) return json(res, 404, { error: "Mail template not found." });
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "delete-mail-template", target: `template:${result.rows[0].id}` });
       return json(res, 200, { ok: true, id: result.rows[0].id });
     } catch (error) {
       return json(res, 500, { error: "Unable to delete mail template.", detail: error.message });
@@ -2869,13 +2912,15 @@ async function handleApi(req, res) {
   if (req.method === "PUT" && /^\/api\/tenants\/[^/]+$/.test(pathname)) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!requirePlatformAdmin(req, res)) return;
+      const auth = requirePlatformAdmin(req, res);
+      if (!auth) return;
       const id = decodeURIComponent(pathname.split("/").pop());
       const payload = normalizeTenantPayload(await readBody(req));
       const validationError = validateTenant(payload);
       if (validationError) return json(res, 400, { error: validationError });
       const result = await updateTenant(id, payload);
       if (!result) return json(res, 404, { error: "Tenant not found." });
+      await recordServerAudit({ auth, tenantId: result.tenant.id, operation: "update-tenant", target: `tenant:${result.tenant.id}`, details: { fields: payload } });
       return json(res, 200, { tenant: tenantFromRow(result.tenant, result.user ? [result.user] : [], [], [], []) });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to update tenant.", detail: error.statusCode ? undefined : error.message });
@@ -2885,7 +2930,8 @@ async function handleApi(req, res) {
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/reset-password")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!requirePlatformAdmin(req, res)) return;
+      const auth = requirePlatformAdmin(req, res);
+      if (!auth) return;
       const id = decodeURIComponent(pathname.split("/").at(-2));
       const userResult = await dbQuery(
         `select u.id user_id, u.email, t.id tenant_id, t.name tenant_name
@@ -2910,6 +2956,7 @@ async function handleApi(req, res) {
         to: user.email,
         temporaryPassword,
       });
+      await recordServerAudit({ auth, tenantId: user.tenant_id, operation: "reset-tenant-password", target: `tenant:${user.tenant_id}` });
       return json(res, 200, { ok: true, inviteEmail });
     } catch (error) {
       return json(res, 500, { error: "Unable to reset password.", detail: error.message });
@@ -2919,10 +2966,12 @@ async function handleApi(req, res) {
   if (req.method === "DELETE" && /^\/api\/tenants\/[^/]+$/.test(pathname)) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!requirePlatformAdmin(req, res)) return;
+      const auth = requirePlatformAdmin(req, res);
+      if (!auth) return;
       const id = decodeURIComponent(pathname.split("/").pop());
-      const result = await dbQuery(`delete from tenants where id::text=$1 or slug=$1 returning slug`, [id]);
+      const result = await dbQuery(`delete from tenants where id::text=$1 or slug=$1 returning id, slug`, [id]);
       if (!result.rows.length) return json(res, 404, { error: "Tenant not found." });
+      await recordServerAudit({ auth, tenantId: null, operation: "delete-tenant", target: `tenant:${result.rows[0].slug}`, details: { editedTenantId: result.rows[0].id, editedTenantName: result.rows[0].slug } });
       return json(res, 200, { ok: true, slug: result.rows[0].slug });
     } catch (error) {
       return json(res, 500, { error: "Unable to delete tenant.", detail: error.message });
@@ -2935,7 +2984,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const gmailIntegration = await upsertGmailSettings(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const gmailIntegration = await upsertGmailSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-gmail-settings", target: "gmail-settings", details: { fields: payload } });
       return json(res, 200, { gmailIntegration });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save Gmail settings.", detail: error.statusCode ? undefined : error.message });
@@ -2948,7 +2999,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const gmailIntegration = await upsertConfigurationSettings(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const gmailIntegration = await upsertConfigurationSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-configuration", target: "configuration", details: { fields: payload } });
       return json(res, 200, { gmailIntegration });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save configuration.", detail: error.statusCode ? undefined : error.message });
@@ -2961,7 +3014,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const workflowAutomation = await upsertWorkflowAutomationSettings(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const workflowAutomation = await upsertWorkflowAutomationSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-workflow-automation", target: "workflow-automation", details: { fields: payload } });
       return json(res, 200, { workflowAutomation });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save workflow automation.", detail: error.statusCode ? undefined : error.message });
@@ -2974,7 +3029,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const outgoingEmail = await upsertOutgoingEmailSettings(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const outgoingEmail = await upsertOutgoingEmailSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-outgoing-email", target: "outgoing-email", details: { fields: payload } });
       return json(res, 200, { outgoingEmail });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save outgoing email settings.", detail: error.statusCode ? undefined : error.message });
@@ -2987,7 +3044,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const result = await sendCrmEmailForTenant(resolved.tenantId, resolved.auth, await readBody(req));
+      const payload = await readBody(req);
+      const result = await sendCrmEmailForTenant(resolved.tenantId, resolved.auth, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "send-email", target: `deal:${payload.dealId || ""}`, details: { fields: payload } });
       return json(res, 200, result);
     } catch (error) {
       return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to send email.", detail: error.statusCode ? undefined : error.message });

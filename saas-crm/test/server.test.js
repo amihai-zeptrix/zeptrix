@@ -707,6 +707,12 @@ test("CRM audit log persists UI actions and form fields for admin review", () =>
   assert.match(server, /function auditLogFromRow/);
   assert.match(server, /function sanitizeAuditDetails/);
   assert.match(server, /function sanitizedAuditMap/);
+  assert.match(server, /const AUDIT_VALUE_ALLOWLIST/);
+  assert.match(server, /email\|phone\|body\|subject\|message\|note\|template\|client\|smtp/);
+  assert.match(server, /function recordServerAudit/);
+  assert.match(server, /eventType = "server_mutation"/);
+  assert.match(server, /operation: "update-gmail-settings"/);
+  assert.match(server, /operation: "send-email"/);
   assert.match(server, /Audit details are too large/);
   assert.match(server, /Buffer\.byteLength\(JSON\.stringify\(details\), "utf8"\) > 50_000/);
   assert.match(server, /pathname === "\/api\/audit"/);
@@ -722,9 +728,12 @@ test("CRM audit log persists UI actions and form fields for admin review", () =>
   assert.match(app, /function auditSubmitEvent/);
   assert.match(app, /function auditTenantIdForForm/);
   assert.match(app, /form\.matches\("\[data-tenant-form\]"\) && ui\.editingTenant\?\.id/);
+  assert.match(app, /const AUDIT_VALUE_ALLOWLIST/);
+  assert.match(app, /const AUDIT_CLICK_SKIP_ACTIONS/);
   assert.match(app, /redactAuditValue/);
-  assert.match(app, /password\|secret\|token\|code/);
+  assert.match(app, /password\|secret\|token\|code\|temporary\|authorization\|credential\|email\|phone\|body\|subject\|message\|note\|template\|client\|smtp/);
   assert.match(clickHandlerSource, /auditClickEvent\(\{ clickTarget: event\.target/);
+  assert.doesNotMatch(submitHandlerSource.split("if (event.target.matches(\"[data-tag-form]\")")[0], /auditSubmitEvent\(event\.target\)/);
   assert.match(submitHandlerSource, /auditSubmitEvent\(event\.target\)/);
   assert.match(app, /eventType: "button_click"/);
   assert.match(app, /eventType: "form_submit"/);

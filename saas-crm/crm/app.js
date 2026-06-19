@@ -522,8 +522,20 @@ async function apiRequest(path, options = {}) {
   return body;
 }
 
+const AUDIT_VALUE_ALLOWLIST = new Set([
+  "account", "enabled", "gmailLookbackDays", "group", "priority", "recurrence", "region", "seats", "stage", "status", "type", "value",
+  "close", "due", "staleMonths", "detectNewContacts", "detectDormantContacts", "createFollowUpTasks", "tagRiskAccounts", "dormantDueDays", "attentionDueDays",
+]);
+const AUDIT_CLICK_SKIP_ACTIONS = new Set([
+  "back-login", "cancel-contact-edit", "cancel-inline-add", "cancel-reply", "clear-account-focus", "clear-contact-search", "close", "close-whats-new",
+  "filter-activities", "gmail-discovery-page", "google-sso", "jump-home-risk-thread", "jump-risk-thread", "logout", "open-activities", "open-gmail-oauth-guide",
+  "open-help", "open-import", "open-inbox", "open-settings", "open-whats-new", "reset-campaign-draft", "show-forgot-password", "show-mfa-recovery", "show-register",
+]);
+
 function redactAuditValue(name, value) {
-  return /(password|secret|token|code|temporary|authorization|credential)/i.test(name) ? "[redacted]" : String(value ?? "").slice(0, 500);
+  const field = String(name || "");
+  if (!AUDIT_VALUE_ALLOWLIST.has(field) || /(password|secret|token|code|temporary|authorization|credential|email|phone|body|subject|message|note|template|client|smtp|label|uri|url|name|contact|owner|user)/i.test(field)) return "[redacted]";
+  return String(value ?? "").slice(0, 500);
 }
 
 function auditFormFields(form) {
@@ -592,6 +604,8 @@ function recordAuditEvent(payload) {
 
 function auditClickEvent({ clickTarget, section, view, dealId, account, contactEmail, communicationId, campaignId, collapse, column, settingsTab, adminTab, actionElement }) {
   if (!session) return;
+  const action = actionElement?.dataset.action || "";
+  if (!action || AUDIT_CLICK_SKIP_ACTIONS.has(action)) return;
   const operation = actionElement?.dataset.action
     || (section ? `navigate:${section}` : "")
     || (view ? `view:${view}` : "")
@@ -612,7 +626,7 @@ function auditClickEvent({ clickTarget, section, view, dealId, account, contactE
   });
 }
 
-function auditSubmitEvent(form) {
+function auditSubmitEvent(form, status = "success") {
   if (!session) return;
   const marker = [...form.attributes].find((attribute) => attribute.name.startsWith("data-") && attribute.value === "")?.name || "form";
   const editingTenant = form.matches("[data-tenant-form]") ? ui.editingTenant : null;
@@ -621,7 +635,7 @@ function auditSubmitEvent(form) {
     eventType: "form_submit",
     operation: marker.replace(/^data-/, "").replace(/-form$/, ""),
     target: editingTenant?.id ? `tenant:${editingTenant.id}` : marker,
-    details: { section: ui.section, editedTenantId: editingTenant?.id || "", editedTenantName: editingTenant?.name || "", fields: auditFormFields(form) },
+    details: { section: ui.section, status, editedTenantId: editingTenant?.id || "", editedTenantName: editingTenant?.name || "", fields: auditFormFields(form) },
   });
 }
 
@@ -1220,7 +1234,8 @@ function auditFieldSummary(fields = {}) {
 
 function renderAuditLogRow(item) {
   const fields = auditFieldSummary(item.details?.fields);
-  return `<div class="audit-row"><span class="activity-symbol">◷</span><span class="list-primary">${escapeHtml(item.operation)}<small>${escapeHtml(item.tenantName || "Unknown tenant")} · ${escapeHtml(item.userEmail || "unknown user")} · ${escapeHtml(item.eventType)}${escapeHtml(fields)}</small></span><span class="muted">${formatTimestamp(item.createdAt)}</span><code>${escapeHtml(item.target || "-")}</code></div>`;
+  const tenantLabel = item.tenantName && item.tenantName !== "Unknown tenant" ? item.tenantName : item.details?.editedTenantName || "Unknown tenant";
+  return `<div class="audit-row"><span class="activity-symbol">◷</span><span class="list-primary">${escapeHtml(item.operation)}<small>${escapeHtml(tenantLabel)} · ${escapeHtml(item.userEmail || "unknown user")} · ${escapeHtml(item.eventType)}${escapeHtml(fields)}</small></span><span class="muted">${formatTimestamp(item.createdAt)}</span><code>${escapeHtml(item.target || "-")}</code></div>`;
 }
 
 function tenantAdminEmail(tenant) {
@@ -3290,7 +3305,6 @@ document.addEventListener("change", async (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
-  auditSubmitEvent(event.target);
   if (event.target.matches("[data-tag-form]")) {
     event.preventDefault();
     const { tag } = Object.fromEntries(new FormData(event.target));
@@ -3305,6 +3319,7 @@ document.addEventListener("submit", async (event) => {
       ui.pendingTag = null;
       ui.modal = null;
       showToast(`Added tag ${savedTag}`);
+      auditSubmitEvent(event.target);
       render();
     } catch (error) {
       showToast(`Could not save tag: ${error.message}`);
@@ -3431,6 +3446,7 @@ document.addEventListener("submit", async (event) => {
     ui.authError = "";
     saveSession();
     maybeShowWhatsNew();
+    auditSubmitEvent(event.target);
     render();
     return;
   }
@@ -3462,6 +3478,7 @@ document.addEventListener("submit", async (event) => {
         return;
       }
     }
+    auditSubmitEvent(event.target);
     ui.modal = null;
     ui.editingTenant = null;
     saveData();
@@ -3485,6 +3502,7 @@ document.addEventListener("submit", async (event) => {
       ui.emailDealId = null;
       ui.emailContext = null;
       showToast(session?.apiToken && session.role !== "demo_user" ? "Email sent" : "Email saved locally");
+      auditSubmitEvent(event.target);
     } catch (error) {
       showToast(`Could not send email: ${error.message}`);
     }
@@ -3505,6 +3523,7 @@ document.addEventListener("submit", async (event) => {
       setTenant({ ...currentTenant(), mailTemplates: templates });
       ui.settingsTab = "templates";
       showToast(existingId ? "Template saved" : "Template created");
+      auditSubmitEvent(event.target);
       render();
     } catch (error) {
       showToast(`Could not save template: ${error.message}`);
@@ -3515,6 +3534,7 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     const { body } = Object.fromEntries(new FormData(event.target));
     addCorrespondenceReply(event.target.dataset.threadId, body);
+    auditSubmitEvent(event.target);
     render();
     return;
   }
@@ -3533,6 +3553,7 @@ document.addEventListener("submit", async (event) => {
     setTenant({ ...tenant, campaigns: [campaign, ...campaigns] });
     ui.campaignDraft = { ...ui.campaignDraft, name: "", recurrence: "one-time", subject: "", template: "" };
     ui.selectedCampaignId = campaign.id;
+    auditSubmitEvent(event.target);
     render();
     return;
   }
@@ -3543,6 +3564,7 @@ document.addEventListener("submit", async (event) => {
       setGmailStatus("Saving Gmail settings...", tenant);
       const result = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(event.target));
       setTenant({ ...currentTenant(), gmailIntegration: { ...result.gmailIntegration, status: "Gmail settings saved." } });
+      auditSubmitEvent(event.target);
     } catch (error) {
       const values = gmailFormValues(event.target);
       const previous = gmailIntegration(tenant);
@@ -3576,6 +3598,7 @@ document.addEventListener("submit", async (event) => {
       const result = await saveOutgoingEmailSettingsViaApi(tenant.id, values);
       setTenant({ ...currentTenant(), outgoingEmail: { ...result.outgoingEmail, status: "Outgoing email settings saved." } });
       showToast("Outgoing email settings saved");
+      auditSubmitEvent(event.target);
     } catch (error) {
       setTenant({ ...tenant, outgoingEmail: { ...outgoingEmailSettings(tenant), ...values, status: error.message, passwordConfigured: outgoingEmailSettings(tenant).passwordConfigured || Boolean(values.password) } });
       showToast(error.message);
@@ -3593,6 +3616,7 @@ document.addEventListener("submit", async (event) => {
       const result = await saveWorkflowAutomationViaApi(tenant.id, values);
       setTenant({ ...currentTenant(), workflowAutomation: result.workflowAutomation });
       showToast("Workflow automation saved");
+      auditSubmitEvent(event.target);
     } catch (error) {
       setTenant({ ...tenant, workflowAutomation: { ...workflowAutomation(tenant), ...values } });
       showToast(session?.apiToken ? error.message : "Workflow automation saved locally");
@@ -3611,6 +3635,7 @@ document.addEventListener("submit", async (event) => {
       const result = await saveConfigurationViaApi(tenant.id, { gmailLookbackDays });
       setTenant({ ...currentTenant(), gmailIntegration: { ...result.gmailIntegration, status: "Configuration saved." } });
       showToast("Configuration saved");
+      auditSubmitEvent(event.target);
     } catch (error) {
       const previous = gmailIntegration(tenant);
       setTenant({ ...tenant, gmailIntegration: { ...previous, gmailLookbackDays, status: error.message } });
@@ -3648,6 +3673,7 @@ document.addEventListener("submit", async (event) => {
       ui.inlineContactOpen = false;
       ui.section = "contacts";
       ui.selectedContactEmail = saved.email;
+      auditSubmitEvent(event.target);
       render();
     } catch (error) {
       showToast(`Could not save contact: ${error.message}`);
@@ -3681,6 +3707,7 @@ document.addEventListener("submit", async (event) => {
       ui.editingContactEmail = "";
       ui.selectedContactEmail = values.email;
       showToast("Contact saved");
+      auditSubmitEvent(event.target);
       render();
     } catch (error) {
       showToast(`Could not save contact: ${error.message}`);
@@ -3710,6 +3737,7 @@ document.addEventListener("submit", async (event) => {
       setTenant({ ...currentTenant(), deals: [saved, ...currentTenant().deals], tasks: tasks.map((task) => String(task.dealId) === String(deal.id) ? { ...task, dealId: saved.id } : task) });
       ui.inlineDealGroup = null;
       ui.selected = null;
+      auditSubmitEvent(event.target);
       render();
     } catch (error) {
       showToast(`Could not save deal: ${error.message}`);
@@ -3724,6 +3752,7 @@ document.addEventListener("submit", async (event) => {
     setTenant({ ...tenant, tasks });
     ui.modal = null;
     ui.taskDealId = null;
+    auditSubmitEvent(event.target);
     render();
     return;
   }
@@ -3744,6 +3773,7 @@ document.addEventListener("submit", async (event) => {
       setTenant({ ...tenant, deals, tasks });
       ui.modal = null;
       ui.editing = null;
+      auditSubmitEvent(event.target);
       render();
     } catch (error) {
       showToast(`Could not save deal: ${error.message}`);
