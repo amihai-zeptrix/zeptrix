@@ -299,7 +299,7 @@ h3 { font-size: 14px; }
 .top-user { display: flex; align-items: center; gap: 8px; padding-left: 12px; border-left: 1px solid var(--line); font-weight: 700; }
 .page { padding: 24px 26px 42px; }
 .page-title-row { display: flex; justify-content: space-between; gap: 22px; }
-.page-title-row > div:last-child { display: flex; gap: 8px; }
+.page-actions { display: flex; align-items: center; gap: 8px; }
 .help-button {
   border-color: #bcd3ff;
   color: var(--blue);

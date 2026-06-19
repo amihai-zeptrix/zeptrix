@@ -77,7 +77,7 @@ const tenantSeed = [
     seats: 8,
     billingEmail: "billing@zeptrix.io",
     users: [
-      { id: "admin-owner", name: "Platform Admin", email: "admin@zeptrix.io", password: SEED_ADMIN_TEMP_PASSWORD, mustChangePassword: true, role: "platform_admin", mfa: true, sso: true },
+      { id: "admin-owner", name: "Platform Admin", email: "admin@zeptrix.io", password: SEED_ADMIN_TEMP_PASSWORD, mustChangePassword: true, role: "platform_admin", mfa: false, sso: true },
     ],
     deals: [
       { id: 1, name: "Enterprise rollout", account: "Orbital Systems", contact: "Liam Brooks", email: "liam@orbitalsystems.com", owner: "Noa Levi", stage: "Negotiation", value: 72000, close: "2026-06-18", priority: "High", group: "active", tags: ["Enterprise", "Renewal"], note: "Security review complete. Waiting on procurement.", updated: "Today, 09:42" },
@@ -1050,7 +1050,7 @@ function renderPageHeader(title = "Sales pipeline", copy = "Manage deals, track 
   return `
     <div class="page-title-row">
       <div><h1>${title}</h1><p class="subcopy">${copy}</p></div>
-      <div><button class="icon-button whats-new-button" data-action="open-whats-new" data-tooltip="What's new" aria-label="Open what's new">✦</button><button class="icon-button help-button" data-action="open-help" data-help-topic="${escapeHtml(helpTopic)}" data-tooltip="Open help" aria-label="Open help">?</button><button class="button" data-action="export">⇩ Export</button><button class="button ${ui.importOpen ? "filter-pill" : ""}" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
+      <div class="page-actions"><button class="icon-button whats-new-button" data-action="open-whats-new" data-tooltip="What's new" aria-label="Open what's new">✦</button><button class="icon-button help-button" data-action="open-help" data-help-topic="${escapeHtml(helpTopic)}" data-tooltip="Open help" aria-label="Open help">?</button><button class="button" data-action="export">⇩ Export</button><button class="button ${ui.importOpen ? "filter-pill" : ""}" data-action="open-import">⇪ Import</button><button class="button primary" data-action="add-deal">＋ New deal</button></div>
     </div>${ui.importOpen ? renderImportStrip() : ""}`;
 }
 

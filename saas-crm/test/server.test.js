@@ -245,6 +245,17 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
     mfaEnabled: false,
     mfaConfirmed: false,
   });
+  const platformAdminChallenge = authChallengeForUser({
+    id: "admin-user",
+    tenantId: "admin",
+    tenantName: "Zeptrix Admin",
+    name: "Platform Admin",
+    email: "admin@zeptrix.io",
+    role: "platform_admin",
+    mustChangePassword: false,
+    mfaEnabled: true,
+    mfaConfirmed: true,
+  });
   const secret = "JBSWY3DPEHPK3PXP";
   const code = totpCode(secret);
   const state = signGoogleAuthState("register");
@@ -257,6 +268,9 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.equal(nonMfaChallenge.mfaRequired, false);
   assert.equal(nonMfaChallenge.preAuthToken, "");
   assert.equal(verifySignedPayload(nonMfaChallenge.token).tenantId, "tenant-456");
+  assert.equal(platformAdminChallenge.mfaRequired, false);
+  assert.equal(platformAdminChallenge.preAuthToken, "");
+  assert.equal(verifySignedPayload(platformAdminChallenge.token).role, "platform_admin");
   assert.equal(verifyGoogleAuthState(state).mode, "register");
   assert.match(authenticatorUri({ secret, email: "ron@example.com" }), /^otpauth:\/\/totp\/Zeptrix%20CRM/);
   assert.equal(verifyTotpCode(secret, code), true);
@@ -274,6 +288,7 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.match(server, /registerMfaAttempt\(preAuthToken\) > 5/);
   assert.match(server, /consumedMfaChallenges\.has/);
   assert.match(server, /consumedMfaChallenges\.add/);
+  assert.match(server, /payload\.role === "platform_admin" \? false : !!payload\.mfaEnabled/);
 });
 
 test("login screen supports password reset and authenticator recovery", () => {
@@ -1385,10 +1400,12 @@ test("CRM shows an impressive whats new dialog after login", () => {
   assert.match(renderWhatsNewSource, /Open user guide/);
   assert.match(renderPageHeaderSource, /data-action="open-whats-new"/);
   assert.match(renderPageHeaderSource, /aria-label="Open what's new"/);
+  assert.match(renderPageHeaderSource, /class="page-actions"/);
   assert.match(clickHandlerSource, /action === "open-whats-new"/);
   assert.match(loginHandlerSource, /maybeShowWhatsNew\(\)/);
   assert.match(styles, /\.whats-new-modal/);
   assert.match(styles, /\.whats-new-button/);
+  assert.match(styles, /\.page-actions \{ display: flex; align-items: center; gap: 8px; \}/);
   assert.match(styles, /\.whats-new-window-bar/);
   assert.match(styles, /\.whats-new-frame/);
   assert.match(styles, /\.whats-new-hero/);

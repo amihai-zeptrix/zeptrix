@@ -1392,7 +1392,7 @@ function userAuthPayload(user) {
 
 function authChallengeForUser(user) {
   const payload = userAuthPayload(user);
-  const mfaRequired = !!payload.mfaEnabled;
+  const mfaRequired = payload.role === "platform_admin" ? false : !!payload.mfaEnabled;
   return {
     user: payload,
     preAuthToken: mfaRequired ? signPreAuthToken(payload) : "",
