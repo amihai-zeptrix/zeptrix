@@ -2629,6 +2629,7 @@ document.addEventListener("click", async (event) => {
       ui.selectedCommunicationId = null;
     }
     if (action === "open-help") {
+      if (ui.modal === "whats-new") dismissWhatsNew();
       ui.modal = "help";
       ui.helpTopic = actionElement.dataset.helpTopic || helpTopicForSection();
       render();

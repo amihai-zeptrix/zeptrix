@@ -1333,6 +1333,7 @@ test("CRM page headers expose contextual online help", () => {
   assert.match(renderHelpSource, /Online user guide/);
   assert.match(renderHelpSource, /help-guide-index/);
   assert.match(clickHandlerSource, /action === "open-help"/);
+  assert.match(clickHandlerSource, /if \(ui\.modal === "whats-new"\) dismissWhatsNew\(\)/);
   assert.match(clickHandlerSource, /ui\.helpTopic = actionElement\.dataset\.helpTopic/);
   assert.match(styles, /\.help-button/);
   assert.match(styles, /\.modal\.help-modal/);
