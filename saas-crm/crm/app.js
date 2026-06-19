@@ -136,6 +136,7 @@ const defaultData = {
     { id: 1, to: "admin@zeptrix.io", tenantName: "Zeptrix Admin", temporaryPassword: SEED_ADMIN_TEMP_PASSWORD, sentAt: "2026-06-12T09:00:00" },
     { id: 2, to: "amihai@zeptrix.io", tenantName: "Amihai Sales", temporaryPassword: SEED_AMIHAI_TEMP_PASSWORD, sentAt: "2026-06-12T09:05:00" },
   ],
+  auditLogs: [],
   stageProbabilities: defaultStageProbabilities,
   customFields: ["Lead source", "Next step"],
   visibleColumns: ["owner", "stage", "value", "account", "close", "priority"],
@@ -270,6 +271,7 @@ function loadData() {
 function normalizeData(nextData) {
   const seedPasswords = { "admin@zeptrix.io": SEED_ADMIN_TEMP_PASSWORD, "amihai@zeptrix.io": SEED_AMIHAI_TEMP_PASSWORD };
   nextData.inviteEmails = nextData.inviteEmails || [];
+  nextData.auditLogs = nextData.auditLogs || [];
   nextData.tenants = nextData.tenants.map((tenant) => ({
     ...tenant,
     deals: (tenant.deals || []).map((deal) => ({ ...deal, tags: deal.tags || defaultAccountTags(deal) })),
@@ -520,10 +522,107 @@ async function apiRequest(path, options = {}) {
   return body;
 }
 
+function redactAuditValue(name, value) {
+  return /(password|secret|token|code|temporary|authorization|credential)/i.test(name) ? "[redacted]" : String(value ?? "").slice(0, 500);
+}
+
+function auditFormFields(form) {
+  const fields = {};
+  for (const element of [...form.elements]) {
+    if (!element.name || element.disabled) continue;
+    if ((element.type === "checkbox" || element.type === "radio") && !element.checked) continue;
+    fields[element.name] = redactAuditValue(element.name, element.type === "checkbox" ? element.checked : element.value);
+  }
+  return fields;
+}
+
+function auditTenantIdForTarget(target = null) {
+  const action = target?.dataset?.action || "";
+  const id = target?.dataset?.id || "";
+  if (isPlatformAdmin() && ["open-tenant", "edit-tenant", "reset-tenant-password", "delete-tenant"].includes(action) && id) return id;
+  return currentTenant()?.id || session?.tenantId || "";
+}
+
+function localAuditLog(payload) {
+  const tenant = data.tenants.find((item) => item.id === payload.tenantId) || currentTenant();
+  data.auditLogs = [
+    {
+      id: localRecordId("audit"),
+      tenantId: payload.tenantId,
+      tenantName: tenant?.name || "Unknown tenant",
+      userEmail: session?.email || "",
+      userRole: session?.role || "",
+      eventType: payload.eventType,
+      operation: payload.operation,
+      target: payload.target || "",
+      details: payload.details || {},
+      createdAt: new Date().toISOString(),
+    },
+    ...(data.auditLogs || []),
+  ].slice(0, 300);
+  saveData();
+}
+
+function recordAuditEvent(payload) {
+  if (!session) return;
+  const eventPayload = { tenantId: payload.tenantId || currentTenant()?.id || session.tenantId, ...payload };
+  if (!session.apiToken) {
+    localAuditLog(eventPayload);
+    return;
+  }
+  window.fetch("/api/audit", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${session.apiToken}` },
+    body: JSON.stringify(eventPayload),
+  })
+    .then((response) => response.ok ? response.json() : null)
+    .then((body) => {
+      if (body?.auditLog && isPlatformAdmin()) {
+        data.auditLogs = [body.auditLog, ...(data.auditLogs || [])].slice(0, 300);
+        saveData();
+      }
+    })
+    .catch((error) => console.warn("Audit log write failed:", error.message));
+}
+
+function auditClickEvent({ clickTarget, section, view, dealId, account, contactEmail, communicationId, campaignId, collapse, column, settingsTab, adminTab, actionElement }) {
+  if (!session) return;
+  const operation = actionElement?.dataset.action
+    || (section ? `navigate:${section}` : "")
+    || (view ? `view:${view}` : "")
+    || (settingsTab ? `settings:${settingsTab}` : "")
+    || (adminTab ? `admin:${adminTab}` : "")
+    || (dealId ? "open-deal" : account ? "open-account" : contactEmail ? "open-contact" : communicationId ? "open-communication" : campaignId ? "open-campaign" : collapse ? "toggle-collapse" : column ? "toggle-column" : "button-click");
+  const target = actionElement || clickTarget?.closest?.("button,a,label,[data-section],[data-view],[data-settings-tab],[data-admin-tab]") || clickTarget;
+  recordAuditEvent({
+    tenantId: auditTenantIdForTarget(actionElement),
+    eventType: "button_click",
+    operation,
+    target: [target?.tagName?.toLowerCase(), target?.dataset?.id, target?.dataset?.email, dealId, account, contactEmail, communicationId, campaignId].filter(Boolean).join(":"),
+    details: {
+      label: (target?.getAttribute?.("aria-label") || target?.textContent || "").trim().slice(0, 120),
+      section: ui.section,
+      dataset: { ...(target?.dataset || {}) },
+    },
+  });
+}
+
+function auditSubmitEvent(form) {
+  if (!session) return;
+  const marker = [...form.attributes].find((attribute) => attribute.name.startsWith("data-") && attribute.value === "")?.name || "form";
+  recordAuditEvent({
+    tenantId: currentTenant()?.id || session.tenantId,
+    eventType: "form_submit",
+    operation: marker.replace(/^data-/, "").replace(/-form$/, ""),
+    target: marker,
+    details: { section: ui.section, fields: auditFormFields(form) },
+  });
+}
+
 async function loadStateFromApi() {
   try {
     const remote = await apiRequest("/api/state");
-    data = normalizeData({ ...data, tenants: remote.tenants, inviteEmails: remote.inviteEmails });
+    data = normalizeData({ ...data, tenants: remote.tenants, inviteEmails: remote.inviteEmails, auditLogs: remote.auditLogs || [] });
     if (IS_DEMO_ROUTE) applyDemoSession();
     if (!data.tenants.some((tenant) => tenant.id === ui.tenantId)) ui.tenantId = data.tenants[0]?.id || "admin";
     saveData();
@@ -1074,8 +1173,9 @@ function renderAdmin() {
     <nav class="settings-tabs admin-tabs">
       <button class="${ui.adminTab === "tenants" ? "active" : ""}" data-admin-tab="tenants">Tenants</button>
       <button class="${ui.adminTab === "invites" ? "active" : ""}" data-admin-tab="invites">Invite emails</button>
+      <button class="${ui.adminTab === "audit" ? "active" : ""}" data-admin-tab="audit">Audit log</button>
     </nav>
-    ${ui.adminTab === "invites" ? renderAdminInviteEmails() : renderAdminTenants()}
+    ${ui.adminTab === "audit" ? renderAdminAuditLog() : ui.adminTab === "invites" ? renderAdminInviteEmails() : renderAdminTenants()}
   `;
 }
 
@@ -1094,6 +1194,20 @@ function renderAdminInviteEmails() {
     <section class="list-card">
       ${(data.inviteEmails || []).slice(0, 8).map((mail) => `<div class="invite-row"><span class="activity-symbol">✉</span><span class="list-primary">${escapeHtml(mail.to)}<small>${escapeHtml(mail.tenantName)} · ${inviteSummary(mail)}</small></span><span class="muted">${formatTimestamp(mail.sentAt)}</span></div>`).join("") || `<p class="empty-state">No invite emails sent yet.</p>`}
     </section>`;
+}
+
+function renderAdminAuditLog() {
+  const rows = data.auditLogs || [];
+  return `
+    <div class="section-toolbar"><strong>${rows.length} audit records</strong><span class="toolbar-spacer"></span></div>
+    <section class="list-card audit-log-card">
+      ${rows.map(renderAuditLogRow).join("") || `<p class="empty-state">No audit records yet.</p>`}
+    </section>`;
+}
+
+function renderAuditLogRow(item) {
+  const fields = item.details?.fields ? ` · fields: ${Object.keys(item.details.fields).join(", ")}` : "";
+  return `<div class="audit-row"><span class="activity-symbol">◷</span><span class="list-primary">${escapeHtml(item.operation)}<small>${escapeHtml(item.tenantName || "Unknown tenant")} · ${escapeHtml(item.userEmail || "unknown user")} · ${escapeHtml(item.eventType)}${escapeHtml(fields)}</small></span><span class="muted">${formatTimestamp(item.createdAt)}</span><code>${escapeHtml(item.target || "-")}</code></div>`;
 }
 
 function tenantAdminEmail(tenant) {
@@ -2624,6 +2738,7 @@ document.addEventListener("click", async (event) => {
   const adminTab = event.target.closest("[data-admin-tab]")?.dataset.adminTab;
 
   if (!section && !view && !dealId && !account && !contactEmail && !communicationId && !campaignId && !collapse && !column && !settingsTab && !adminTab && !actionElement) return;
+  auditClickEvent({ clickTarget: event.target, section, view, dealId, account, contactEmail, communicationId, campaignId, collapse, column, settingsTab, adminTab, actionElement });
 
   if (section) {
     ui.section = section;
@@ -3162,6 +3277,7 @@ document.addEventListener("change", async (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  auditSubmitEvent(event.target);
   if (event.target.matches("[data-tag-form]")) {
     event.preventDefault();
     const { tag } = Object.fromEntries(new FormData(event.target));

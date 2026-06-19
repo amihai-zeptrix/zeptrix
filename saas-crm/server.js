@@ -725,6 +725,19 @@ async function initDatabase() {
       updated_at timestamptz not null default now(),
       created_at timestamptz not null default now()
     )`);
+  await dbQuery(`
+    create table if not exists audit_logs (
+      id uuid primary key default gen_random_uuid(),
+      tenant_id uuid references tenants(id) on delete set null,
+      user_id uuid references users(id) on delete set null,
+      user_email citext,
+      user_role text,
+      event_type text not null,
+      operation text not null,
+      target text,
+      details jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    )`);
   await dbQuery(`alter table gmail_contact_signals add column if not exists phone text`);
   await dbQuery(`alter table deals add column if not exists phone text`);
   await dbQuery(`alter table deals add column if not exists tags jsonb not null default '[]'::jsonb`);
@@ -743,6 +756,8 @@ async function initDatabase() {
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
   await dbQuery(`create index if not exists communications_tenant_thread_idx on communications(tenant_id, gmail_thread_id)`);
   await dbQuery(`create index if not exists workflow_automations_updated_idx on workflow_automations(updated_at desc)`);
+  await dbQuery(`create index if not exists audit_logs_created_idx on audit_logs(created_at desc)`);
+  await dbQuery(`create index if not exists audit_logs_tenant_created_idx on audit_logs(tenant_id, created_at desc)`);
   await seedDatabase();
 }
 
@@ -1043,7 +1058,7 @@ async function upsertMailTemplateForTenant(tenantId, payload, templateId = "") {
 }
 
 async function readState(auth) {
-  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult, workflowAutomationResult] = await Promise.all([
+  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult, workflowAutomationResult, auditLogResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
     dbQuery(`select * from users order by created_at`),
     dbQuery(`select * from deals order by created_at`),
@@ -1056,6 +1071,9 @@ async function readState(auth) {
     dbQuery(`select * from mail_templates order by updated_at desc`),
     dbQuery(`select * from outgoing_email_settings`),
     dbQuery(`select * from workflow_automations`),
+    auth.role === "platform_admin"
+      ? dbQuery(`select a.*, t.name tenant_name from audit_logs a left join tenants t on t.id=a.tenant_id order by a.created_at desc limit 300`)
+      : dbQuery(`select a.*, t.name tenant_name from audit_logs a left join tenants t on t.id=a.tenant_id where a.tenant_id=$1 order by a.created_at desc limit 100`, [auth.tenantId]),
   ]);
   const visibleTenants = auth.role === "platform_admin" ? tenantsResult.rows : tenantsResult.rows.filter((tenant) => tenant.id === auth.tenantId);
   return {
@@ -1073,6 +1091,7 @@ async function readState(auth) {
       workflowAutomationResult.rows.find((settings) => settings.tenant_id === tenant.id),
     )),
     inviteEmails: auth.role === "platform_admin" ? invitesResult.rows.map(inviteFromRow) : [],
+    auditLogs: auth.role === "platform_admin" ? auditLogResult.rows.map(auditLogFromRow) : [],
   };
 }
 
@@ -1253,6 +1272,21 @@ function inviteFromRow(invite) {
     status: invite.status,
     messageId: invite.message_id,
     detail: invite.detail,
+  };
+}
+
+function auditLogFromRow(row) {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id || "",
+    tenantName: row.tenant_name || "Unknown tenant",
+    userEmail: row.user_email || "",
+    userRole: row.user_role || "",
+    eventType: row.event_type,
+    operation: row.operation,
+    target: row.target || "",
+    details: row.details || {},
+    createdAt: row.created_at ? row.created_at.toISOString() : "",
   };
 }
 
@@ -2374,6 +2408,41 @@ async function handleApi(req, res) {
       return json(res, 200, await readState(auth));
     } catch (error) {
       return json(res, 500, { error: "Unable to read state.", detail: error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/audit") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const body = await readBody(req);
+      const tenantId = auth.role === "platform_admin"
+        ? String(body.tenantId || auth.tenantId || "").trim()
+        : auth.tenantId;
+      if (!tenantId) return json(res, 400, { error: "Tenant is required for audit logging." });
+      if (auth.role !== "platform_admin" && tenantId !== auth.tenantId) return json(res, 403, { error: "Tenant access denied." });
+      const tenant = await dbQuery(`select id, name from tenants where id::text=$1 or slug=$1`, [tenantId]);
+      if (!tenant.rows.length) return json(res, 404, { error: "Tenant not found." });
+      const details = typeof body.details === "object" && body.details ? body.details : {};
+      const result = await dbQuery(
+        `insert into audit_logs (tenant_id, user_id, user_email, user_role, event_type, operation, target, details)
+         values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+         returning *`,
+        [
+          tenant.rows[0].id,
+          auth.userId || null,
+          auth.email || "",
+          auth.role || "",
+          String(body.eventType || "ui_event").slice(0, 80),
+          String(body.operation || "unknown").slice(0, 160),
+          String(body.target || "").slice(0, 220),
+          JSON.stringify(details),
+        ],
+      );
+      return json(res, 201, { auditLog: auditLogFromRow({ ...result.rows[0], tenant_name: tenant.rows[0].name }) });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to write audit log.", detail: error.message });
     }
   }
 

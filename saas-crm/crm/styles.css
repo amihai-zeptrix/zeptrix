@@ -759,7 +759,7 @@ h3 { font-size: 14px; }
   font-size: 11px;
 }
 .list-card, .activity-card { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-.list-row, .activity-feed-row, .tenant-row {
+.list-row, .activity-feed-row, .tenant-row, .audit-row {
   display: grid;
   width: 100%;
   align-items: center;
@@ -777,8 +777,16 @@ h3 { font-size: 14px; }
 .contact-row { grid-template-columns: 30px minmax(210px, 1fr) 135px minmax(130px, .55fr) 170px 82px; }
 .account-row { grid-template-columns: 38px minmax(250px, 1fr) 150px 120px 82px; }
 .activity-feed-row { grid-template-columns: 34px minmax(300px, 1fr) 130px 92px 82px; }
-.list-row:last-child, .activity-feed-row:last-child, .tenant-row:last-child { border-bottom: 0; }
-.list-row:hover, .activity-feed-row:hover, .tenant-row:hover { background: #f8faff; }
+.audit-row { grid-template-columns: 34px minmax(320px, 1fr) 150px minmax(180px, .6fr); }
+.audit-row code {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-row:last-child, .activity-feed-row:last-child, .tenant-row:last-child, .audit-row:last-child { border-bottom: 0; }
+.list-row:hover, .activity-feed-row:hover, .tenant-row:hover, .audit-row:hover { background: #f8faff; }
 .contact-row.is-open { background: #f8faff; }
 .inline-contact-row {
   background: #f8faff;

@@ -172,12 +172,27 @@ create table gmail_contact_signals (
   unique(tenant_id, signal_type, email)
 );
 
+create table audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references tenants(id) on delete set null,
+  user_id uuid references users(id) on delete set null,
+  user_email citext,
+  user_role text,
+  event_type text not null,
+  operation text not null,
+  target text,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create index deals_tenant_stage_idx on deals(tenant_id, stage);
 create index deals_tenant_owner_idx on deals(tenant_id, owner_id);
 create index activities_tenant_due_idx on activities(tenant_id, due_date, completed);
 create index communications_tenant_deal_idx on communications(tenant_id, deal_id, occurred_at desc);
 create index communications_tenant_thread_idx on communications(tenant_id, gmail_thread_id);
 create index invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc);
+create index audit_logs_created_idx on audit_logs(created_at desc);
+create index audit_logs_tenant_created_idx on audit_logs(tenant_id, created_at desc);
 create index gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc);
 
 insert into tenants (slug, name, plan, status, region, seats, billing_email)

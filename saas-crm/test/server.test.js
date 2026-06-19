@@ -664,24 +664,62 @@ test("CRM named demo routes use the demo tenant instead of admin", () => {
   assert.match(app, /tenantId: demoTenant\?\.id \|\| "demo"/);
 });
 
-test("CRM admin page exposes tenant and invite tabs", () => {
+test("CRM admin page exposes tenant invite and audit tabs", () => {
   const app = crmAppSource();
   const styles = crmStylesSource();
   const renderAdminSource = functionSource(app, "renderAdmin", "renderAdminTenants");
   const renderAdminTenantsSource = functionSource(app, "renderAdminTenants", "renderAdminInviteEmails");
   const renderAdminInviteEmailsSource = functionSource(app, "renderAdminInviteEmails", "tenantAdminEmail");
+  const renderAdminAuditSource = functionSource(app, "renderAdminAuditLog", "tenantAdminEmail");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
 
   assert.match(app, /adminTab: "tenants"/);
   assert.match(renderAdminSource, /class="settings-tabs admin-tabs"/);
   assert.match(renderAdminSource, /data-admin-tab="tenants"/);
   assert.match(renderAdminSource, /data-admin-tab="invites"/);
-  assert.match(renderAdminSource, /ui\.adminTab === "invites" \? renderAdminInviteEmails\(\) : renderAdminTenants\(\)/);
+  assert.match(renderAdminSource, /data-admin-tab="audit"/);
+  assert.match(renderAdminSource, /ui\.adminTab === "audit" \? renderAdminAuditLog\(\) : ui\.adminTab === "invites" \? renderAdminInviteEmails\(\) : renderAdminTenants\(\)/);
   assert.match(renderAdminTenantsSource, /New tenant/);
   assert.match(renderAdminInviteEmailsSource, /Sent invite emails/);
+  assert.match(renderAdminAuditSource, /audit records/);
+  assert.match(renderAdminAuditSource, /renderAuditLogRow/);
+  assert.match(renderAdminAuditSource, /tenantName/);
   assert.match(clickHandlerSource, /dataset\.adminTab/);
   assert.match(clickHandlerSource, /ui\.adminTab = adminTab/);
   assert.match(styles, /\.admin-tabs/);
+  assert.match(styles, /\.audit-row/);
+});
+
+test("CRM audit log persists UI actions and form fields for admin review", () => {
+  const app = crmAppSource();
+  const server = serverSource();
+  const schema = fs.readFileSync(path.join(__dirname, "..", "crm", "db", "schema.sql"), "utf8");
+  const loadStateSource = functionSource(app, "loadStateFromApi", "loginViaApi");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+
+  assert.match(server, /create table if not exists audit_logs/);
+  assert.match(server, /details jsonb not null default '\{\}'::jsonb/);
+  assert.match(server, /audit_logs_created_idx/);
+  assert.match(server, /audit_logs_tenant_created_idx/);
+  assert.match(server, /function auditLogFromRow/);
+  assert.match(server, /pathname === "\/api\/audit"/);
+  assert.match(server, /insert into audit_logs \(tenant_id, user_id, user_email, user_role, event_type, operation, target, details\)/);
+  assert.match(server, /auth\.role === "platform_admin" \? auditLogResult\.rows\.map\(auditLogFromRow\) : \[\]/);
+  assert.match(schema, /create table audit_logs/);
+  assert.match(schema, /create index audit_logs_tenant_created_idx/);
+  assert.match(app, /auditLogs: \[\]/);
+  assert.match(loadStateSource, /auditLogs: remote\.auditLogs \|\| \[\]/);
+  assert.match(app, /function recordAuditEvent/);
+  assert.match(app, /function auditClickEvent/);
+  assert.match(app, /function auditSubmitEvent/);
+  assert.match(app, /redactAuditValue/);
+  assert.match(app, /password\|secret\|token\|code/);
+  assert.match(clickHandlerSource, /auditClickEvent\(\{ clickTarget: event\.target/);
+  assert.match(submitHandlerSource, /auditSubmitEvent\(event\.target\)/);
+  assert.match(app, /eventType: "button_click"/);
+  assert.match(app, /eventType: "form_submit"/);
+  assert.match(app, /fields: auditFormFields\(form\)/);
 });
 
 test("CRM home keeps attention correspondence and relationship event panels", () => {
@@ -987,7 +1025,7 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   assert.match(app, /function campaignRecipients/);
   assert.match(app, /function renderMergedTemplate/);
   assert.match(app, /function recurrenceLabel/);
-  assert.match(app, /data = normalizeData\(\{ \.\.\.data, tenants: remote\.tenants, inviteEmails: remote\.inviteEmails \}\)/);
+  assert.match(app, /data = normalizeData\(\{ \.\.\.data, tenants: remote\.tenants, inviteEmails: remote\.inviteEmails, auditLogs: remote\.auditLogs \|\| \[\] \}\)/);
   assert.match(sidebarSource, /sideLink\("campaigns", "◉", "Campaigns"/);
   assert.match(renderSectionSource, /ui\.section === "campaigns"/);
   assert.match(renderCampaignsSource, /data-campaign-form/);
