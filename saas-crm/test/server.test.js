@@ -1136,12 +1136,15 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(serverSource(), /inboundMetadata\.slice\(0, GMAIL_NEW_CONTACT_FULL_LIMIT\)/);
   assert.match(serverSource(), /GMAIL_ATTENTION_SIGNAL_LIMIT = 100/);
   assert.match(serverSource(), /format: "full"/);
+  assert.match(serverSource(), /Skipping Gmail full message/);
+  assert.match(serverSource(), /Skipping Gmail dormant check/);
   assert.match(serverSource(), /add column if not exists phone text/);
   assert.match(serverSource(), /gmail_contact_blacklist/);
   assert.match(serverSource(), /scanProgressById/);
   assert.match(app, /handleGmailCallbackQuery/);
   assert.match(app, /Gmail connected\. Refreshing integration status/);
   assert.match(app, /setGmailStatus\("Saving Gmail settings\.\.\."/);
+  assert.match(app, /body\.error === "Unable to scan Gmail\." && body\.detail/);
   assert.match(app, /Preparing Google authorization/);
   assert.match(app, /Redirecting to Google authorization/);
   assert.match(app, /Scanning Gmail\.\.\./);

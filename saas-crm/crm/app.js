@@ -510,7 +510,9 @@ async function apiRequest(path, options = {}) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = response.status === 401 && body.error === "Authentication required."
+    const message = body.error === "Unable to scan Gmail." && body.detail
+      ? body.detail
+      : response.status === 401 && body.error === "Authentication required."
       ? "Please sign in again to continue."
       : body.error || body.detail || "Request failed.";
     throw new Error(message);

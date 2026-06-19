@@ -2205,10 +2205,17 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
     unknownMetadata.push({ ...message, parsed });
   }
   updateGmailScanProgress(scanId, { status: "enriching", totalMessages: inboundCandidates.length, scannedMessages, candidatesFound: unknownMetadata.length });
-  const fullInboundMessages = await mapLimit(inboundMetadata.slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT), 6, async (message) => ({
-    parsed: parseEmailAddress(headerValue(message, "From")),
-    full: await gmailApi(accessToken, `messages/${message.id}`, { format: "full" }),
-  }));
+  const fullInboundMessages = (await mapLimit(inboundMetadata.slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT), 6, async (message) => {
+    try {
+      return {
+        parsed: parseEmailAddress(headerValue(message, "From")),
+        full: await gmailApi(accessToken, `messages/${message.id}`, { format: "full" }),
+      };
+    } catch (error) {
+      console.log(`Skipping Gmail full message ${message.id} for tenant ${tenantId}: ${error.message}`);
+      return null;
+    }
+  })).filter(Boolean);
   const fullByMessageId = new Map(fullInboundMessages.map((message) => [message.full.id, message]));
   const inboundMessages = unknownMetadata
     .slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT)
@@ -2263,8 +2270,13 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
 
   const dormantChecks = integration.detect_dormant_contacts
     ? await mapLimit(dealsResult.rows.slice(0, 50), 6, async (row) => {
-      const sent = await gmailApi(accessToken, "messages", { q: `in:sent to:${row.email} newer_than:${staleMonths}m`, maxResults: 1 });
-      return sent.messages?.length ? null : { email: row.email, name: row.contact || row.email.split("@")[0], account: row.account || "", months: staleMonths, source: `No sent Gmail in ${staleMonths} months` };
+      try {
+        const sent = await gmailApi(accessToken, "messages", { q: `in:sent to:${row.email} newer_than:${staleMonths}m`, maxResults: 1 });
+        return sent.messages?.length ? null : { email: row.email, name: row.contact || row.email.split("@")[0], account: row.account || "", months: staleMonths, source: `No sent Gmail in ${staleMonths} months` };
+      } catch (error) {
+        console.log(`Skipping Gmail dormant check for ${row.email} in tenant ${tenantId}: ${error.message}`);
+        return null;
+      }
     })
     : [];
   const dormant = dormantChecks.filter(Boolean);
