@@ -13,6 +13,7 @@ loadEnv(path.join(root, ".env"));
 const port = Number(process.env.PORT || 4173);
 const region = process.env.AWS_REGION || "us-east-1";
 const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SES_FROM_EMAIL;
+const registrationNotificationEmail = process.env.REGISTRATION_NOTIFICATION_EMAIL || "amihaih@gmail.com";
 const smtpHost = process.env.SMTP_HOST || "smtp.porkbun.com";
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpUser = process.env.SMTP_USER || fromEmail;
@@ -293,6 +294,80 @@ function inviteEmailContent({ to, tenantName, temporaryPassword }) {
       <p>You will be asked to create a permanent password after login.</p>
     </div>`;
   return { subject, text, html };
+}
+
+function registrationNotificationContent({ tenantName, userName, userEmail, method }) {
+  const subject = `New Zeptrix CRM registration: ${tenantName}`;
+  const text = [
+    "A new user registered to Zeptrix CRM.",
+    "",
+    `Tenant: ${tenantName}`,
+    `User: ${userName}`,
+    `Email: ${userEmail}`,
+    `Method: ${method}`,
+    `Time: ${new Date().toISOString()}`,
+    "",
+    `Admin: ${appBaseUrl}`,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#20242b">
+      <h2>New Zeptrix CRM registration</h2>
+      <p>A new user registered to Zeptrix CRM.</p>
+      <table style="border-collapse:collapse">
+        <tr><td style="padding:4px 12px 4px 0;color:#667085">Tenant</td><td style="padding:4px 0"><strong>${escapeHtml(tenantName)}</strong></td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#667085">User</td><td style="padding:4px 0">${escapeHtml(userName)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#667085">Email</td><td style="padding:4px 0">${escapeHtml(userEmail)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#667085">Method</td><td style="padding:4px 0">${escapeHtml(method)}</td></tr>
+      </table>
+      <p><a href="${escapeHtml(appBaseUrl)}">Open Zeptrix CRM</a></p>
+    </div>`;
+  return { subject, text, html };
+}
+
+async function sendRegistrationNotification(args) {
+  if (!registrationNotificationEmail) return { status: "disabled", detail: "REGISTRATION_NOTIFICATION_EMAIL is empty." };
+  if (!fromEmail) return { status: "not_configured", detail: "Sender email is not configured." };
+  const content = registrationNotificationContent(args);
+  if (emailProvider === "smtp") {
+    if (!smtpUser || !smtpPassword) return { status: "not_configured", detail: "SMTP user or password is not configured." };
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPassword },
+    });
+    const response = await transporter.sendMail({
+      from: `Zeptrix CRM <${fromEmail}>`,
+      to: registrationNotificationEmail,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+    });
+    return { status: "sent", messageId: response.messageId || null, detail: `Sent through SMTP (${smtpHost}).` };
+  }
+  const response = await ses.send(new SendEmailCommand({
+    Source: fromEmail,
+    Destination: { ToAddresses: [registrationNotificationEmail] },
+    Message: {
+      Subject: { Charset: "UTF-8", Data: content.subject },
+      Body: {
+        Text: { Charset: "UTF-8", Data: content.text },
+        Html: { Charset: "UTF-8", Data: content.html },
+      },
+    },
+  }));
+  return { status: "sent", messageId: response.MessageId, detail: "Sent through Amazon SES." };
+}
+
+async function notifyRegistration(args) {
+  try {
+    const result = await sendRegistrationNotification(args);
+    if (result.status !== "sent") console.log(`Registration notification was not sent: ${result.detail}`);
+    return result;
+  } catch (error) {
+    console.log(`Registration notification failed: ${error.message}`);
+    return { status: "failed", detail: error.message };
+  }
 }
 
 async function sendInviteEmailViaSmtp(args) {
@@ -1869,6 +1944,12 @@ async function createGoogleRegistration(profile) {
     });
     return { tenantRow, userRow };
   });
+  await notifyRegistration({
+    tenantName: created.tenantRow.name,
+    userName: created.userRow.name,
+    userEmail: created.userRow.email,
+    method: "Google SSO",
+  });
   return { user: { ...created.userRow, tenant_name: created.tenantRow.name }, tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []) };
 }
 
@@ -2224,6 +2305,12 @@ async function handleApi(req, res) {
         role: created.userRow.role,
         mustChangePassword: false,
       };
+      await notifyRegistration({
+        tenantName: created.tenantRow.name,
+        userName: created.userRow.name,
+        userEmail: created.userRow.email,
+        method: "Email/password",
+      });
       return json(res, 201, { ...authChallengeForUser({ ...created.userRow, tenant_name: created.tenantRow.name }), tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []) });
     } catch (error) {
       return json(res, 500, { error: "Unable to register workspace.", detail: error.message });
@@ -2769,6 +2856,7 @@ module.exports = {
   normalizeTenantPayload,
   normalizeWorkflowAutomationSettings,
   parseEmailAddress,
+  registrationNotificationContent,
   signAuthToken,
   signGoogleAuthState,
   signPreAuthToken,

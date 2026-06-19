@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { authChallengeForUser, authenticatorUri, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, signAuthToken, signGoogleAuthState, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
+const { authChallengeForUser, authenticatorUri, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, registrationNotificationContent, signAuthToken, signGoogleAuthState, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -165,6 +165,15 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   });
   assert.equal(normalizeRegistrationPayload({ fullName: "Ron", company: "Ron Labs", email: "bad", password: "StrongPass12" }).error, "A valid work email is required.");
   assert.equal(normalizeRegistrationPayload({ fullName: "Ron", company: "Ron Labs", email: "ron@example.com", password: "short" }).error, "Password must be at least 10 characters.");
+  const notification = registrationNotificationContent({
+    tenantName: "Ron Labs",
+    userName: "Ron Cohen",
+    userEmail: "ron@example.com",
+    method: "Email/password",
+  });
+  assert.match(notification.subject, /New Zeptrix CRM registration: Ron Labs/);
+  assert.match(notification.text, /Email: ron@example\.com/);
+  assert.match(notification.text, /Method: Email\/password/);
   assert.match(renderLoginSource, /data-action="show-register"/);
   assert.match(renderLoginSource, /data-action="google-sso"/);
   assert.match(renderLoginSource, /data-mode="login"/);
@@ -194,6 +203,10 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   assert.match(server, /normalizeRegistrationPayload/);
   assert.match(server, /insertTenantWithClient/);
   assert.match(server, /insertUserWithClient/);
+  assert.match(server, /registrationNotificationEmail = process\.env\.REGISTRATION_NOTIFICATION_EMAIL \|\| "amihaih@gmail.com"/);
+  assert.match(server, /notifyRegistration\(\{\s+tenantName: created\.tenantRow\.name,\s+userName: created\.userRow\.name,\s+userEmail: created\.userRow\.email,\s+method: "Email\/password"/);
+  assert.match(server, /method: "Google SSO"/);
+  assert.match(server, /Registration notification failed/);
   assert.match(server, /preAuthToken/);
   assert.match(server, /mfa_secret_enc/);
   assert.match(server, /mfa_confirmed/);
