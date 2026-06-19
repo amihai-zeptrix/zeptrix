@@ -2408,8 +2408,9 @@ function renderGmailScanProgress() {
   const progress = ui.gmailScanProgress || {};
   const scanned = Number(progress.scannedMessages || 0);
   const total = Number(progress.totalMessages || 0);
+  const percent = total ? Math.max(2, Math.min(100, Math.round((scanned / total) * 100))) : 12;
   const detail = total ? `${scanned} of ${total} emails scanned` : `${scanned} emails scanned`;
-  return `<div class="gmail-progress"><strong>Scanning Gmail...</strong><span>${escapeHtml(detail)}</span><small>Updating every 2 seconds while the scan runs.</small></div>`;
+  return `<div class="gmail-progress"><div class="gmail-progress-head"><strong>Scanning Gmail...</strong><span>${escapeHtml(detail)}</span></div><div class="gmail-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${total || 100}" aria-valuenow="${total ? scanned : 0}" aria-label="Gmail scan progress"><span style="width:${percent}%"></span></div></div>`;
 }
 
 function renderWorkflowAutomationSettingsPanel() {

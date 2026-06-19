@@ -1146,7 +1146,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /Redirecting to Google authorization/);
   assert.match(app, /Scanning Gmail\.\.\./);
   assert.match(app, /\}, 2000\);/);
-  assert.match(app, /Updating every 2 seconds while the scan runs\./);
+  assert.match(app, /role="progressbar"/);
+  assert.match(app, /gmail-progress-bar/);
+  assert.doesNotMatch(app, /Updating every 2 seconds while the scan runs\./);
   assert.match(app, /if \(result\.warning\) showToast\(result\.warning\)/);
   assert.match(app, /Automation created \$\{Number\(result\.automationSummary\.tasksCreated/);
   assert.match(app, /await loadStateFromApi\(\)/);
