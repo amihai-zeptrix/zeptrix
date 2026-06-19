@@ -222,6 +222,7 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.equal(challenge.mfaRequired, true);
   assert.equal(challenge.mfaSetupRequired, true);
   assert.equal(verifyPreAuthToken(challenge.preAuthToken).purpose, "mfa");
+  assert.match(verifyPreAuthToken(challenge.preAuthToken).jti, /^[0-9a-f-]{36}$/i);
   assert.equal(verifyGoogleAuthState(state).mode, "register");
   assert.match(authenticatorUri({ secret, email: "ron@example.com" }), /^otpauth:\/\/totp\/Zeptrix%20CRM/);
   assert.equal(verifyTotpCode(secret, code), true);
@@ -229,6 +230,13 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.match(server, /openid email profile/);
   assert.match(server, /verifyGoogleIdentity/);
   assert.match(server, /exchangeGoogleAuthCode/);
+  assert.match(server, /alter table users add column if not exists mfa_enabled/);
+  assert.match(server, /alter table users add column if not exists google_subject/);
+  assert.match(server, /alter table users add column if not exists last_login_at/);
+  assert.match(server, /users_google_subject_key/);
+  assert.match(server, /registerMfaAttempt\(preAuthToken\) > 5/);
+  assert.match(server, /consumedMfaChallenges\.has/);
+  assert.match(server, /consumedMfaChallenges\.add/);
 });
 
 test("invite email content includes login details", () => {
@@ -241,7 +249,10 @@ test("invite email content includes login details", () => {
   assert.equal(content.subject, "Your Zeptrix CRM invite");
   assert.match(content.text, /Email: owner@example.com/);
   assert.match(content.text, /Temporary password: Tmp-Example123!/);
+  assert.match(content.text, /Authenticator MFA/);
+  assert.doesNotMatch(content.text, /123456/);
   assert.match(content.html, /Example Tenant/);
+  assert.match(content.html, /Google Authenticator/);
 });
 
 test("SMTP invite message sends only to the tenant login recipient", () => {

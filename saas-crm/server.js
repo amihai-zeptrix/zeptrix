@@ -46,6 +46,8 @@ const NEGATIVE_CORRESPONDENCE_PHRASES = [
   "account review", "postmortem", "root cause", "corrective action", "recovery plan", "remediation", "mitigation", "action plan", "where is the update", "why should we renew",
 ];
 const scanProgressById = new Map();
+const mfaAttemptsByChallenge = new Map();
+const consumedMfaChallenges = new Set();
 const ses = new SESClient({ region });
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false } })
@@ -253,7 +255,7 @@ function inviteEmailContent({ to, tenantName, temporaryPassword }) {
     `Sign in: ${appBaseUrl}`,
     `Email: ${to}`,
     `Temporary password: ${temporaryPassword}`,
-    "MFA code for this demo: 123456",
+    "Authenticator MFA: after signing in, you will be prompted to scan a QR code with Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.",
     "",
     "You will be asked to create a permanent password after login.",
   ].join("\n");
@@ -264,7 +266,7 @@ function inviteEmailContent({ to, tenantName, temporaryPassword }) {
       <p><a href="${escapeHtml(appBaseUrl)}">Open Zeptrix CRM</a></p>
       <p><strong>Email:</strong> ${escapeHtml(to)}<br>
       <strong>Temporary password:</strong> ${escapeHtml(temporaryPassword)}<br>
-      <strong>MFA code for this demo:</strong> 123456</p>
+      <strong>Authenticator MFA:</strong> after signing in, you will be prompted to scan a QR code with Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.</p>
       <p>You will be asked to create a permanent password after login.</p>
     </div>`;
   return { subject, text, html };
@@ -409,8 +411,12 @@ async function initDatabase() {
       last_login_at timestamptz,
       created_at timestamptz not null default now()
     )`);
+  await dbQuery(`alter table users add column if not exists mfa_enabled boolean not null default true`);
   await dbQuery(`alter table users add column if not exists mfa_secret_enc text`);
   await dbQuery(`alter table users add column if not exists mfa_confirmed boolean not null default false`);
+  await dbQuery(`alter table users add column if not exists google_subject text`);
+  await dbQuery(`alter table users add column if not exists last_login_at timestamptz`);
+  await dbQuery(`create unique index if not exists users_google_subject_key on users(google_subject) where google_subject is not null`);
   await dbQuery(`
     create table if not exists deals (
       id uuid primary key default gen_random_uuid(),
@@ -1089,12 +1095,25 @@ function signAuthToken(user) {
 }
 
 function signPreAuthToken(user) {
-  return signPayload({ purpose: "mfa", userId: user.id, tenantId: user.tenantId, email: user.email, role: user.role, exp: Date.now() + 10 * 60 * 1000 });
+  return signPayload({ purpose: "mfa", jti: crypto.randomUUID(), userId: user.id, tenantId: user.tenantId, email: user.email, role: user.role, exp: Date.now() + 10 * 60 * 1000 });
 }
 
 function verifyPreAuthToken(token) {
   const payload = verifySignedPayload(token);
   return payload?.purpose === "mfa" ? payload : null;
+}
+
+function mfaChallengeKey(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("base64url");
+}
+
+function registerMfaAttempt(token) {
+  const key = mfaChallengeKey(token);
+  const existing = mfaAttemptsByChallenge.get(key) || { count: 0, firstAt: Date.now() };
+  const next = Date.now() - existing.firstAt > 10 * 60 * 1000 ? { count: 1, firstAt: Date.now() } : { ...existing, count: existing.count + 1 };
+  mfaAttemptsByChallenge.set(key, next);
+  setTimeout(() => mfaAttemptsByChallenge.delete(key), 10 * 60 * 1000).unref?.();
+  return next.count;
 }
 
 function authFromRequest(req) {
@@ -2049,11 +2068,17 @@ async function handleApi(req, res) {
       const { preAuthToken, code } = await readBody(req);
       const preAuth = verifyPreAuthToken(preAuthToken);
       if (!preAuth) return json(res, 401, { error: "MFA session expired. Please sign in again." });
+      const challengeKey = mfaChallengeKey(preAuthToken);
+      if (consumedMfaChallenges.has(challengeKey)) return json(res, 401, { error: "MFA session already used. Please sign in again." });
+      if (registerMfaAttempt(preAuthToken) > 5) return json(res, 429, { error: "Too many MFA attempts. Please sign in again." });
       const user = await userById(preAuth.userId);
       if (!user) return json(res, 404, { error: "User not found." });
       const secret = user.mfa_secret_enc ? decryptToken(user.mfa_secret_enc) : "";
       if (!secret || !verifyTotpCode(secret, code)) return json(res, 401, { error: "Invalid authenticator code." });
       await dbQuery(`update users set mfa_confirmed=true, mfa_enabled=true, last_login_at=now() where id=$1`, [user.id]);
+      consumedMfaChallenges.add(challengeKey);
+      mfaAttemptsByChallenge.delete(challengeKey);
+      setTimeout(() => consumedMfaChallenges.delete(challengeKey), 10 * 60 * 1000).unref?.();
       const authUser = userAuthPayload({ ...user, mfa_confirmed: true, mfa_enabled: true });
       return json(res, 200, { user: authUser, token: signAuthToken(authUser) });
     } catch (error) {
