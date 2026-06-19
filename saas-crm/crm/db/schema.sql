@@ -124,6 +124,20 @@ create table gmail_integrations (
   updated_at timestamptz not null default now()
 );
 
+create table workflow_automations (
+  tenant_id uuid primary key references tenants(id) on delete cascade,
+  enabled boolean not null default true,
+  create_follow_up_tasks boolean not null default true,
+  tag_risk_accounts boolean not null default true,
+  risk_tag text not null default 'At risk',
+  dormant_due_days integer not null default 3 check (dormant_due_days >= 1 and dormant_due_days <= 30),
+  attention_due_days integer not null default 1 check (attention_due_days >= 0 and attention_due_days <= 14),
+  last_run_at timestamptz,
+  last_run_summary jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
 create table outgoing_email_settings (
   tenant_id uuid primary key references tenants(id) on delete cascade,
   host text not null,

@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { authChallengeForUser, authenticatorUri, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, parseEmailAddress, signAuthToken, signGoogleAuthState, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
+const { authChallengeForUser, authenticatorUri, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, signAuthToken, signGoogleAuthState, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -850,6 +850,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSettingsPageSource, /Email templates/);
   assert.match(renderSettingsPageSource, /data-settings-tab="templates"/);
   assert.match(renderSettingsPageSource, /renderTemplatesSettingsPanel/);
+  assert.match(renderSettingsPageSource, /Workflow automation/);
+  assert.match(renderSettingsPageSource, /data-settings-tab="automation"/);
+  assert.match(renderSettingsPageSource, /renderWorkflowAutomationSettingsPanel/);
   assert.match(renderSettingsPageSource, /Configuration/);
   assert.match(renderSettingsPageSource, /data-settings-tab="configuration"/);
   assert.doesNotMatch(renderSettingsPageSource, /data-settings-tab="workspace"/);
@@ -887,6 +890,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /gmailDormantContacts/);
   assert.match(app, /if \(gmail\.lastScanAt\) return \[\]/);
   assert.match(app, /saveGmailSettingsViaApi/);
+  assert.match(app, /saveWorkflowAutomationViaApi/);
   assert.match(app, /connectGmailViaApi/);
   assert.match(app, /scanGmailViaApi/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30/);
@@ -911,6 +915,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /Preparing Google authorization/);
   assert.match(app, /Redirecting to Google authorization/);
   assert.match(app, /Scanning Gmail\.\.\./);
+  assert.match(app, /Automation created \$\{Number\(result\.automationSummary\.tasksCreated/);
+  assert.match(app, /await loadStateFromApi\(\)/);
   assert.match(app, /Gmail settings saved\./);
   assert.match(app, /renderGmailOAuthGuide/);
   assert.match(app, /ui\.modal === "gmail-oauth-guide"/);
@@ -923,6 +929,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(clickHandlerSource, /action === "add-gmail-contact"/);
   assert.match(submitHandlerSource, /data-gmail-settings-form/);
   assert.match(submitHandlerSource, /saveGmailSettingsViaApi\(tenant\.id, gmailFormValues\(event\.target\)\)/);
+  assert.match(submitHandlerSource, /data-workflow-automation-form/);
+  assert.match(submitHandlerSource, /saveWorkflowAutomationViaApi\(tenant\.id, values\)/);
   assert.match(submitHandlerSource, /data-configuration-form/);
   assert.match(submitHandlerSource, /saveConfigurationViaApi/);
   assert.match(styles, /\.settings-tabs/);
@@ -931,7 +939,52 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(styles, /\.signal-row/);
   assert.match(styles, /\.signal-scope/);
   assert.match(styles, /\.gmail-notice\.error/);
+  assert.match(styles, /\.automation-preview/);
   assert.doesNotMatch(styles, /\.gmail-diagnostic/);
+});
+
+test("CRM workflow automation persists rules and runs after Gmail risk scan", () => {
+  const server = serverSource();
+  const app = crmAppSource();
+  const schema = fs.readFileSync(path.join(__dirname, "..", "crm", "db", "schema.sql"), "utf8");
+  const normalized = normalizeWorkflowAutomationSettings({
+    enabled: false,
+    createFollowUpTasks: false,
+    tagRiskAccounts: true,
+    riskTag: " Renewal risk ",
+    dormantDueDays: 99,
+    attentionDueDays: -1,
+  });
+
+  assert.equal(normalized.enabled, false);
+  assert.equal(normalized.createFollowUpTasks, false);
+  assert.equal(normalized.tagRiskAccounts, true);
+  assert.equal(normalized.riskTag, "Renewal risk");
+  assert.equal(normalized.dormantDueDays, 30);
+  assert.equal(normalized.attentionDueDays, 0);
+
+  assert.match(server, /create table if not exists workflow_automations/);
+  assert.match(server, /create_follow_up_tasks boolean not null default true/);
+  assert.match(server, /last_run_summary jsonb not null default '\{\}'::jsonb/);
+  assert.match(server, /function applyWorkflowAutomationToGmailSignals/);
+  assert.match(server, /insertWorkflowTaskIfMissing/);
+  assert.match(server, /Respond to risk email from/);
+  assert.match(server, /Follow up with \$\{signal\.name \|\| signal\.email\} after/);
+  assert.match(server, /addRiskTagToAccountDeals/);
+  assert.match(server, /applyWorkflowAutomationToGmailSignals\(tenantId, \{ dormant: dormant\.slice/);
+  assert.match(server, /automationSummary/);
+  assert.match(server, /\/workflow-automation/);
+  assert.match(server, /upsertWorkflowAutomationSettings/);
+  assert.match(server, /workflowAutomationFromRow/);
+  assert.match(schema, /create table workflow_automations/);
+
+  assert.match(app, /defaultWorkflowAutomation/);
+  assert.match(app, /workflowAutomation: \{ \.\.\.defaultWorkflowAutomation/);
+  assert.match(app, /function renderWorkflowAutomationSettingsPanel/);
+  assert.match(app, /Run automation after Gmail scan/);
+  assert.match(app, /Mark risky accounts/);
+  assert.match(app, /Tasks created/);
+  assert.match(app, /workflowAutomationFormValues/);
 });
 
 test("CRM outgoing email settings and send email flow are wired to SMTP API", () => {

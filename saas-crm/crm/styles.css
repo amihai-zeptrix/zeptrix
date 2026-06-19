@@ -1754,6 +1754,30 @@ h3 { font-size: 14px; }
   padding: 10px;
   font: inherit;
 }
+.automation-card {
+  max-width: 980px;
+}
+.automation-preview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.automation-preview span {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.automation-preview small {
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.automation-preview strong {
+  font: 800 20px Manrope, sans-serif;
+}
 .field label {
   display: flex;
   align-items: center;

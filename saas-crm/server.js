@@ -30,6 +30,14 @@ const GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000;
 const GMAIL_NEW_CONTACT_FULL_LIMIT = 250;
 const GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250;
 const GMAIL_ATTENTION_SIGNAL_LIMIT = 100;
+const DEFAULT_WORKFLOW_AUTOMATION = {
+  enabled: true,
+  createFollowUpTasks: true,
+  tagRiskAccounts: true,
+  riskTag: "At risk",
+  dormantDueDays: 3,
+  attentionDueDays: 1,
+};
 const NEGATIVE_CORRESPONDENCE_PHRASES = [
   "angry", "angrey", "frustrated", "upset", "unhappy", "disappointed", "dissatisfied", "concerned", "worried", "annoyed",
   "irritated", "furious", "outraged", "mad", "displeased", "unacceptable", "not acceptable", "totally unacceptable", "very disappointed", "deeply disappointed",
@@ -173,6 +181,20 @@ function normalizeDealPayload(payload = {}) {
     tags,
     note: String(payload.note || payload.notes || "").trim(),
     updated: String(payload.updated || "Just now").trim(),
+  };
+}
+
+function normalizeWorkflowAutomationSettings(payload = {}) {
+  const enabled = payload.enabled == null ? DEFAULT_WORKFLOW_AUTOMATION.enabled : Boolean(payload.enabled);
+  const createFollowUpTasks = payload.createFollowUpTasks == null ? DEFAULT_WORKFLOW_AUTOMATION.createFollowUpTasks : Boolean(payload.createFollowUpTasks);
+  const tagRiskAccounts = payload.tagRiskAccounts == null ? DEFAULT_WORKFLOW_AUTOMATION.tagRiskAccounts : Boolean(payload.tagRiskAccounts);
+  return {
+    enabled,
+    createFollowUpTasks,
+    tagRiskAccounts,
+    riskTag: normalizeTagName(payload.riskTag || DEFAULT_WORKFLOW_AUTOMATION.riskTag) || DEFAULT_WORKFLOW_AUTOMATION.riskTag,
+    dormantDueDays: Math.max(1, Math.min(30, Number(payload.dormantDueDays || DEFAULT_WORKFLOW_AUTOMATION.dormantDueDays))),
+    attentionDueDays: Math.max(0, Math.min(14, Number(payload.attentionDueDays ?? DEFAULT_WORKFLOW_AUTOMATION.attentionDueDays))),
   };
 }
 
@@ -559,6 +581,20 @@ async function initDatabase() {
       created_at timestamptz not null default now(),
       unique(tenant_id, email)
     )`);
+  await dbQuery(`
+    create table if not exists workflow_automations (
+      tenant_id uuid primary key references tenants(id) on delete cascade,
+      enabled boolean not null default true,
+      create_follow_up_tasks boolean not null default true,
+      tag_risk_accounts boolean not null default true,
+      risk_tag text not null default 'At risk',
+      dormant_due_days integer not null default 3 check (dormant_due_days >= 1 and dormant_due_days <= 30),
+      attention_due_days integer not null default 1 check (attention_due_days >= 0 and attention_due_days <= 14),
+      last_run_at timestamptz,
+      last_run_summary jsonb not null default '{}'::jsonb,
+      updated_at timestamptz not null default now(),
+      created_at timestamptz not null default now()
+    )`);
   await dbQuery(`alter table gmail_contact_signals add column if not exists phone text`);
   await dbQuery(`alter table deals add column if not exists phone text`);
   await dbQuery(`alter table deals add column if not exists tags jsonb not null default '[]'::jsonb`);
@@ -570,6 +606,7 @@ async function initDatabase() {
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
+  await dbQuery(`create index if not exists workflow_automations_updated_idx on workflow_automations(updated_at desc)`);
   await seedDatabase();
 }
 
@@ -870,7 +907,7 @@ async function upsertMailTemplateForTenant(tenantId, payload, templateId = "") {
 }
 
 async function readState(auth) {
-  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult] = await Promise.all([
+  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult, workflowAutomationResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
     dbQuery(`select * from users order by created_at`),
     dbQuery(`select * from deals order by created_at`),
@@ -882,6 +919,7 @@ async function readState(auth) {
     dbQuery(`select * from contact_tags order by lower(name), name`),
     dbQuery(`select * from mail_templates order by updated_at desc`),
     dbQuery(`select * from outgoing_email_settings`),
+    dbQuery(`select * from workflow_automations`),
   ]);
   const visibleTenants = auth.role === "platform_admin" ? tenantsResult.rows : tenantsResult.rows.filter((tenant) => tenant.id === auth.tenantId);
   return {
@@ -896,12 +934,13 @@ async function readState(auth) {
       contactTagsResult.rows.filter((tag) => tag.tenant_id === tenant.id),
       mailTemplatesResult.rows.filter((template) => template.tenant_id === tenant.id),
       outgoingEmailResult.rows.find((settings) => settings.tenant_id === tenant.id),
+      workflowAutomationResult.rows.find((settings) => settings.tenant_id === tenant.id),
     )),
     inviteEmails: auth.role === "platform_admin" ? invitesResult.rows.map(inviteFromRow) : [],
   };
 }
 
-function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], contactTags = [], mailTemplates = [], outgoingEmailSettings = null) {
+function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], contactTags = [], mailTemplates = [], outgoingEmailSettings = null, workflowAutomation = null) {
   const normalizedDeals = deals.map(dealFromRow);
   return {
     id: tenant.id,
@@ -920,6 +959,7 @@ function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegra
     availableTags: availableContactTags(contactTags, normalizedDeals),
     mailTemplates: mailTemplates.map(mailTemplateFromRow),
     outgoingEmail: outgoingEmailSettingsFromRow(outgoingEmailSettings),
+    workflowAutomation: workflowAutomationFromRow(workflowAutomation),
   };
 }
 
@@ -1013,6 +1053,20 @@ function outgoingEmailSettingsFromRow(row) {
     fromEmail: row?.from_email || "",
     passwordConfigured: !!row?.password_enc,
     updatedAt: row?.updated_at ? row.updated_at.toISOString() : "",
+  };
+}
+
+function workflowAutomationFromRow(row) {
+  return {
+    ...DEFAULT_WORKFLOW_AUTOMATION,
+    enabled: row?.enabled ?? DEFAULT_WORKFLOW_AUTOMATION.enabled,
+    createFollowUpTasks: row?.create_follow_up_tasks ?? DEFAULT_WORKFLOW_AUTOMATION.createFollowUpTasks,
+    tagRiskAccounts: row?.tag_risk_accounts ?? DEFAULT_WORKFLOW_AUTOMATION.tagRiskAccounts,
+    riskTag: row?.risk_tag || DEFAULT_WORKFLOW_AUTOMATION.riskTag,
+    dormantDueDays: row?.dormant_due_days || DEFAULT_WORKFLOW_AUTOMATION.dormantDueDays,
+    attentionDueDays: row?.attention_due_days ?? DEFAULT_WORKFLOW_AUTOMATION.attentionDueDays,
+    lastRunAt: row?.last_run_at ? row.last_run_at.toISOString() : "",
+    lastRunSummary: row?.last_run_summary || {},
   };
 }
 
@@ -1341,6 +1395,26 @@ async function upsertConfigurationSettings(tenantId, payload) {
     [tenantId, settings.gmailLookbackDays],
   );
   return gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId));
+}
+
+async function upsertWorkflowAutomationSettings(tenantId, payload) {
+  const settings = normalizeWorkflowAutomationSettings(payload);
+  const result = await dbQuery(
+    `insert into workflow_automations
+       (tenant_id, enabled, create_follow_up_tasks, tag_risk_accounts, risk_tag, dormant_due_days, attention_due_days, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,now())
+     on conflict (tenant_id) do update set
+       enabled=excluded.enabled,
+       create_follow_up_tasks=excluded.create_follow_up_tasks,
+       tag_risk_accounts=excluded.tag_risk_accounts,
+       risk_tag=excluded.risk_tag,
+       dormant_due_days=excluded.dormant_due_days,
+       attention_due_days=excluded.attention_due_days,
+       updated_at=now()
+     returning *`,
+    [tenantId, settings.enabled, settings.createFollowUpTasks, settings.tagRiskAccounts, settings.riskTag, settings.dormantDueDays, settings.attentionDueDays],
+  );
+  return workflowAutomationFromRow(result.rows[0]);
 }
 
 async function upsertOutgoingEmailSettings(tenantId, payload) {
@@ -1809,6 +1883,122 @@ function finishGmailScanProgress(scanId, patch = {}) {
   setTimeout(() => scanProgressById.delete(scanId), 10 * 60 * 1000).unref?.();
 }
 
+function isoDateInDays(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + Number(days || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+async function findDealForSignal(client, tenantId, signal) {
+  const result = await client.query(
+    `select * from deals
+     where tenant_id=$1
+       and (
+         lower(email::text)=lower($2)
+         or ($3<>'' and lower(account)=lower($3))
+       )
+     order by case when lower(email::text)=lower($2) then 0 else 1 end,
+              case when stage in ('Won','Lost') then 1 else 0 end,
+              updated_at desc
+     limit 1`,
+    [tenantId, signal.email || "", signal.account || ""],
+  );
+  return result.rows[0] || null;
+}
+
+async function insertWorkflowTaskIfMissing(client, tenantId, deal, task) {
+  if (!deal?.id) return false;
+  const existing = await client.query(
+    `select id from activities
+     where tenant_id=$1 and deal_id=$2 and title=$3 and completed=false
+     limit 1`,
+    [tenantId, deal.id, task.title],
+  );
+  if (existing.rows.length) return false;
+  await client.query(
+    `insert into activities (tenant_id, deal_id, title, type, owner, due_date, priority, completed)
+     values ($1,$2,$3,$4,$5,$6::date,$7,false)`,
+    [tenantId, deal.id, task.title, task.type, deal.owner || "", task.due, task.priority],
+  );
+  return true;
+}
+
+async function addRiskTagToAccountDeals(client, tenantId, account, riskTag) {
+  if (!account || !riskTag) return 0;
+  const result = await client.query(`select id, tags from deals where tenant_id=$1 and lower(account)=lower($2)`, [tenantId, account]);
+  let updated = 0;
+  for (const row of result.rows) {
+    const tags = normalizeTags([...(Array.isArray(row.tags) ? row.tags : []), riskTag]);
+    if (JSON.stringify(tags) === JSON.stringify(normalizeTags(row.tags || []))) continue;
+    await client.query(`update deals set tags=$3::jsonb, updated_label='Workflow automation', updated_at=now() where tenant_id=$1 and id=$2`, [tenantId, row.id, JSON.stringify(tags)]);
+    updated += 1;
+  }
+  if (updated) {
+    await client.query(
+      `insert into contact_tags (tenant_id, name)
+       values ($1,$2)
+       on conflict (tenant_id, name) do nothing`,
+      [tenantId, riskTag],
+    );
+  }
+  return updated;
+}
+
+async function applyWorkflowAutomationToGmailSignals(tenantId, { dormant = [], attentionCorrespondence = [] } = {}) {
+  const settingsResult = await dbQuery(`select * from workflow_automations where tenant_id=$1`, [tenantId]);
+  const settings = workflowAutomationFromRow(settingsResult.rows[0]);
+  const summary = { tasksCreated: 0, accountsTagged: 0, dormantSignals: dormant.length, riskSignals: attentionCorrespondence.length };
+  if (!settings.enabled) {
+    await dbQuery(
+      `insert into workflow_automations (tenant_id, enabled, last_run_at, last_run_summary)
+       values ($1,$2,now(),$3::jsonb)
+       on conflict (tenant_id) do update set last_run_at=now(), last_run_summary=$3::jsonb`,
+      [tenantId, settings.enabled, JSON.stringify({ ...summary, skipped: "Automation disabled" })],
+    );
+    return { ...summary, skipped: "Automation disabled" };
+  }
+  await withTransaction(async (client) => {
+    if (settings.createFollowUpTasks) {
+      for (const signal of dormant.slice(0, 50)) {
+        const deal = await findDealForSignal(client, tenantId, signal);
+        if (!deal || ["Won", "Lost"].includes(deal.stage)) continue;
+        const created = await insertWorkflowTaskIfMissing(client, tenantId, deal, {
+          title: `Follow up with ${signal.name || signal.email} after ${signal.months || 3} months without email`,
+          type: "Email",
+          due: isoDateInDays(settings.dormantDueDays),
+          priority: "Medium",
+        });
+        if (created) summary.tasksCreated += 1;
+      }
+      for (const signal of attentionCorrespondence.slice(0, 50)) {
+        const deal = await findDealForSignal(client, tenantId, signal);
+        if (!deal || ["Won", "Lost"].includes(deal.stage)) continue;
+        const created = await insertWorkflowTaskIfMissing(client, tenantId, deal, {
+          title: `Respond to risk email from ${signal.name || signal.email}`,
+          type: "Email",
+          due: isoDateInDays(settings.attentionDueDays),
+          priority: "High",
+        });
+        if (created) summary.tasksCreated += 1;
+      }
+    }
+    if (settings.tagRiskAccounts) {
+      const accounts = [...new Set(attentionCorrespondence.map((signal) => signal.account).filter(Boolean))];
+      for (const account of accounts) summary.accountsTagged += await addRiskTagToAccountDeals(client, tenantId, account, settings.riskTag);
+    }
+    await client.query(
+      `insert into workflow_automations (tenant_id, enabled, create_follow_up_tasks, tag_risk_accounts, risk_tag, dormant_due_days, attention_due_days, last_run_at, last_run_summary)
+       values ($1,$2,$3,$4,$5,$6,$7,now(),$8::jsonb)
+       on conflict (tenant_id) do update set
+         last_run_at=now(),
+         last_run_summary=$8::jsonb,
+         updated_at=workflow_automations.updated_at`,
+      [tenantId, settings.enabled, settings.createFollowUpTasks, settings.tagRiskAccounts, settings.riskTag, settings.dormantDueDays, settings.attentionDueDays, JSON.stringify(summary)],
+    );
+  });
+  return summary;
+}
+
 async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
   const integrationResult = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [tenantId]);
   const integration = integrationResult.rows[0];
@@ -1910,8 +2100,9 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
     }
     await client.query(`update gmail_integrations set last_scan_at=now(), status='Last scan completed', updated_at=now() where tenant_id=$1`, [tenantId]);
   });
-  const result = { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT), scannedMessages: inboundMetadata.length + dormantChecks.length };
-  finishGmailScanProgress(scanId, { scannedMessages: inboundMetadata.length, totalMessages: inboundCandidates.length, candidatesFound: newContacts.length, attentionFound: attentionCorrespondence.length });
+  const automationSummary = await applyWorkflowAutomationToGmailSignals(tenantId, { dormant: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT) });
+  const result = { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT), automationSummary, scannedMessages: inboundMetadata.length + dormantChecks.length };
+  finishGmailScanProgress(scanId, { scannedMessages: inboundMetadata.length, totalMessages: inboundCandidates.length, candidatesFound: newContacts.length, attentionFound: attentionCorrespondence.length, automationSummary });
   return result;
 }
 
@@ -2346,6 +2537,19 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/workflow-automation")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const workflowAutomation = await upsertWorkflowAutomationSettings(resolved.tenantId, await readBody(req));
+      return json(res, 200, { workflowAutomation });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save workflow automation.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
   if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/outgoing-email")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -2563,6 +2767,7 @@ module.exports = {
   normalizeOutgoingMailPayload,
   normalizeRegistrationPayload,
   normalizeTenantPayload,
+  normalizeWorkflowAutomationSettings,
   parseEmailAddress,
   signAuthToken,
   signGoogleAuthState,

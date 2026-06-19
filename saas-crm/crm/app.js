@@ -169,6 +169,17 @@ const defaultOutgoingEmail = {
   updatedAt: "",
 };
 
+const defaultWorkflowAutomation = {
+  enabled: true,
+  createFollowUpTasks: true,
+  tagRiskAccounts: true,
+  riskTag: "At risk",
+  dormantDueDays: 3,
+  attentionDueDays: 1,
+  lastRunAt: "",
+  lastRunSummary: {},
+};
+
 let data = loadData();
 let session = loadSession();
 let ui = {
@@ -262,6 +273,7 @@ function normalizeData(nextData) {
     availableTags: normalizeTags([...(tenant.availableTags || []), ...(tenant.deals || []).flatMap((deal) => deal.tags || defaultAccountTags(deal)), ...defaultTags]),
     mailTemplates: normalizeMailTemplates(tenant.mailTemplates),
     outgoingEmail: { ...defaultOutgoingEmail, ...(tenant.outgoingEmail || {}) },
+    workflowAutomation: { ...defaultWorkflowAutomation, ...(tenant.workflowAutomation || {}) },
     campaigns: (tenant.campaigns?.length ? tenant.campaigns : defaultCampaignsForTenant(tenant)).map((campaign) => ({ recurrence: "one-time", ...campaign })),
     gmailIntegration: { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) },
     users: (tenant.users || []).map((user) => {
@@ -624,6 +636,10 @@ async function saveGmailSettingsViaApi(tenantId, values) {
 
 async function saveConfigurationViaApi(tenantId, values) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/configuration`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+async function saveWorkflowAutomationViaApi(tenantId, values) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/workflow-automation`, { method: "PUT", body: JSON.stringify(values) });
 }
 
 async function saveOutgoingEmailSettingsViaApi(tenantId, values) {
@@ -1914,9 +1930,10 @@ function renderSettingsPage() {
       <button class="${ui.settingsTab === "mail" ? "active" : ""}" data-settings-tab="mail">Mail integrations</button>
       <button class="${ui.settingsTab === "outgoing" ? "active" : ""}" data-settings-tab="outgoing">Outgoing email</button>
       <button class="${ui.settingsTab === "templates" ? "active" : ""}" data-settings-tab="templates">Email templates</button>
+      <button class="${ui.settingsTab === "automation" ? "active" : ""}" data-settings-tab="automation">Workflow automation</button>
       <button class="${ui.settingsTab === "configuration" ? "active" : ""}" data-settings-tab="configuration">Configuration</button>
     </nav>
-    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : renderConfigurationSettingsPanel()}`;
+    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : ui.settingsTab === "automation" ? renderWorkflowAutomationSettingsPanel() : renderConfigurationSettingsPanel()}`;
 }
 
 function renderTemplatesSettingsPanel() {
@@ -2031,6 +2048,33 @@ function renderGmailScanProgress() {
   return `<div class="gmail-progress"><strong>Scanning Gmail...</strong><span>${escapeHtml(detail)}</span><small>Updating every 5 seconds while the scan runs.</small></div>`;
 }
 
+function renderWorkflowAutomationSettingsPanel() {
+  const automation = workflowAutomation(currentTenant());
+  const summary = automation.lastRunSummary || {};
+  return `<section class="settings-card automation-card">
+    <div class="panel-head"><div><h3>Workflow automation</h3><p class="subcopy">Turn email risk signals into account actions automatically after each Gmail scan.</p></div><span class="status-pill ${automation.enabled ? "stage-won" : "stage-lead"}">${automation.enabled ? "Enabled" : "Paused"}</span></div>
+    <form class="settings-form" data-workflow-automation-form>
+      <div class="check-list compact">
+        <label class="check-row"><input type="checkbox" name="enabled" ${automation.enabled ? "checked" : ""} /><span>Run automation after Gmail scan</span><small>Uses the current Gmail scan results. No separate background job is required.</small></label>
+        <label class="check-row"><input type="checkbox" name="createFollowUpTasks" ${automation.createFollowUpTasks ? "checked" : ""} /><span>Create follow-up activities</span><small>Dormant contacts get email tasks; negative wording gets high-priority response tasks.</small></label>
+        <label class="check-row"><input type="checkbox" name="tagRiskAccounts" ${automation.tagRiskAccounts ? "checked" : ""} /><span>Mark risky accounts</span><small>Accounts tied to negative correspondence are tagged for account review.</small></label>
+      </div>
+      <div class="form-grid">
+        ${formField("Risk account tag", "riskTag", automation.riskTag, "text", true)}
+        ${formField("Dormant contact task due in days", "dormantDueDays", automation.dormantDueDays, "number", true)}
+        ${formField("Risk response task due in days", "attentionDueDays", automation.attentionDueDays, "number", true)}
+      </div>
+      <div class="automation-preview">
+        <span><small>Last run</small><strong>${automation.lastRunAt ? formatTimestamp(automation.lastRunAt) : "Not run yet"}</strong></span>
+        <span><small>Tasks created</small><strong>${Number(summary.tasksCreated || 0)}</strong></span>
+        <span><small>Account tags updated</small><strong>${Number(summary.accountsTagged || 0)}</strong></span>
+        <span><small>Risk signals</small><strong>${Number(summary.riskSignals || 0)}</strong></span>
+      </div>
+      <div class="form-actions"><span class="subcopy">Saved rules apply on the next Gmail scan.</span><span class="toolbar-spacer"></span><button class="button primary">Save workflow automation</button></div>
+    </form>
+  </section>`;
+}
+
 function renderConfigurationSettingsPanel() {
   const gmail = gmailIntegration(currentTenant());
   return `<section class="settings-card configuration-card"><div class="panel-head"><div><h3>Configuration</h3><p class="subcopy">Tenant-level keys that control CRM behavior.</p></div></div><form class="configuration-list" data-configuration-form><label class="configuration-row"><span><strong>gmail.inboxLookbackDays</strong><small>Number of days to look back when scanning Gmail for new contacts.</small></span><input name="gmailLookbackDays" type="number" min="1" max="365" value="${Number(gmail.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS)}" /></label><div class="form-actions"><button class="button primary">Save configuration</button></div></form></section>`;
@@ -2042,6 +2086,10 @@ function gmailIntegration(tenant = currentTenant()) {
 
 function outgoingEmailSettings(tenant = currentTenant()) {
   return { ...defaultOutgoingEmail, ...(tenant.outgoingEmail || {}) };
+}
+
+function workflowAutomation(tenant = currentTenant()) {
+  return { ...defaultWorkflowAutomation, ...(tenant.workflowAutomation || {}) };
 }
 
 function outgoingEmailFormValues(form) {
@@ -2064,6 +2112,18 @@ function gmailFormValues(form) {
     clientId: normalizedGmailClientId(values.clientId),
     detectNewContacts: Boolean(values.detectNewContacts),
     detectDormantContacts: Boolean(values.detectDormantContacts),
+  };
+}
+
+function workflowAutomationFormValues(form) {
+  const values = Object.fromEntries(new FormData(form));
+  return {
+    enabled: Boolean(values.enabled),
+    createFollowUpTasks: Boolean(values.createFollowUpTasks),
+    tagRiskAccounts: Boolean(values.tagRiskAccounts),
+    riskTag: values.riskTag || defaultWorkflowAutomation.riskTag,
+    dormantDueDays: Math.max(1, Math.min(30, Number(values.dormantDueDays || defaultWorkflowAutomation.dormantDueDays))),
+    attentionDueDays: Math.max(0, Math.min(14, Number(values.attentionDueDays ?? defaultWorkflowAutomation.attentionDueDays))),
   };
 }
 
@@ -2418,6 +2478,8 @@ document.addEventListener("click", async (event) => {
         if (progressTimer) window.clearInterval(progressTimer);
         ui.gmailScanProgress = { active: false, status: "complete", scannedMessages: result.scannedMessages || 0, totalMessages: result.scannedMessages || 0 };
         setTenant({ ...currentTenant(), gmailIntegration: result.gmailIntegration });
+        if (result.automationSummary) showToast(`Automation created ${Number(result.automationSummary.tasksCreated || 0)} tasks and updated ${Number(result.automationSummary.accountsTagged || 0)} account tags`);
+        await loadStateFromApi();
         ui.gmailDiscoveryPage = 1;
         render();
       } catch (error) {
@@ -2961,6 +3023,23 @@ document.addEventListener("submit", async (event) => {
     }
     ui.section = "settings";
     ui.settingsTab = "outgoing";
+    render();
+    return;
+  }
+  if (event.target.matches("[data-workflow-automation-form]")) {
+    event.preventDefault();
+    const tenant = currentTenant();
+    const values = workflowAutomationFormValues(event.target);
+    try {
+      const result = await saveWorkflowAutomationViaApi(tenant.id, values);
+      setTenant({ ...currentTenant(), workflowAutomation: result.workflowAutomation });
+      showToast("Workflow automation saved");
+    } catch (error) {
+      setTenant({ ...tenant, workflowAutomation: { ...workflowAutomation(tenant), ...values } });
+      showToast(session?.apiToken ? error.message : "Workflow automation saved locally");
+    }
+    ui.section = "settings";
+    ui.settingsTab = "automation";
     render();
     return;
   }
