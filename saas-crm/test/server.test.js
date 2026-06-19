@@ -501,6 +501,9 @@ test("Gmail scan attaches known account threads to CRM communications with track
   assert.match(scanSource, /const gmailAccountThreads = fullInboundMessages/);
   assert.match(scanSource, /const latestGmailAccountThreads = \[\.\.\.gmailAccountThreads\.reduce/);
   assert.match(scanSource, /threads\.set\(item\.threadId, item\)/);
+  assert.match(scanSource, /internalDate: Number\(message\.full\.internalDate \|\| 0\)/);
+  assert.match(scanSource, /item\.internalDate >= existing\.internalDate/);
+  assert.match(scanSource, /to_timestamp\(\$9 \/ 1000\.0\)/);
   assert.match(scanSource, /dealByEmail\.get\(message\.parsed\.email\)/);
   assert.match(scanSource, /item\.deal\.id/);
   assert.match(scanSource, /insert into communications/);

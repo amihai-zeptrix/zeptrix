@@ -2177,12 +2177,13 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
         body: text || message.full.snippet || "Imported from Gmail scan.",
         messageId: message.full.id,
         threadId: message.full.threadId || message.full.id,
+        internalDate: Number(message.full.internalDate || 0),
       };
     })
     .filter(Boolean);
   const latestGmailAccountThreads = [...gmailAccountThreads.reduce((threads, item) => {
     const existing = threads.get(item.threadId);
-    if (!existing || String(item.messageId).localeCompare(String(existing.messageId)) > 0) threads.set(item.threadId, item);
+    if (!existing || item.internalDate >= existing.internalDate) threads.set(item.threadId, item);
     return threads;
   }, new Map()).values()];
 
@@ -2228,15 +2229,15 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
                   tracked=$6,
                   tracking_status=$7,
                   replied_at=now(),
-                  occurred_at=now()
+                  occurred_at=to_timestamp($9 / 1000.0)
             where tenant_id=$1 and gmail_thread_id=$8
             returning id
          )
          insert into communications
            (tenant_id, deal_id, type, direction, subject, body, owner, tracked, tracking_status, replied_at, gmail_thread_id, source, occurred_at)
-         select $1,$2,'Email','inbound',$3,$4,$5,$6,$7,now(),$8,'gmail',now()
+         select $1,$2,'Email','inbound',$3,$4,$5,$6,$7,now(),$8,'gmail',to_timestamp($9 / 1000.0)
           where not exists (select 1 from updated)`,
-        [tenantId, item.deal.id, item.subject, item.body, item.name, `Gmail thread · ${item.threadId}`, "Imported from Gmail", item.threadId],
+        [tenantId, item.deal.id, item.subject, item.body, item.name, `Gmail thread · ${item.threadId}`, "Imported from Gmail", item.threadId, item.internalDate || Date.now()],
       );
     }
     await client.query(`update gmail_integrations set last_scan_at=now(), status='Last scan completed', updated_at=now() where tenant_id=$1`, [tenantId]);
