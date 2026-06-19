@@ -23,7 +23,8 @@ create table users (
   password_change_required boolean not null default true,
   role text not null check (role in ('platform_admin', 'tenant_admin', 'sales_manager', 'sales_rep')),
   mfa_enabled boolean not null default true,
-  mfa_secret text,
+  mfa_secret_enc text,
+  mfa_confirmed boolean not null default false,
   google_subject text unique,
   last_login_at timestamptz,
   created_at timestamptz not null default now()

@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, parseEmailAddress, signAuthToken, smtpInviteMessage, staticFilePathForUrlPath, updateTenantWithClient, verifySignedPayload } = require("../server");
+const { authChallengeForUser, authenticatorUri, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, parseEmailAddress, signAuthToken, signGoogleAuthState, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -140,6 +140,8 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   const server = serverSource();
   const renderLoginSource = functionSource(app, "renderPasswordLogin", "renderRegisterForm");
   const renderRegisterSource = functionSource(app, "renderRegisterForm", "renderPasswordChange");
+  const renderMfaSource = functionSource(app, "renderMfa", "renderMfaSetup");
+  const renderMfaSetupSource = functionSource(app, "renderMfaSetup", "renderApp");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
@@ -164,19 +166,69 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   assert.equal(normalizeRegistrationPayload({ fullName: "Ron", company: "Ron Labs", email: "bad", password: "StrongPass12" }).error, "A valid work email is required.");
   assert.equal(normalizeRegistrationPayload({ fullName: "Ron", company: "Ron Labs", email: "ron@example.com", password: "short" }).error, "Password must be at least 10 characters.");
   assert.match(renderLoginSource, /data-action="show-register"/);
+  assert.match(renderLoginSource, /data-action="google-sso"/);
+  assert.match(renderLoginSource, /data-mode="login"/);
+  assert.match(renderLoginSource, /google-mark/);
   assert.match(renderRegisterSource, /data-register-form/);
+  assert.match(renderRegisterSource, /data-mode="register"/);
+  assert.match(renderRegisterSource, /Register with Google/);
   assert.match(renderRegisterSource, /Full name/);
   assert.doesNotMatch(renderRegisterSource, /Tenant ID/);
   assert.match(renderRegisterSource, /Register/);
+  assert.match(renderMfaSource, /Set up authenticator MFA/);
+  assert.match(renderMfaSource, /Google Authenticator/);
+  assert.match(renderMfaSetupSource, /Manual setup key/);
   assert.match(clickHandlerSource, /action === "show-register"/);
+  assert.match(clickHandlerSource, /startGoogleAuth\(actionElement\.dataset\.mode/);
   assert.match(submitHandlerSource, /data-register-form/);
   assert.match(submitHandlerSource, /registerViaApi\(values\)/);
-  assert.match(submitHandlerSource, /ui\.authStep = "mfa"/);
+  assert.match(submitHandlerSource, /prepareMfaChallenge\(result\)/);
+  assert.match(app, /async function mfaSetupViaApi/);
+  assert.match(app, /async function mfaVerifyViaApi/);
+  assert.match(app, /consumeGoogleAuthRedirect\(\)\.finally/);
   assert.ok(server.includes('pathname === "/api/auth/register"'));
+  assert.ok(server.includes('pathname === "/api/auth/google/start"'));
+  assert.ok(server.includes('pathname === "/api/auth/google/callback"'));
+  assert.ok(server.includes('pathname === "/api/auth/mfa/setup"'));
+  assert.ok(server.includes('pathname === "/api/auth/mfa/verify"'));
   assert.match(server, /normalizeRegistrationPayload/);
   assert.match(server, /insertTenantWithClient/);
   assert.match(server, /insertUserWithClient/);
+  assert.match(server, /preAuthToken/);
+  assert.match(server, /mfa_secret_enc/);
+  assert.match(server, /mfa_confirmed/);
   assert.match(styles, /\.auth-switch/);
+  assert.match(styles, /\.google-mark/);
+  assert.match(styles, /\.mfa-setup-card/);
+});
+
+test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
+  const server = serverSource();
+  const challenge = authChallengeForUser({
+    id: "user-123",
+    tenantId: "tenant-123",
+    tenantName: "Tenant",
+    name: "Ron Cohen",
+    email: "ron@example.com",
+    role: "tenant_admin",
+    mustChangePassword: false,
+    mfaEnabled: true,
+    mfaConfirmed: false,
+  });
+  const secret = "JBSWY3DPEHPK3PXP";
+  const code = totpCode(secret);
+  const state = signGoogleAuthState("register");
+
+  assert.equal(challenge.mfaRequired, true);
+  assert.equal(challenge.mfaSetupRequired, true);
+  assert.equal(verifyPreAuthToken(challenge.preAuthToken).purpose, "mfa");
+  assert.equal(verifyGoogleAuthState(state).mode, "register");
+  assert.match(authenticatorUri({ secret, email: "ron@example.com" }), /^otpauth:\/\/totp\/Zeptrix%20CRM/);
+  assert.equal(verifyTotpCode(secret, code), true);
+  assert.equal(verifyTotpCode(secret, "000000"), false);
+  assert.match(server, /openid email profile/);
+  assert.match(server, /verifyGoogleIdentity/);
+  assert.match(server, /exchangeGoogleAuthCode/);
 });
 
 test("invite email content includes login details", () => {
@@ -440,6 +492,26 @@ test("CRM named demo routes use the demo tenant instead of admin", () => {
   assert.match(app, /function ensureClientDemoTenant/);
   assert.match(app, /name: "CRM Demo"/);
   assert.match(app, /tenantId: demoTenant\?\.id \|\| "demo"/);
+});
+
+test("CRM admin page exposes tenant and invite tabs", () => {
+  const app = crmAppSource();
+  const styles = crmStylesSource();
+  const renderAdminSource = functionSource(app, "renderAdmin", "renderAdminTenants");
+  const renderAdminTenantsSource = functionSource(app, "renderAdminTenants", "renderAdminInviteEmails");
+  const renderAdminInviteEmailsSource = functionSource(app, "renderAdminInviteEmails", "tenantAdminEmail");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+
+  assert.match(app, /adminTab: "tenants"/);
+  assert.match(renderAdminSource, /class="settings-tabs admin-tabs"/);
+  assert.match(renderAdminSource, /data-admin-tab="tenants"/);
+  assert.match(renderAdminSource, /data-admin-tab="invites"/);
+  assert.match(renderAdminSource, /ui\.adminTab === "invites" \? renderAdminInviteEmails\(\) : renderAdminTenants\(\)/);
+  assert.match(renderAdminTenantsSource, /New tenant/);
+  assert.match(renderAdminInviteEmailsSource, /Sent invite emails/);
+  assert.match(clickHandlerSource, /dataset\.adminTab/);
+  assert.match(clickHandlerSource, /ui\.adminTab = adminTab/);
+  assert.match(styles, /\.admin-tabs/);
 });
 
 test("CRM home keeps attention correspondence and relationship event panels", () => {

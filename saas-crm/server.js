@@ -19,9 +19,11 @@ const smtpPassword = process.env.SMTP_PASSWORD || process.env.PORKBUN_SMTP_PASSW
 const emailProvider = (process.env.EMAIL_PROVIDER || (smtpPassword ? "smtp" : "ses")).toLowerCase();
 const appBaseUrl = process.env.APP_BASE_URL || `http://localhost:${port}/crm/`;
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL?.replace(/\/crm\/?$/, "") || `http://localhost:${port}`;
+const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_SSO_CLIENT_ID || "";
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
 const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
 const authTokenSecret = process.env.CRM_AUTH_SECRET || tokenSecret;
+const GOOGLE_SSO_REDIRECT_URI = `${publicBaseUrl}/api/auth/google/callback`;
 const GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30;
 const GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000;
 const GMAIL_NEW_CONTACT_FULL_LIMIT = 250;
@@ -401,10 +403,14 @@ async function initDatabase() {
       password_change_required boolean not null default true,
       role text not null check (role in ('platform_admin', 'tenant_admin', 'sales_manager', 'sales_rep')),
       mfa_enabled boolean not null default true,
+      mfa_secret_enc text,
+      mfa_confirmed boolean not null default false,
       google_subject text unique,
       last_login_at timestamptz,
       created_at timestamptz not null default now()
     )`);
+  await dbQuery(`alter table users add column if not exists mfa_secret_enc text`);
+  await dbQuery(`alter table users add column if not exists mfa_confirmed boolean not null default false`);
   await dbQuery(`
     create table if not exists deals (
       id uuid primary key default gen_random_uuid(),
@@ -706,7 +712,7 @@ async function insertUser(tenantId, user) {
     `insert into users (tenant_id, name, email, password_hash, password_change_required, role, mfa_enabled, google_subject)
      values ($1, $2, $3, $4, $5, $6, true, $7)
      returning *`,
-    [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.sso ? `google-${user.email}` : null],
+    [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.googleSubject || (user.sso ? `google-${user.email}` : null)],
   );
   return result.rows[0];
 }
@@ -716,7 +722,7 @@ async function insertUserWithClient(client, tenantId, user) {
     `insert into users (tenant_id, name, email, password_hash, password_change_required, role, mfa_enabled, google_subject)
      values ($1, $2, $3, $4, $5, $6, true, $7)
      returning *`,
-    [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.sso ? `google-${user.email}` : null],
+    [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.googleSubject || (user.sso ? `google-${user.email}` : null)],
   );
   return result.rows[0];
 }
@@ -926,6 +932,7 @@ function userFromRow(user) {
     mustChangePassword: user.password_change_required,
     role: user.role,
     mfa: user.mfa_enabled,
+    mfaConfirmed: user.mfa_confirmed,
     sso: !!user.google_subject,
   };
 }
@@ -1057,15 +1064,7 @@ async function authenticateUser(email, password) {
   const user = result.rows[0];
   if (!user) return null;
   await dbQuery(`update users set last_login_at=now() where id=$1`, [user.id]);
-  return {
-    id: user.id,
-    tenantId: user.tenant_id,
-    tenantName: user.tenant_name,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    mustChangePassword: user.password_change_required,
-  };
+  return userAuthPayload(user);
 }
 
 function signPayload(payload) {
@@ -1087,6 +1086,15 @@ function verifySignedPayload(token) {
 
 function signAuthToken(user) {
   return signPayload({ userId: user.id, tenantId: user.tenantId, email: user.email, role: user.role, exp: Date.now() + 12 * 60 * 60 * 1000 });
+}
+
+function signPreAuthToken(user) {
+  return signPayload({ purpose: "mfa", userId: user.id, tenantId: user.tenantId, email: user.email, role: user.role, exp: Date.now() + 10 * 60 * 1000 });
+}
+
+function verifyPreAuthToken(token) {
+  const payload = verifySignedPayload(token);
+  return payload?.purpose === "mfa" ? payload : null;
 }
 
 function authFromRequest(req) {
@@ -1131,6 +1139,105 @@ async function resolveAuthorizedTenant(req, res, idOrSlug) {
 
 function signGmailState({ tenantId, userId }) {
   return signPayload({ tenantId, userId, exp: Date.now() + 10 * 60 * 1000 });
+}
+
+function signGoogleAuthState(mode = "login") {
+  return signPayload({ purpose: "google-auth", mode: mode === "register" ? "register" : "login", exp: Date.now() + 10 * 60 * 1000 });
+}
+
+function verifyGoogleAuthState(token) {
+  const payload = verifySignedPayload(token);
+  return payload?.purpose === "google-auth" ? payload : null;
+}
+
+function userAuthPayload(user) {
+  return {
+    id: user.id,
+    tenantId: user.tenant_id || user.tenantId,
+    tenantName: user.tenant_name || user.tenantName,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    mustChangePassword: user.password_change_required ?? user.mustChangePassword,
+    mfaEnabled: user.mfa_enabled ?? user.mfaEnabled,
+    mfaConfirmed: user.mfa_confirmed ?? user.mfaConfirmed,
+    sso: !!(user.google_subject || user.sso),
+  };
+}
+
+function authChallengeForUser(user) {
+  const payload = userAuthPayload(user);
+  return {
+    user: payload,
+    preAuthToken: signPreAuthToken(payload),
+    mfaRequired: !!payload.mfaEnabled,
+    mfaSetupRequired: !!payload.mfaEnabled && !payload.mfaConfirmed,
+  };
+}
+
+const base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+function base32Encode(buffer) {
+  let bits = "";
+  let output = "";
+  for (const byte of buffer) bits += byte.toString(2).padStart(8, "0");
+  for (let index = 0; index < bits.length; index += 5) {
+    const chunk = bits.slice(index, index + 5).padEnd(5, "0");
+    output += base32Alphabet[parseInt(chunk, 2)];
+  }
+  return output;
+}
+
+function base32Decode(value = "") {
+  const cleaned = String(value).replace(/=+$/g, "").replace(/\s+/g, "").toUpperCase();
+  let bits = "";
+  for (const char of cleaned) {
+    const index = base32Alphabet.indexOf(char);
+    if (index >= 0) bits += index.toString(2).padStart(5, "0");
+  }
+  const bytes = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) bytes.push(parseInt(bits.slice(index, index + 8), 2));
+  return Buffer.from(bytes);
+}
+
+function generateTotpSecret() {
+  return base32Encode(crypto.randomBytes(20));
+}
+
+function totpCode(secret, time = Date.now()) {
+  const counter = Math.floor(time / 30000);
+  const buffer = Buffer.alloc(8);
+  buffer.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+  buffer.writeUInt32BE(counter >>> 0, 4);
+  const hmac = crypto.createHmac("sha1", base32Decode(secret)).update(buffer).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const binary = ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16) | ((hmac[offset + 2] & 0xff) << 8) | (hmac[offset + 3] & 0xff);
+  return String(binary % 1000000).padStart(6, "0");
+}
+
+function verifyTotpCode(secret, code, window = 1) {
+  const normalized = String(code || "").replace(/\s+/g, "");
+  if (!/^\d{6}$/.test(normalized)) return false;
+  for (let step = -window; step <= window; step += 1) {
+    const expected = totpCode(secret, Date.now() + step * 30000);
+    if (crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(normalized))) return true;
+  }
+  return false;
+}
+
+function authenticatorUri({ secret, email, issuer = "Zeptrix CRM" }) {
+  const label = `${issuer}:${email}`;
+  return `otpauth://totp/${encodeURIComponent(label)}?secret=${encodeURIComponent(secret)}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+}
+
+async function userById(userId) {
+  const result = await dbQuery(
+    `select u.*, t.id tenant_id, t.name tenant_name
+     from users u join tenants t on t.id=u.tenant_id
+     where u.id=$1`,
+    [userId],
+  );
+  return result.rows[0] || null;
 }
 
 function escapeHtml(value) {
@@ -1596,6 +1703,81 @@ function gmailContactSignalSource(item = {}) {
   return details ? `${item.source} - ${details}` : item.source;
 }
 
+function googleSsoConfigured() {
+  return Boolean(googleClientId && googleClientSecret);
+}
+
+async function exchangeGoogleAuthCode(code, redirectUri = GOOGLE_SSO_REDIRECT_URI) {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: googleClientId,
+      client_secret: googleClientSecret,
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+    }),
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error_description || payload.error || "Google authorization failed.");
+  return payload;
+}
+
+async function verifyGoogleIdentity(idToken) {
+  const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+  const profile = await response.json();
+  if (!response.ok) throw new Error(profile.error_description || profile.error || "Unable to verify Google identity.");
+  if (profile.aud !== googleClientId) throw new Error("Google OAuth client mismatch.");
+  if (profile.email_verified !== "true" && profile.email_verified !== true) throw new Error("Google account email is not verified.");
+  return {
+    subject: profile.sub,
+    email: String(profile.email || "").toLowerCase(),
+    name: profile.name || profile.email?.split("@")[0] || "Google user",
+    picture: profile.picture || "",
+    hostedDomain: profile.hd || "",
+  };
+}
+
+async function findUserByGoogleIdentity(profile) {
+  const result = await dbQuery(
+    `select u.*, t.id tenant_id, t.name tenant_name
+     from users u join tenants t on t.id=u.tenant_id
+     where u.google_subject=$1 or lower(u.email)=lower($2)
+     order by case when u.google_subject=$1 then 0 else 1 end
+     limit 1`,
+    [profile.subject, profile.email],
+  );
+  return result.rows[0] || null;
+}
+
+async function createGoogleRegistration(profile) {
+  const domain = profile.email.split("@")[1] || "workspace";
+  const company = profile.hostedDomain ? profile.hostedDomain.split(".")[0] : domain.split(".")[0];
+  const created = await withTransaction(async (client) => {
+    const tenantRow = await insertTenantWithClient(client, {
+      name: `${company.charAt(0).toUpperCase()}${company.slice(1)} Workspace`,
+      slug: crypto.randomUUID(),
+      plan: "Growth",
+      status: "Trial",
+      region: "US-East",
+      seats: 3,
+      billingEmail: profile.email,
+    });
+    const userRow = await insertUserWithClient(client, tenantRow.id, {
+      name: profile.name,
+      email: profile.email,
+      password: generateTemporaryPassword(),
+      role: "tenant_admin",
+      mustChangePassword: false,
+      sso: false,
+      googleSubject: profile.subject,
+    });
+    return { tenantRow, userRow };
+  });
+  return { user: { ...created.userRow, tenant_name: created.tenantRow.name }, tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []) };
+}
+
 function updateGmailScanProgress(scanId, patch) {
   if (!scanId) return;
   scanProgressById.set(scanId, { ...(scanProgressById.get(scanId) || {}), ...patch, updatedAt: new Date().toISOString() });
@@ -1728,13 +1910,58 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "GET" && pathname === "/api/auth/google/start") {
+    if (!googleSsoConfigured()) return json(res, 503, { error: "Google SSO is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET." });
+    const mode = requestUrl.searchParams.get("mode") === "register" ? "register" : "login";
+    const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    url.searchParams.set("client_id", googleClientId);
+    url.searchParams.set("redirect_uri", GOOGLE_SSO_REDIRECT_URI);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", "openid email profile");
+    url.searchParams.set("prompt", "select_account");
+    url.searchParams.set("state", signGoogleAuthState(mode));
+    res.writeHead(302, { location: url.toString() });
+    return res.end();
+  }
+
+  if (req.method === "GET" && pathname === "/api/auth/google/callback") {
+    const redirect = new URL("/crm/", publicBaseUrl);
+    try {
+      if (!pool) throw new Error("DATABASE_URL is not configured.");
+      if (!googleSsoConfigured()) throw new Error("Google SSO is not configured.");
+      const state = verifyGoogleAuthState(requestUrl.searchParams.get("state"));
+      if (!state) throw new Error("Google sign-in state expired. Please try again.");
+      const code = requestUrl.searchParams.get("code");
+      if (!code) throw new Error(requestUrl.searchParams.get("error") || "Google authorization did not return a code.");
+      const token = await exchangeGoogleAuthCode(code);
+      const profile = await verifyGoogleIdentity(token.id_token);
+      let user = await findUserByGoogleIdentity(profile);
+      let tenant = null;
+      if (!user && state.mode !== "register") throw new Error(`No Zeptrix CRM account exists for ${profile.email}. Use Register with Google first.`);
+      if (!user) {
+        const created = await createGoogleRegistration(profile);
+        user = created.user;
+        tenant = created.tenant;
+      } else if (!user.google_subject) {
+        await dbQuery(`update users set google_subject=$2 where id=$1`, [user.id, profile.subject]);
+        user.google_subject = profile.subject;
+      }
+      const challenge = authChallengeForUser(user);
+      redirect.searchParams.set("googleAuth", Buffer.from(JSON.stringify({ ...challenge, tenant })).toString("base64url"));
+    } catch (error) {
+      redirect.searchParams.set("authError", error.message);
+    }
+    res.writeHead(302, { location: redirect.toString() });
+    return res.end();
+  }
+
   if (req.method === "POST" && pathname === "/api/auth/login") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
       const { email, password } = await readBody(req);
       const user = await authenticateUser(email, password);
       if (!user) return json(res, 401, { error: "Invalid email or password." });
-      return json(res, 200, { user, token: signAuthToken(user) });
+      return json(res, 200, authChallengeForUser(user));
     } catch (error) {
       return json(res, 500, { error: "Unable to log in.", detail: error.message });
     }
@@ -1786,9 +2013,51 @@ async function handleApi(req, res) {
         role: created.userRow.role,
         mustChangePassword: false,
       };
-      return json(res, 201, { user, token: signAuthToken(user), tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []) });
+      return json(res, 201, { ...authChallengeForUser({ ...created.userRow, tenant_name: created.tenantRow.name }), tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []) });
     } catch (error) {
       return json(res, 500, { error: "Unable to register workspace.", detail: error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/mfa/setup") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { preAuthToken } = await readBody(req);
+      const preAuth = verifyPreAuthToken(preAuthToken);
+      if (!preAuth) return json(res, 401, { error: "MFA setup session expired. Please sign in again." });
+      const user = await userById(preAuth.userId);
+      if (!user) return json(res, 404, { error: "User not found." });
+      let secret = user.mfa_secret_enc ? decryptToken(user.mfa_secret_enc) : "";
+      if (!secret || user.mfa_confirmed) {
+        secret = generateTotpSecret();
+        await dbQuery(`update users set mfa_secret_enc=$2, mfa_confirmed=false, mfa_enabled=true where id=$1`, [user.id, encryptToken(secret)]);
+      }
+      const otpauth = authenticatorUri({ secret, email: user.email });
+      return json(res, 200, {
+        secret,
+        otpauth,
+        qrUrl: `https://chart.googleapis.com/chart?cht=qr&chs=220x220&chl=${encodeURIComponent(otpauth)}`,
+      });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to prepare MFA setup.", detail: error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/mfa/verify") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { preAuthToken, code } = await readBody(req);
+      const preAuth = verifyPreAuthToken(preAuthToken);
+      if (!preAuth) return json(res, 401, { error: "MFA session expired. Please sign in again." });
+      const user = await userById(preAuth.userId);
+      if (!user) return json(res, 404, { error: "User not found." });
+      const secret = user.mfa_secret_enc ? decryptToken(user.mfa_secret_enc) : "";
+      if (!secret || !verifyTotpCode(secret, code)) return json(res, 401, { error: "Invalid authenticator code." });
+      await dbQuery(`update users set mfa_confirmed=true, mfa_enabled=true, last_login_at=now() where id=$1`, [user.id]);
+      const authUser = userAuthPayload({ ...user, mfa_confirmed: true, mfa_enabled: true });
+      return json(res, 200, { user: authUser, token: signAuthToken(authUser) });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to verify MFA.", detail: error.message });
     }
   }
 
@@ -2258,6 +2527,8 @@ module.exports = {
   extractGmailMessageText,
   gmailAuthUrl,
   gmailLabelQuery,
+  authChallengeForUser,
+  authenticatorUri,
   inviteEmailContent,
   isAutomatedSenderEmail,
   normalizeDealPayload,
@@ -2268,10 +2539,16 @@ module.exports = {
   normalizeTenantPayload,
   parseEmailAddress,
   signAuthToken,
+  signGoogleAuthState,
+  signPreAuthToken,
   staticFilePathForUrlPath,
   smtpInviteMessage,
+  totpCode,
   slugify,
   updateTenantWithClient,
   validateTenant,
+  verifyGoogleAuthState,
+  verifyPreAuthToken,
   verifySignedPayload,
+  verifyTotpCode,
 };

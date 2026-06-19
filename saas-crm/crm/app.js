@@ -189,6 +189,7 @@ let ui = {
   editing: null,
   editingTenant: null,
   adminNotice: "",
+  adminTab: "tenants",
   newGroup: "active",
   inlineDealGroup: null,
   inlineContactOpen: false,
@@ -494,8 +495,65 @@ async function registerViaApi(values) {
   return apiRequest("/api/auth/register", { method: "POST", body: JSON.stringify(values) });
 }
 
+async function mfaSetupViaApi(preAuthToken) {
+  return apiRequest("/api/auth/mfa/setup", { method: "POST", body: JSON.stringify({ preAuthToken }) });
+}
+
+async function mfaVerifyViaApi(preAuthToken, code) {
+  return apiRequest("/api/auth/mfa/verify", { method: "POST", body: JSON.stringify({ preAuthToken, code }) });
+}
+
 async function changePasswordViaApi(email, password) {
   return apiRequest("/api/auth/change-password", { method: "POST", body: JSON.stringify({ email, password }) });
+}
+
+function startGoogleAuth(mode = "login") {
+  window.location.href = `/api/auth/google/start?mode=${encodeURIComponent(mode)}`;
+}
+
+function pendingUserFromChallenge(result) {
+  return {
+    name: result.user.name,
+    email: result.user.email,
+    role: result.user.role,
+    tenantId: result.user.tenantId,
+    mustChangePassword: result.user.mustChangePassword,
+    preAuthToken: result.preAuthToken,
+    mfaRequired: result.mfaRequired,
+    mfaSetupRequired: result.mfaSetupRequired,
+    apiToken: result.token || "",
+  };
+}
+
+async function prepareMfaChallenge(result) {
+  if (result.tenant) data.tenants = normalizeData({ ...data, tenants: [...data.tenants.filter((tenant) => tenant.id !== result.tenant.id), result.tenant] }).tenants;
+  ui.pendingUser = pendingUserFromChallenge(result);
+  if (ui.pendingUser.mfaSetupRequired && ui.pendingUser.preAuthToken) {
+    ui.pendingUser.mfaSetup = await mfaSetupViaApi(ui.pendingUser.preAuthToken);
+  }
+  ui.authError = "";
+  ui.authStep = "mfa";
+}
+
+async function consumeGoogleAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const authError = params.get("authError");
+  const googleAuth = params.get("googleAuth");
+  if (!authError && !googleAuth) return;
+  window.history.replaceState({}, "", window.location.pathname);
+  if (authError) {
+    ui.authError = authError;
+    ui.authStep = "password";
+    return;
+  }
+  try {
+    const base64 = googleAuth.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
+    await prepareMfaChallenge(payload);
+  } catch (error) {
+    ui.authError = `Google sign-in could not be completed: ${error.message}`;
+    ui.authStep = "password";
+  }
 }
 
 function findUserByEmail(email) {
@@ -715,9 +773,9 @@ function renderAuth() {
 function renderPasswordLogin() {
   return `
     <h2>Sign in</h2>
-    <p class="subcopy">Use the temporary password from the invite email. MFA code is <strong>${MFA_CODE}</strong>.</p>
+    <p class="subcopy">Use Google SSO or the temporary password from the invite email. Authenticator MFA is required after sign-in.</p>
     <div class="auth-actions">
-      <button class="button google-button" data-action="google-sso">G Continue with Google</button>
+      <button class="button google-button" data-action="google-sso" data-mode="login"><span class="google-mark">G</span><span>Continue with Google</span></button>
     </div>
     <div class="divider">or use email</div>
     <form class="auth-actions" data-login-form>
@@ -733,6 +791,10 @@ function renderRegisterForm() {
   return `
     <h2>Register</h2>
     <p class="subcopy">Register yourself as the tenant admin and start with an empty Trial workspace.</p>
+    <div class="auth-actions">
+      <button class="button google-button" data-action="google-sso" data-mode="register"><span class="google-mark">G</span><span>Register with Google</span></button>
+    </div>
+    <div class="divider">or register with email</div>
     <form class="auth-actions" data-register-form>
       <div class="field"><label>Full name</label><input name="fullName" autocomplete="name" required /></div>
       <div class="field"><label>Work email</label><input name="email" type="email" autocomplete="email" required /></div>
@@ -772,15 +834,26 @@ function renderPasswordChange() {
 }
 
 function renderMfa() {
+  const setup = ui.pendingUser?.mfaSetup;
+  const isSetup = ui.pendingUser?.mfaSetupRequired;
   return `
-    <h2>Verify MFA</h2>
-    <p class="subcopy">Enter the authenticator code for ${escapeHtml(ui.pendingUser?.email || "")}.</p>
+    <h2>${isSetup ? "Set up authenticator MFA" : "Verify MFA"}</h2>
+    <p class="subcopy">${isSetup ? "Scan the QR code with Google Authenticator, Microsoft Authenticator, 1Password, or any TOTP app." : `Enter the authenticator code for ${escapeHtml(ui.pendingUser?.email || "")}.`}</p>
+    ${isSetup ? renderMfaSetup(setup) : ""}
     <form class="auth-actions" data-mfa-form>
-      <div class="field"><label>Code</label><input name="code" inputmode="numeric" value="${MFA_CODE}" required /></div>
-      <button class="button primary">Verify and open CRM</button>
+      <div class="field"><label>Authenticator code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" placeholder="123456" required /></div>
+      <button class="button primary">${isSetup ? "Confirm and open CRM" : "Verify and open CRM"}</button>
       <button class="button ghost" type="button" data-action="back-login">Back</button>
       ${ui.authError ? `<p class="error">${escapeHtml(ui.authError)}</p>` : ""}
     </form>`;
+}
+
+function renderMfaSetup(setup) {
+  if (!setup) return `<div class="mfa-setup-card"><strong>Preparing secure MFA setup...</strong><small>Generating your authenticator secret.</small></div>`;
+  return `<div class="mfa-setup-card">
+    <div class="mfa-qr"><img src="${escapeHtml(setup.qrUrl)}" alt="Authenticator QR code" /></div>
+    <div class="mfa-key"><strong>Manual setup key</strong><code>${escapeHtml(setup.secret)}</code><small>If you cannot scan the QR code, enter this key manually in your authenticator app.</small></div>
+  </div>`;
 }
 
 function renderApp() {
@@ -872,11 +945,25 @@ function renderAdmin() {
       ${summaryCard("↗", "var(--purple-soft)", "var(--purple)", "Pipeline", money(total(allDeals, false)), "all tenants")}
       ${summaryCard("◎", "var(--orange-soft)", "var(--orange)", "Seats", data.tenants.reduce((sum, tenant) => sum + Number(tenant.seats), 0), "licensed")}
     </div>
+    <nav class="settings-tabs admin-tabs">
+      <button class="${ui.adminTab === "tenants" ? "active" : ""}" data-admin-tab="tenants">Tenants</button>
+      <button class="${ui.adminTab === "invites" ? "active" : ""}" data-admin-tab="invites">Invite emails</button>
+    </nav>
+    ${ui.adminTab === "invites" ? renderAdminInviteEmails() : renderAdminTenants()}
+  `;
+}
+
+function renderAdminTenants() {
+  return `
     <div class="section-toolbar"><strong>${data.tenants.length} tenants</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-tenant">＋ New tenant</button></div>
     ${ui.adminNotice ? `<p class="admin-notice">${escapeHtml(ui.adminNotice)}</p>` : ""}
     <section class="list-card">
       ${data.tenants.map(renderTenantRow).join("")}
-    </section>
+    </section>`;
+}
+
+function renderAdminInviteEmails() {
+  return `
     <div class="section-toolbar"><strong>Sent invite emails</strong><span class="toolbar-spacer"></span></div>
     <section class="list-card">
       ${(data.inviteEmails || []).slice(0, 8).map((mail) => `<div class="invite-row"><span class="activity-symbol">✉</span><span class="list-primary">${escapeHtml(mail.to)}<small>${escapeHtml(mail.tenantName)} · ${inviteSummary(mail)}</small></span><span class="muted">${formatTimestamp(mail.sentAt)}</span></div>`).join("") || `<p class="empty-state">No invite emails sent yet.</p>`}
@@ -2046,8 +2133,9 @@ document.addEventListener("click", async (event) => {
   const collapse = event.target.closest("[data-collapse]")?.dataset.collapse;
   const column = event.target.closest("[data-column]")?.dataset.column;
   const settingsTab = event.target.closest("[data-settings-tab]")?.dataset.settingsTab;
+  const adminTab = event.target.closest("[data-admin-tab]")?.dataset.adminTab;
 
-  if (!section && !view && !dealId && !account && !contactEmail && !communicationId && !campaignId && !collapse && !column && !settingsTab && !actionElement) return;
+  if (!section && !view && !dealId && !account && !contactEmail && !communicationId && !campaignId && !collapse && !column && !settingsTab && !adminTab && !actionElement) return;
 
   if (section) {
     ui.section = section;
@@ -2086,13 +2174,11 @@ document.addEventListener("click", async (event) => {
   if (collapse) ui.collapsed = ui.collapsed.includes(collapse) ? ui.collapsed.filter((item) => item !== collapse) : [...ui.collapsed, collapse];
   if (column) data.visibleColumns = event.target.checked ? [...data.visibleColumns, column] : data.visibleColumns.filter((item) => item !== column);
   if (settingsTab) ui.settingsTab = settingsTab;
+  if (adminTab) ui.adminTab = adminTab;
 
   if (actionElement) {
     const { action, group, id, dealId: taskDealId } = actionElement.dataset;
-    if (action === "google-sso") {
-      ui.pendingUser = findUserByEmail("admin@zeptrix.io");
-      ui.authStep = "mfa";
-    }
+    if (action === "google-sso") startGoogleAuth(actionElement.dataset.mode || "login");
     if (action === "jump-risk-thread") {
       document.querySelector(".risk-thread")?.scrollIntoView({ behavior: "smooth", block: "center" });
       document.querySelector(".risk-thread")?.classList.add("is-highlighted");
@@ -2183,7 +2269,7 @@ document.addEventListener("click", async (event) => {
       return;
     }
     if (action === "show-register") { ui.authStep = "register"; ui.authError = ""; }
-    if (action === "back-login") { ui.authStep = "password"; ui.authError = ""; }
+    if (action === "back-login") { ui.authStep = "password"; ui.authError = ""; ui.pendingUser = null; }
     if (action === "logout") { session = null; saveSession(); ui.authStep = "password"; }
     if (action === "open-tenant") { ui.tenantId = id; ui.section = "pipeline"; session.tenantId = id; saveSession(); }
     if (action === "add-tenant") { ui.editingTenant = null; ui.authError = ""; ui.adminNotice = ""; ui.modal = "tenant"; }
@@ -2587,14 +2673,7 @@ document.addEventListener("submit", async (event) => {
     const values = Object.fromEntries(new FormData(event.target));
     try {
       const result = await loginViaApi(values.email, values.password);
-      ui.pendingUser = {
-        name: result.user.name,
-        email: result.user.email,
-        role: result.user.role,
-        tenantId: result.user.tenantId,
-        mustChangePassword: result.user.mustChangePassword,
-        apiToken: result.token,
-      };
+      await prepareMfaChallenge(result);
     } catch {
       const user = authenticate(values.email, values.password);
       if (!user) {
@@ -2602,15 +2681,15 @@ document.addEventListener("submit", async (event) => {
         render();
         return;
       }
-      ui.pendingUser = user;
+      ui.pendingUser = { ...user, mfaRequired: true, mfaSetupRequired: false };
+      ui.authError = "";
+      ui.authStep = "mfa";
     }
     if (!ui.pendingUser) {
       ui.authError = "Invalid email or password.";
       render();
       return;
     }
-    ui.authError = "";
-    ui.authStep = "mfa";
     render();
     return;
   }
@@ -2624,17 +2703,7 @@ document.addEventListener("submit", async (event) => {
     }
     try {
       const result = await registerViaApi(values);
-      data.tenants = normalizeData({ ...data, tenants: [...data.tenants, result.tenant] }).tenants;
-      ui.pendingUser = {
-        name: result.user.name,
-        email: result.user.email,
-        role: result.user.role,
-        tenantId: result.user.tenantId,
-        mustChangePassword: result.user.mustChangePassword,
-        apiToken: result.token,
-      };
-      ui.authError = "";
-      ui.authStep = "mfa";
+      await prepareMfaChallenge(result);
     } catch (error) {
       ui.authError = error.message;
     }
@@ -2644,10 +2713,19 @@ document.addEventListener("submit", async (event) => {
   if (event.target.matches("[data-mfa-form]")) {
     event.preventDefault();
     const { code } = Object.fromEntries(new FormData(event.target));
-    if (code !== MFA_CODE) {
-      ui.authError = "Invalid MFA code.";
-      render();
-      return;
+    if (ui.pendingUser?.preAuthToken) {
+      try {
+        const result = await mfaVerifyViaApi(ui.pendingUser.preAuthToken, code);
+        ui.pendingUser = { ...ui.pendingUser, ...pendingUserFromChallenge({ user: result.user, token: result.token }) };
+      } catch (error) {
+        ui.authError = error.message;
+        render();
+        return;
+      }
+    } else if (code !== MFA_CODE) {
+        ui.authError = "Invalid MFA code.";
+        render();
+        return;
     }
     session = { email: ui.pendingUser.email, name: ui.pendingUser.name, role: ui.pendingUser.role, tenantId: ui.pendingUser.tenantId, forcePasswordChange: !!ui.pendingUser.mustChangePassword, apiToken: ui.pendingUser.apiToken || "" };
     ui.tenantId = session.tenantId;
@@ -3060,4 +3138,4 @@ async function importSampleRecords(source = "csv") {
   }
 }
 
-render();
+consumeGoogleAuthRedirect().finally(() => render());
