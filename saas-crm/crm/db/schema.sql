@@ -10,6 +10,7 @@ create table tenants (
   region text not null default 'US-East',
   seats integer not null default 1 check (seats > 0),
   billing_email citext not null,
+  mfa_required boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -22,7 +23,7 @@ create table users (
   password_hash text,
   password_change_required boolean not null default true,
   role text not null check (role in ('platform_admin', 'tenant_admin', 'sales_manager', 'sales_rep')),
-  mfa_enabled boolean not null default true,
+  mfa_enabled boolean not null default false,
   mfa_secret_enc text,
   mfa_confirmed boolean not null default false,
   google_subject text unique,
@@ -201,11 +202,11 @@ values
   ('amihai', 'Amihai Sales', 'Growth', 'Active', 'EU-West', 5, 'billing@amihai.example');
 
 insert into users (tenant_id, name, email, password_hash, password_change_required, role, mfa_enabled, google_subject)
-select id, 'Platform Admin', 'admin@zeptrix.io', crypt('Tmp-Admin-7394!', gen_salt('bf')), true, 'platform_admin', true, 'google-admin-demo'
+select id, 'Platform Admin', 'admin@zeptrix.io', crypt('Tmp-Admin-7394!', gen_salt('bf')), true, 'platform_admin', false, 'google-admin-demo'
 from tenants where slug = 'admin';
 
 insert into users (tenant_id, name, email, password_hash, password_change_required, role, mfa_enabled, google_subject)
-select id, 'Amihai Cohen', 'amihai@zeptrix.io', crypt('Tmp-Amihai-5821!', gen_salt('bf')), true, 'tenant_admin', true, 'google-amihai-demo'
+select id, 'Amihai Cohen', 'amihai@zeptrix.io', crypt('Tmp-Amihai-5821!', gen_salt('bf')), true, 'tenant_admin', false, 'google-amihai-demo'
 from tenants where slug = 'amihai';
 
 insert into invite_emails (tenant_id, recipient_email, temporary_password_hash, subject, status, sent_at)

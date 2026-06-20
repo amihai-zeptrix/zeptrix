@@ -573,9 +573,11 @@ async function initDatabase() {
       region text not null default 'US-East',
       seats integer not null default 1 check (seats > 0),
       billing_email citext not null,
+      mfa_required boolean not null default false,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     )`);
+  await dbQuery(`alter table tenants add column if not exists mfa_required boolean not null default false`);
   await dbQuery(`
     create table if not exists users (
       id uuid primary key default gen_random_uuid(),
@@ -585,14 +587,14 @@ async function initDatabase() {
       password_hash text,
       password_change_required boolean not null default true,
       role text not null check (role in ('platform_admin', 'tenant_admin', 'sales_manager', 'sales_rep')),
-      mfa_enabled boolean not null default true,
+      mfa_enabled boolean not null default false,
       mfa_secret_enc text,
       mfa_confirmed boolean not null default false,
       google_subject text unique,
       last_login_at timestamptz,
       created_at timestamptz not null default now()
     )`);
-  await dbQuery(`alter table users add column if not exists mfa_enabled boolean not null default true`);
+  await dbQuery(`alter table users add column if not exists mfa_enabled boolean not null default false`);
   await dbQuery(`alter table users add column if not exists mfa_secret_enc text`);
   await dbQuery(`alter table users add column if not exists mfa_confirmed boolean not null default false`);
   await dbQuery(`alter table users add column if not exists google_subject text`);
@@ -938,7 +940,7 @@ async function updateTenantWithClient(client, idOrSlug, values) {
 async function insertUser(tenantId, user) {
   const result = await dbQuery(
     `insert into users (tenant_id, name, email, password_hash, password_change_required, role, mfa_enabled, google_subject)
-     values ($1, $2, $3, $4, $5, $6, true, $7)
+     values ($1, $2, $3, $4, $5, $6, false, $7)
      returning *`,
     [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.googleSubject || (user.sso ? `google-${user.email}` : null)],
   );
@@ -948,7 +950,7 @@ async function insertUser(tenantId, user) {
 async function insertUserWithClient(client, tenantId, user) {
   const result = await client.query(
     `insert into users (tenant_id, name, email, password_hash, password_change_required, role, mfa_enabled, google_subject)
-     values ($1, $2, $3, $4, $5, $6, true, $7)
+     values ($1, $2, $3, $4, $5, $6, false, $7)
      returning *`,
     [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.googleSubject || (user.sso ? `google-${user.email}` : null)],
   );
@@ -1139,6 +1141,7 @@ function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegra
     region: tenant.region,
     seats: tenant.seats,
     billingEmail: tenant.billing_email,
+    mfaRequired: !!tenant.mfa_required,
     users: users.map(userFromRow),
     deals: normalizedDeals,
     tasks: tasks.map(taskFromRow),
@@ -1347,7 +1350,7 @@ async function recordServerAudit({ auth, tenantId, eventType = "server_mutation"
 
 async function authenticateUser(email, password) {
   const result = await dbQuery(
-    `select u.*, t.id tenant_id, t.name tenant_name
+    `select u.*, t.id tenant_id, t.name tenant_name, t.mfa_required tenant_mfa_required
      from users u join tenants t on t.id=u.tenant_id
      where lower(u.email)=lower($1) and u.password_hash=$2`,
     [email, hashPassword(password)],
@@ -1488,6 +1491,7 @@ function userAuthPayload(user) {
     name: user.name,
     email: user.email,
     role: user.role,
+    tenantMfaRequired: !!(user.tenant_mfa_required ?? user.mfa_required ?? user.tenantMfaRequired),
     mustChangePassword: user.password_change_required ?? user.mustChangePassword,
     mfaEnabled: user.mfa_enabled ?? user.mfaEnabled,
     mfaConfirmed: user.mfa_confirmed ?? user.mfaConfirmed,
@@ -1497,7 +1501,7 @@ function userAuthPayload(user) {
 
 function authChallengeForUser(user) {
   const payload = userAuthPayload(user);
-  const mfaRequired = payload.role === "platform_admin" ? false : !!payload.mfaEnabled;
+  const mfaRequired = payload.role === "platform_admin" ? false : !!payload.tenantMfaRequired && !!payload.mfaEnabled;
   return {
     user: payload,
     preAuthToken: mfaRequired ? signPreAuthToken(payload) : "",
@@ -1564,7 +1568,7 @@ function authenticatorUri({ secret, email, issuer = "Zeptrix CRM" }) {
 
 async function userById(userId) {
   const result = await dbQuery(
-    `select u.*, t.id tenant_id, t.name tenant_name
+    `select u.*, t.id tenant_id, t.name tenant_name, t.mfa_required tenant_mfa_required
      from users u join tenants t on t.id=u.tenant_id
      where u.id=$1`,
     [userId],
@@ -1575,7 +1579,7 @@ async function userById(userId) {
 async function userByEmail(email) {
   if (!email) return null;
   const result = await dbQuery(
-    `select u.*, t.id tenant_id, t.name tenant_name
+    `select u.*, t.id tenant_id, t.name tenant_name, t.mfa_required tenant_mfa_required
      from users u join tenants t on t.id=u.tenant_id
      where lower(u.email)=lower($1)
      limit 1`,
@@ -1644,11 +1648,16 @@ async function upsertGmailSettings(tenantId, payload) {
 function normalizeConfigurationSettings(payload = {}) {
   return {
     gmailLookbackDays: Math.max(1, Math.min(365, Number(payload.gmailLookbackDays || GMAIL_NEW_CONTACT_LOOKBACK_DAYS))),
+    mfaRequired: payload.mfaRequired === true || payload.mfaRequired === "true" || payload.mfaRequired === "on",
   };
 }
 
 async function upsertConfigurationSettings(tenantId, payload) {
   const settings = normalizeConfigurationSettings(payload);
+  const [tenantResult] = await Promise.all([
+    dbQuery(`update tenants set mfa_required=$2, updated_at=now() where id=$1 returning *`, [tenantId, settings.mfaRequired]),
+    dbQuery(`update users set mfa_enabled=$2 where tenant_id=$1 and role <> 'platform_admin'`, [tenantId, settings.mfaRequired]),
+  ]);
   const result = await dbQuery(
     `insert into gmail_integrations (tenant_id, gmail_lookback_days, status, updated_at)
      values ($1,$2,'Configuration saved',now())
@@ -1659,7 +1668,7 @@ async function upsertConfigurationSettings(tenantId, payload) {
      returning *`,
     [tenantId, settings.gmailLookbackDays],
   );
-  return gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId));
+  return { tenant: tenantResult.rows[0], gmailIntegration: gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId)) };
 }
 
 async function upsertWorkflowAutomationSettings(tenantId, payload) {
@@ -2100,7 +2109,7 @@ async function verifyGoogleIdentity(idToken) {
 
 async function findUserByGoogleIdentity(profile) {
   const result = await dbQuery(
-    `select u.*, t.id tenant_id, t.name tenant_name
+    `select u.*, t.id tenant_id, t.name tenant_name, t.mfa_required tenant_mfa_required
      from users u join tenants t on t.id=u.tenant_id
      where u.google_subject=$1 or lower(u.email)=lower($2)
      order by case when u.google_subject=$1 then 0 else 1 end
@@ -3011,9 +3020,9 @@ async function handleApi(req, res) {
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
       const payload = await readBody(req);
-      const gmailIntegration = await upsertConfigurationSettings(resolved.tenantId, payload);
+      const settings = await upsertConfigurationSettings(resolved.tenantId, payload);
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-configuration", target: "configuration", details: { fields: payload } });
-      return json(res, 200, { gmailIntegration });
+      return json(res, 200, { gmailIntegration: settings.gmailIntegration, tenantSettings: { mfaRequired: !!settings.tenant.mfa_required } });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save configuration.", detail: error.statusCode ? undefined : error.message });
     }

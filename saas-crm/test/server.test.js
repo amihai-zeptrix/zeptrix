@@ -231,6 +231,19 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
     email: "ron@example.com",
     role: "tenant_admin",
     mustChangePassword: false,
+    tenantMfaRequired: true,
+    mfaEnabled: true,
+    mfaConfirmed: false,
+  });
+  const tenantWithoutMfaChallenge = authChallengeForUser({
+    id: "user-no-tenant-mfa",
+    tenantId: "tenant-123",
+    tenantName: "Tenant",
+    name: "No MFA User",
+    email: "no-mfa@example.com",
+    role: "tenant_admin",
+    mustChangePassword: false,
+    tenantMfaRequired: false,
     mfaEnabled: true,
     mfaConfirmed: false,
   });
@@ -265,6 +278,9 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.equal(challenge.token, "");
   assert.equal(verifyPreAuthToken(challenge.preAuthToken).purpose, "mfa");
   assert.match(verifyPreAuthToken(challenge.preAuthToken).jti, /^[0-9a-f-]{36}$/i);
+  assert.equal(tenantWithoutMfaChallenge.mfaRequired, false);
+  assert.equal(tenantWithoutMfaChallenge.preAuthToken, "");
+  assert.equal(verifySignedPayload(tenantWithoutMfaChallenge.token).tenantId, "tenant-123");
   assert.equal(nonMfaChallenge.mfaRequired, false);
   assert.equal(nonMfaChallenge.preAuthToken, "");
   assert.equal(verifySignedPayload(nonMfaChallenge.token).tenantId, "tenant-456");
@@ -282,13 +298,15 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.match(server, /QRCode\.toDataURL\(otpauth/);
   assert.doesNotMatch(server, /chart\.googleapis\.com\/chart/);
   assert.match(server, /alter table users add column if not exists mfa_enabled/);
+  assert.match(server, /alter table tenants add column if not exists mfa_required/);
+  assert.match(server, /mfa_enabled boolean not null default false/);
   assert.match(server, /alter table users add column if not exists google_subject/);
   assert.match(server, /alter table users add column if not exists last_login_at/);
   assert.match(server, /users_google_subject_key/);
   assert.match(server, /registerMfaAttempt\(preAuthToken\) > 5/);
   assert.match(server, /consumedMfaChallenges\.has/);
   assert.match(server, /consumedMfaChallenges\.add/);
-  assert.match(server, /payload\.role === "platform_admin" \? false : !!payload\.mfaEnabled/);
+  assert.match(server, /payload\.role === "platform_admin" \? false : !!payload\.tenantMfaRequired && !!payload\.mfaEnabled/);
 });
 
 test("login screen supports password reset and authenticator recovery", () => {
@@ -1150,7 +1168,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
-  assert.match(sidebarSource, /sideLink\("settings", "⚙", "Email integration"\)/);
+  assert.match(sidebarSource, /sideLink\("settings", "⚙", "Settings"\)/);
   assert.doesNotMatch(sidebarSource, /sideLink\("templates", "✎", "Email templates"/);
   assert.match(topbarSource, /isPlatformAdmin\(\) \? "Search tenants, deals, contacts\.\.\." : "Search deals, accounts, contacts\.\.\."/);
   assert.doesNotMatch(sidebarSource, /data-action="open-settings"><span class="icon">⚙<\/span> Settings/);
@@ -1174,6 +1192,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderConfigurationSource, /data-configuration-form/);
   assert.match(renderConfigurationSource, /gmail\.inboxLookbackDays/);
   assert.match(renderConfigurationSource, /gmailLookbackDays/);
+  assert.match(renderConfigurationSource, /security\.mfaRequired/);
+  assert.match(renderConfigurationSource, /name="mfaRequired"/);
+  assert.match(renderConfigurationSource, /Require users to configure and use an authenticator app/);
   assert.match(renderMailSettingsSource, /data-gmail-settings-form/);
   assert.doesNotMatch(renderMailSettingsSource, /formField\("Gmail account", "accountEmail"/);
   assert.doesNotMatch(renderMailSettingsSource, /formField\("Google Workspace domain", "workspaceDomain"/);
@@ -1217,6 +1238,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /gmailDormantContacts/);
   assert.match(app, /if \(gmail\.lastScanAt\) return \[\]/);
   assert.match(app, /saveGmailSettingsViaApi/);
+  assert.match(app, /mfaRequired = values\.mfaRequired === "on"/);
+  assert.match(app, /tenantSettings\?\.mfaRequired/);
   assert.match(app, /saveWorkflowAutomationViaApi/);
   assert.match(app, /connectGmailViaApi/);
   assert.match(app, /returnOrigin: window\.location\.origin/);
@@ -1224,6 +1247,8 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30/);
   assert.match(app, /DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS = 30/);
   assert.match(serverSource(), /gmail_lookback_days/);
+  assert.match(serverSource(), /update tenants set mfa_required=\$2/);
+  assert.match(serverSource(), /update users set mfa_enabled=\$2 where tenant_id=\$1 and role <> 'platform_admin'/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_FULL_LIMIT = 250/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250/);

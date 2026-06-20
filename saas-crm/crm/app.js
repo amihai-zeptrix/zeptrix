@@ -281,6 +281,7 @@ function normalizeData(nextData) {
   nextData.auditLogs = nextData.auditLogs || [];
   nextData.tenants = nextData.tenants.map((tenant) => ({
     ...tenant,
+    mfaRequired: !!tenant.mfaRequired,
     deals: (tenant.deals || []).map((deal) => ({ ...deal, tags: deal.tags || defaultAccountTags(deal) })),
     availableTags: normalizeTags([...(tenant.availableTags || []), ...(tenant.deals || []).flatMap((deal) => deal.tags || defaultAccountTags(deal)), ...defaultTags]),
     mailTemplates: normalizeMailTemplates(tenant.mailTemplates),
@@ -731,7 +732,7 @@ async function completeAuthSession(user) {
   ui.authStep = "password";
   ui.pendingUser = null;
   saveSession();
-  await loadStateFromApi();
+  if (session.apiToken) await loadStateFromApi();
   maybeShowWhatsNew();
 }
 
@@ -1136,7 +1137,7 @@ function renderSidebar() {
       ${sideLink("activities", "✓", "Activities", openTasks().length)}
       ${sideLink("inbox", "✉", "Inbox", tenant.communications.length)}
       ${sideLink("reports", "◴", "Reports")}
-      ${sideLink("settings", "⚙", "Email integration")}
+      ${sideLink("settings", "⚙", "Settings")}
       <div class="side-spacer"></div>
       <button class="side-link" data-action="logout"><span class="icon">⇤</span> Sign out</button>
       <div class="profile">${avatar(currentUser().name)}<div><strong>${escapeHtml(currentUser().name)}</strong><small>${escapeHtml(currentUser().role)}</small></div></div>
@@ -2658,7 +2659,8 @@ function renderWorkflowRuleCard(trigger, condition, action, enabled, fieldName, 
 
 function renderConfigurationSettingsPanel() {
   const gmail = gmailIntegration(currentTenant());
-  return `<section class="settings-card configuration-card"><div class="panel-head"><div><h3>Configuration</h3><p class="subcopy">Tenant-level keys that control CRM behavior.</p></div></div><form class="configuration-list" data-configuration-form><label class="configuration-row"><span><strong>gmail.inboxLookbackDays</strong><small>Number of days to look back when scanning Gmail for new contacts.</small></span><input name="gmailLookbackDays" type="number" min="1" max="365" value="${Number(gmail.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS)}" /></label><div class="form-actions"><button class="button primary">Save configuration</button></div></form></section>`;
+  const tenant = currentTenant();
+  return `<section class="settings-card configuration-card"><div class="panel-head"><div><h3>Configuration</h3><p class="subcopy">Tenant-level keys that control CRM behavior.</p></div></div><form class="configuration-list" data-configuration-form><label class="configuration-row"><span><strong>gmail.inboxLookbackDays</strong><small>Number of days to look back when scanning Gmail for new contacts.</small></span><input name="gmailLookbackDays" type="number" min="1" max="365" value="${Number(gmail.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS)}" /></label><label class="configuration-row"><span><strong>security.mfaRequired</strong><small>Require users to configure and use an authenticator app at sign-in.</small></span><input name="mfaRequired" type="checkbox" ${tenant.mfaRequired ? "checked" : ""} /></label><div class="form-actions"><button class="button primary">Save configuration</button></div></form></section>`;
 }
 
 function gmailIntegration(tenant = currentTenant()) {
@@ -3403,9 +3405,12 @@ document.addEventListener("submit", async (event) => {
         render();
         return;
       }
-      ui.pendingUser = { ...user, mfaRequired: true, mfaSetupRequired: false };
+      const tenant = data.tenants.find((item) => item.users.some((tenantUser) => tenantUser.email.toLowerCase() === user.email.toLowerCase()));
+      const localMfaRequired = !!tenant?.mfaRequired && !!user.mfa;
+      ui.pendingUser = { ...user, mfaRequired: localMfaRequired, mfaSetupRequired: false, apiToken: "" };
       ui.authError = "";
-      ui.authStep = "mfa";
+      if (localMfaRequired) ui.authStep = "mfa";
+      else await completeAuthSession(ui.pendingUser);
     }
     if (!ui.pendingUser) {
       ui.authError = "Invalid email or password.";
@@ -3690,14 +3695,15 @@ document.addEventListener("submit", async (event) => {
     const tenant = currentTenant();
     const values = Object.fromEntries(new FormData(event.target));
     const gmailLookbackDays = Math.max(1, Math.min(365, Number(values.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS)));
+    const mfaRequired = values.mfaRequired === "on";
     try {
-      const result = await saveConfigurationViaApi(tenant.id, { gmailLookbackDays });
-      setTenant({ ...currentTenant(), gmailIntegration: { ...result.gmailIntegration, status: "Configuration saved." } });
+      const result = await saveConfigurationViaApi(tenant.id, { gmailLookbackDays, mfaRequired });
+      setTenant({ ...currentTenant(), mfaRequired: result.tenantSettings?.mfaRequired ?? mfaRequired, gmailIntegration: { ...result.gmailIntegration, status: "Configuration saved." } });
       showToast("Configuration saved");
       auditSubmitEvent(event.target);
     } catch (error) {
       const previous = gmailIntegration(tenant);
-      setTenant({ ...tenant, gmailIntegration: { ...previous, gmailLookbackDays, status: error.message } });
+      setTenant({ ...tenant, mfaRequired, gmailIntegration: { ...previous, gmailLookbackDays, status: error.message } });
       showToast(error.message);
     }
     ui.section = "settings";
