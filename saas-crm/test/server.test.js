@@ -437,6 +437,14 @@ test("LinkedIn settings normalization validates account and company URL", () => 
   assert.equal(settings.accountEmail, "owner@example.com");
   assert.equal(settings.syncContacts, false);
   assert.equal(settings.syncCompanyUpdates, true);
+  assert.equal(
+    normalizeLinkedinSettings({ companyPageUrl: "https://www.linkedin.com/company/zeptrix/about/?trk=public_profile" }).companyPageUrl,
+    "https://www.linkedin.com/company/zeptrix/",
+  );
+  assert.equal(
+    normalizeLinkedinSettings({ companyPageUrl: "https://linkedin.com/in/amihai-hadar/recent-activity/" }).companyPageUrl,
+    "https://www.linkedin.com/in/amihai-hadar/",
+  );
   assert.throws(() => normalizeLinkedinSettings({ accountEmail: "bad" }), /LinkedIn account email must be a valid email address/);
   assert.throws(() => normalizeLinkedinSettings({ companyPageUrl: "https://example.com/company/zeptrix" }), /LinkedIn URL must be a linkedin.com company or profile URL/);
 });

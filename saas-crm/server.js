@@ -1730,11 +1730,19 @@ function normalizeLinkedinSettings(payload = {}) {
     error.statusCode = 400;
     throw error;
   }
-  const companyPageUrl = String(payload.companyPageUrl || "").trim();
-  if (companyPageUrl && !/^https:\/\/(www\.)?linkedin\.com\/(company|in)\/[^/\s]+\/?$/i.test(companyPageUrl)) {
-    const error = new Error("LinkedIn URL must be a linkedin.com company or profile URL.");
-    error.statusCode = 400;
-    throw error;
+  let companyPageUrl = String(payload.companyPageUrl || "").trim();
+  if (companyPageUrl) {
+    try {
+      const parsed = new URL(companyPageUrl);
+      const hostname = parsed.hostname.toLowerCase();
+      const pathParts = parsed.pathname.split("/").filter(Boolean);
+      if (!["linkedin.com", "www.linkedin.com"].includes(hostname) || !["company", "in"].includes(pathParts[0]) || !pathParts[1]) throw new Error("invalid");
+      companyPageUrl = `https://www.linkedin.com/${pathParts[0]}/${pathParts[1]}/`;
+    } catch {
+      const error = new Error("LinkedIn URL must be a linkedin.com company or profile URL.");
+      error.statusCode = 400;
+      throw error;
+    }
   }
   return {
     companyPageUrl,
