@@ -3215,6 +3215,10 @@ document.addEventListener("click", async (event) => {
     }
     if (action === "open-linkedin-login-tab") {
       if (ui.linkedinLogin?.localDebugUrl) {
+        if (/\/json\/list$/i.test(ui.linkedinLogin.localDebugUrl)) {
+          showToast("LinkedIn page target is still loading. Wait a few seconds, then click Start LinkedIn login again.");
+          return;
+        }
         window.open(ui.linkedinLogin.localDebugUrl, "_blank", "noopener,noreferrer");
       } else {
         showToast("Click Start LinkedIn login first. No temporary LinkedIn browser is running yet.");

@@ -1894,6 +1894,15 @@ async function startLinkedinLoginSession(tenantId, requestHost = "") {
 }
 
 async function linkedinLoginDebugTarget(debugPort) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const target = await fetchLinkedinLoginDebugTarget(debugPort);
+    if (target?.devtoolsFrontendUrl) return target;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return null;
+}
+
+async function fetchLinkedinLoginDebugTarget(debugPort) {
   try {
     const response = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
     const targets = await response.json();

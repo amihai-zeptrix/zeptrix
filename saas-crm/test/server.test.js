@@ -1334,6 +1334,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /LINKEDIN_SSH_KEY_PATH/);
   assert.match(server, /ssh\$\{linkedinSshKeyPath \? ` -i \$\{linkedinSshKeyPath\}` : ""\} -L/);
   assert.match(server, /function linkedinLoginDebugTarget/);
+  assert.match(server, /attempt < 20/);
+  assert.match(server, /fetchLinkedinLoginDebugTarget/);
   assert.match(server, /devtoolsFrontendUrl/);
   assert.match(server, /targetListUrl/);
   assert.match(renderMailSettingsSource, /settings-stack/);
@@ -1475,6 +1477,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(clickHandlerSource, /Temporary LinkedIn login started/);
   assert.doesNotMatch(clickHandlerSource, /window\.open\(result\.login\.localDebugUrl/);
   assert.match(clickHandlerSource, /action === "open-linkedin-login-tab"/);
+  assert.match(clickHandlerSource, /json\\\/list/);
+  assert.match(clickHandlerSource, /LinkedIn page target is still loading/);
   assert.match(clickHandlerSource, /window\.open\(ui\.linkedinLogin\.localDebugUrl/);
   assert.match(clickHandlerSource, /No temporary LinkedIn browser is running yet/);
   assert.match(clickHandlerSource, /action === "verify-linkedin-session"/);
