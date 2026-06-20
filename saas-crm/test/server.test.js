@@ -1366,10 +1366,14 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /--remote-debugging-address=127\.0\.0\.1/);
   assert.match(server, /--headless=new/);
   assert.match(server, /tunnelCommand/);
+  assert.match(server, /Chrome is not executable at/);
+  assert.match(server, /LinkedIn profile directory is not writable by the app server/);
+  assert.match(server, /Chrome exited before the LinkedIn login session could start/);
   assert.match(server, /session_status='setup_required'/);
   assert.match(server, /pathname\.endsWith\("\/linkedin\/authorize-session"\)/);
   assert.match(server, /pathname\.endsWith\("\/linkedin\/verify-session"\)/);
   assert.match(server, /operation: "authorize-linkedin-session"/);
+  assert.match(server, /detail: error\.message/);
   assert.match(server, /operation: "verify-linkedin-session"/);
   assert.match(server, /sessionStatus: "setup_required"/);
   assert.match(server, /LinkedIn login runtime is not enabled on the server/);

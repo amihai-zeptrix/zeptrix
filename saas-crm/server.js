@@ -1817,6 +1817,20 @@ async function startLinkedinLoginSession(tenantId) {
     error.statusCode = 503;
     throw error;
   }
+  try {
+    await fs.promises.access(linkedinChromePath, fs.constants.X_OK);
+  } catch {
+    const error = new Error(`Chrome is not executable at ${linkedinChromePath}.`);
+    error.statusCode = 503;
+    throw error;
+  }
+  try {
+    await fs.promises.access(profilePath, fs.constants.W_OK);
+  } catch {
+    const error = new Error("LinkedIn profile directory is not writable by the app server.");
+    error.statusCode = 503;
+    throw error;
+  }
   const existing = linkedinLoginSessions.get(tenantId);
   if (existing?.process && !existing.process.killed) existing.process.kill();
   const debugPort = linkedinTenantDebugPort(tenantId);
@@ -1832,6 +1846,28 @@ async function startLinkedinLoginSession(tenantId) {
     "https://www.linkedin.com/login",
   ];
   const child = spawn(linkedinChromePath, args, { stdio: "ignore", detached: true });
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      resolve();
+    }, 1000);
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      error.statusCode = 503;
+      reject(error);
+    });
+    child.once("exit", (code) => {
+      if (settled || code === null) return;
+      settled = true;
+      clearTimeout(timer);
+      const error = new Error(`Chrome exited before the LinkedIn login session could start. Exit code: ${code}.`);
+      error.statusCode = 503;
+      reject(error);
+    });
+  });
   child.unref();
   linkedinLoginSessions.set(tenantId, { process: child, debugPort, startedAt: Date.now() });
   setTimeout(() => {
@@ -3390,7 +3426,7 @@ async function handleApi(req, res) {
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "authorize-linkedin-session", target: "linkedin-settings", details: { fields: { sessionStatus: "setup_required" } } });
       return json(res, 200, { ...session, instructions: "Open the temporary debug URL through the SSH tunnel, complete LinkedIn login, then click I finished login. No LinkedIn password, token, or cookie is stored by CRM." });
     } catch (error) {
-      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to authorize LinkedIn session.", detail: error.statusCode ? undefined : error.message });
+      return json(res, error.statusCode || 500, { error: "Unable to authorize LinkedIn session.", detail: error.message });
     }
   }
 
