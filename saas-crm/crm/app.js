@@ -2548,7 +2548,7 @@ function renderMailIntegrationsSettings() {
           <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Connect Gmail with one Google authorization step to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
           ${ui.gmailNotice ? `<p class="admin-notice gmail-notice ${ui.gmailNotice.toLowerCase().includes("failed") ? "error" : ""}">${escapeHtml(ui.gmailNotice)}</p>` : ""}
           <form class="settings-form" data-gmail-settings-form>
-            <div class="form-actions gmail-primary-actions"><button type="button" class="button primary" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button><span class="toolbar-spacer"></span><button class="button" ${actionDisabled}>Save Gmail settings</button></div>
+            <div class="form-actions gmail-primary-actions"><button type="button" class="button primary" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button></div>
             <p class="admin-notice">${gmail.accountEmail ? `Connected mailbox: <strong>${escapeHtml(gmail.accountEmail)}</strong>` : "Click Connect Gmail and choose the Gmail account in Google. No mailbox password or OAuth client setup is required."}</p>
             <div class="form-grid">
               ${formField("Labels to read", "labels", gmail.labels)}
@@ -2561,6 +2561,7 @@ function renderMailIntegrationsSettings() {
             ${canUseGmailBackend ? "" : `<p class="admin-notice">Gmail connection requires signing in to a workspace at /crm.</p>`}
             <p class="subcopy">Uses server-side OAuth with <strong>gmail.readonly</strong>; refresh tokens are encrypted on the server and the browser never stores the Google client secret.</p>
             <p class="subcopy">New-contact discovery scans the last <strong>${gmailLookbackDays} days</strong> of non-sent Gmail and filters out contacts already in CRM.</p>
+            <div class="form-actions gmail-save-actions"><span class="toolbar-spacer"></span><button class="button primary" ${actionDisabled}>Save Gmail settings</button></div>
           </form>
         </article>
         <article class="settings-card follow-up-card">
