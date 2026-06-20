@@ -456,6 +456,7 @@ h3 { font-size: 14px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .form-grid .full { grid-column: 1 / -1; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.gmail-primary-actions { justify-content: flex-start; }
 .error { margin-top: 12px; color: var(--red); font-size: 12px; font-weight: 700; }
 .success { margin-top: 12px; color: #18794e; font-size: 12px; font-weight: 800; line-height: 1.45; }
 .auth-link-button { justify-content: center; border-color: transparent; }

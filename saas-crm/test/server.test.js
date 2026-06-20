@@ -1188,6 +1188,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /data-action="connect-gmail" \$\{actionDisabled\}/);
   assert.match(renderMailSettingsSource, /gmail-primary-actions/);
   assert.match(renderMailSettingsSource, /gmail-save-actions/);
+  assert.match(styles, /\.gmail-primary-actions \{ justify-content: flex-start; \}/);
   assert.ok(renderMailSettingsSource.indexOf('data-action="connect-gmail"') < renderMailSettingsSource.indexOf('formField("Labels to read"'));
   assert.ok(renderMailSettingsSource.indexOf('data-action="scan-gmail"') < renderMailSettingsSource.indexOf('formField("No-mail threshold in months"'));
   assert.ok(renderMailSettingsSource.indexOf("New-contact discovery scans") < renderMailSettingsSource.indexOf("gmail-save-actions"));
