@@ -170,7 +170,6 @@ const defaultLinkedinIntegration = {
   syncContacts: true,
   syncCompanyUpdates: false,
   sessionStatus: "not_configured",
-  profilePath: "",
   authorizedAt: "",
   lastScanAt: "",
   lastScanResult: {},
@@ -2677,7 +2676,7 @@ function renderLinkedinIntegrationSettings() {
         <div class="form-grid">
           ${formField("LinkedIn account email", "accountEmail", linkedin.accountEmail, "email", false, "full")}
         </div>
-        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Session status<small>${escapeHtml(linkedin.sessionStatus === "authorized" ? `Authorized${linkedin.authorizedAt ? ` · ${formatTimestamp(linkedin.authorizedAt)}` : ""}` : "Not configured")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Session status<small>${escapeHtml(linkedin.sessionStatus === "authorized" ? `Authorized${linkedin.authorizedAt ? ` · ${formatTimestamp(linkedin.authorizedAt)}` : ""}` : linkedin.sessionStatus === "setup_required" ? "Profile ready - complete LinkedIn login on the server" : "Not configured")}</small></span></div>
         <div class="check-list compact">
           <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Use LinkedIn conversation/profile context from the Puppeteer scan when available.</small></label>
         </div>

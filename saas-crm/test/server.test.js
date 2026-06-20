@@ -1353,10 +1353,15 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /LINKEDIN_CHROME_PROFILE_ROOT/);
   assert.match(server, /function linkedinTenantProfilePath/);
   assert.match(server, /async function authorizeLinkedinSession/);
-  assert.match(server, /session_status='authorized'/);
+  assert.match(server, /session_status='setup_required'/);
   assert.match(server, /pathname\.endsWith\("\/linkedin\/authorize-session"\)/);
   assert.match(server, /operation: "authorize-linkedin-session"/);
+  assert.match(server, /sessionStatus: "setup_required"/);
   assert.match(server, /LinkedIn scan is not connected yet\. Authorize the server-side LinkedIn session before scanning\./);
+  assert.match(server, /LinkedIn scan is not connected yet\. Authorize a tenant LinkedIn session before scanning\./);
+  assert.match(server, /const profilePath = integration\.profile_path \|\| ""/);
+  assert.doesNotMatch(server, /integration\.profile_path \|\| linkedinChromeProfile/);
+  assert.doesNotMatch(server, /profilePath: row\?\.profile_path/);
   assert.doesNotMatch(server, /Set LINKEDIN_PUPPETEER_ENABLED=1/);
   assert.match(server, /function linkedinPuppeteerUnavailableReason/);
   assert.match(server, /const linkedinScansInProgress = new Set\(\)/);
@@ -1437,6 +1442,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(clickHandlerSource, /action === "scan-linkedin"/);
   assert.match(clickHandlerSource, /action === "authorize-linkedin-session"/);
   assert.match(clickHandlerSource, /Complete LinkedIn login on the server profile/);
+  assert.doesNotMatch(app, /profilePath:/);
   assert.match(clickHandlerSource, /action === "toggle-connectivity"/);
   assert.match(clickHandlerSource, /ui\.connectivityOpen = ui\.section === "settings" \? !ui\.connectivityOpen : true/);
   assert.match(clickHandlerSource, /ui\.settingsTab = "gmail"/);

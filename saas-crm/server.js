@@ -1331,7 +1331,6 @@ function linkedinIntegrationFromRow(row) {
     syncContacts: row?.sync_contacts ?? true,
     syncCompanyUpdates: row?.sync_company_updates ?? false,
     sessionStatus: row?.session_status || "not_configured",
-    profilePath: row?.profile_path || "",
     authorizedAt: row?.authorized_at ? row.authorized_at.toISOString() : "",
     lastScanAt: row?.last_scan_at ? row.last_scan_at.toISOString() : "",
     lastScanResult: row?.last_scan_result || {},
@@ -1788,11 +1787,11 @@ async function authorizeLinkedinSession(tenantId) {
   const result = await dbQuery(
     `insert into linkedin_integrations
        (tenant_id, enabled, status, session_status, profile_path, authorized_at, updated_at)
-     values ($1,true,'Session authorized - run scan when ready','authorized',$2,now(),now())
+     values ($1,false,'Session profile ready - complete LinkedIn login on the server','setup_required',$2,now(),now())
      on conflict (tenant_id) do update set
-       enabled=true,
-       status='Session authorized - run scan when ready',
-       session_status='authorized',
+       enabled=false,
+       status='Session profile ready - complete LinkedIn login on the server',
+       session_status='setup_required',
        profile_path=excluded.profile_path,
        authorized_at=now(),
        updated_at=now()
@@ -1825,7 +1824,7 @@ function linkedinPuppeteerUnavailableReason(profilePath = "") {
   if (!linkedinPuppeteerEnabled) return "LinkedIn scan is not connected yet. Authorize the server-side LinkedIn session before scanning.";
   if (!fs.existsSync(scriptPath)) return "LinkedIn Puppeteer spike script is missing from the deployment.";
   if (!fs.existsSync(linkedinChromePath)) return "LinkedIn scan is not connected yet. The server browser is not available.";
-  if (!profilePath && !linkedinChromeProfile) return "LinkedIn scan is not connected yet. Authorize a server-side LinkedIn session before scanning.";
+  if (!profilePath) return "LinkedIn scan is not connected yet. Authorize a tenant LinkedIn session before scanning.";
   return "";
 }
 
@@ -1855,7 +1854,13 @@ async function runLinkedinPuppeteerScan(tenantId, payload = {}) {
     error.statusCode = 400;
     throw error;
   }
-  const profilePath = integration.profile_path || linkedinChromeProfile;
+  const profilePath = integration.profile_path || "";
+  if (integration.session_status !== "setup_required" && integration.session_status !== "authorized") {
+    await dbQuery(`update linkedin_integrations set status='LinkedIn scan is not connected yet. Authorize a tenant LinkedIn session before scanning.', updated_at=now() where tenant_id=$1`, [tenantId]);
+    const error = new Error("LinkedIn scan is not connected yet. Authorize a tenant LinkedIn session before scanning.");
+    error.statusCode = 503;
+    throw error;
+  }
   const unavailable = linkedinPuppeteerUnavailableReason(profilePath);
   if (unavailable) {
     await dbQuery(`update linkedin_integrations set status=$2, updated_at=now() where tenant_id=$1`, [tenantId, unavailable]);
@@ -1891,10 +1896,10 @@ async function runLinkedinPuppeteerScan(tenantId, payload = {}) {
     const status = result.ok ? `LinkedIn Puppeteer scan completed (${count} items)` : `LinkedIn Puppeteer scan failed with status ${result.status}`;
     const saved = await dbQuery(
       `update linkedin_integrations
-       set enabled=$2, status=$3, last_scan_at=now(), last_scan_result=$4::jsonb, updated_at=now()
+       set enabled=$2, status=$3, session_status=$4, last_scan_at=now(), last_scan_result=$5::jsonb, updated_at=now()
        where tenant_id=$1
        returning *`,
-      [tenantId, !!result.ok, status, JSON.stringify(summary)],
+      [tenantId, !!result.ok, status, result.ok ? "authorized" : "setup_required", JSON.stringify(summary)],
     );
     return { linkedinIntegration: linkedinIntegrationFromRow(saved.rows[0]), result: summary };
   } finally {
@@ -3294,7 +3299,7 @@ async function handleApi(req, res) {
       if (!resolved) return;
       if (resolved.auth.role !== "platform_admin") return json(res, 403, { error: "Platform admin access required for LinkedIn session setup." });
       const linkedinIntegration = await authorizeLinkedinSession(resolved.tenantId);
-      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "authorize-linkedin-session", target: "linkedin-settings", details: { fields: { sessionStatus: "authorized" } } });
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "authorize-linkedin-session", target: "linkedin-settings", details: { fields: { sessionStatus: "setup_required" } } });
       return json(res, 200, { linkedinIntegration, instructions: "Open the tenant Chrome profile on the server and complete LinkedIn login. No LinkedIn password, token, or cookie is stored by CRM." });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to authorize LinkedIn session.", detail: error.statusCode ? undefined : error.message });
