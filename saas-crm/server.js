@@ -2,7 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { execFile } = require("child_process");
+const { execFile, spawn } = require("child_process");
 const { SendEmailCommand, SESClient } = require("@aws-sdk/client-ses");
 const nodemailer = require("nodemailer");
 const { Pool } = require("pg");
@@ -28,7 +28,9 @@ const linkedinPuppeteerEnabled = ["1", "true", "yes"].includes(String(process.en
 const linkedinChromePath = process.env.LINKEDIN_CHROME_PATH || process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const linkedinChromeProfile = process.env.LINKEDIN_CHROME_PROFILE || "";
 const linkedinChromeProfileRoot = process.env.LINKEDIN_CHROME_PROFILE_ROOT || path.join(root, ".linkedin-profiles");
+const linkedinDebugPortBase = Number(process.env.LINKEDIN_DEBUG_PORT_BASE || 9300);
 const linkedinScansInProgress = new Set();
+const linkedinLoginSessions = new Map();
 const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
 const authTokenSecret = process.env.CRM_AUTH_SECRET || tokenSecret;
 const GOOGLE_SSO_REDIRECT_URI = `${publicBaseUrl}/api/auth/google/callback`;
@@ -1781,6 +1783,11 @@ function linkedinTenantProfilePath(tenantId) {
   return path.join(linkedinChromeProfileRoot, String(tenantId).replace(/[^a-zA-Z0-9_-]/g, ""));
 }
 
+function linkedinTenantDebugPort(tenantId) {
+  const hash = crypto.createHash("sha256").update(String(tenantId)).digest();
+  return linkedinDebugPortBase + (hash.readUInt16BE(0) % 500);
+}
+
 async function authorizeLinkedinSession(tenantId) {
   const profilePath = linkedinTenantProfilePath(tenantId);
   await fs.promises.mkdir(profilePath, { recursive: true, mode: 0o700 });
@@ -1799,6 +1806,88 @@ async function authorizeLinkedinSession(tenantId) {
     [tenantId, profilePath],
   );
   return linkedinIntegrationFromRow(result.rows[0]);
+}
+
+async function startLinkedinLoginSession(tenantId) {
+  const linkedinIntegration = await authorizeLinkedinSession(tenantId);
+  const profilePath = linkedinTenantProfilePath(tenantId);
+  const unavailable = linkedinPuppeteerUnavailableReason(profilePath);
+  if (unavailable) {
+    const error = new Error(unavailable);
+    error.statusCode = 503;
+    throw error;
+  }
+  const existing = linkedinLoginSessions.get(tenantId);
+  if (existing?.process && !existing.process.killed) existing.process.kill();
+  const debugPort = linkedinTenantDebugPort(tenantId);
+  const args = [
+    `--user-data-dir=${profilePath}`,
+    `--remote-debugging-address=127.0.0.1`,
+    `--remote-debugging-port=${debugPort}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--headless=new",
+    "https://www.linkedin.com/login",
+  ];
+  const child = spawn(linkedinChromePath, args, { stdio: "ignore", detached: true });
+  child.unref();
+  linkedinLoginSessions.set(tenantId, { process: child, debugPort, startedAt: Date.now() });
+  setTimeout(() => {
+    const session = linkedinLoginSessions.get(tenantId);
+    if (session?.process === child) {
+      child.kill();
+      linkedinLoginSessions.delete(tenantId);
+    }
+  }, 20 * 60 * 1000).unref?.();
+  return {
+    linkedinIntegration,
+    login: {
+      localDebugUrl: `http://127.0.0.1:${debugPort}`,
+      tunnelCommand: `ssh -L ${debugPort}:127.0.0.1:${debugPort} ec2-user@<crm-server>`,
+      expiresInMinutes: 20,
+    },
+  };
+}
+
+async function verifyLinkedinLoginSession(tenantId) {
+  const integrationResult = await dbQuery(`select * from linkedin_integrations where tenant_id=$1`, [tenantId]);
+  const integration = integrationResult.rows[0];
+  const profilePath = integration?.profile_path || "";
+  const unavailable = linkedinPuppeteerUnavailableReason(profilePath);
+  if (unavailable) {
+    const error = new Error(unavailable);
+    error.statusCode = 503;
+    throw error;
+  }
+  try {
+    await execFileJson(process.execPath, [path.join(root, "scripts", "linkedin-puppeteer-spike.js"), "--json", "--headless", "--limit", "1"], {
+      cwd: root,
+      env: {
+        ...process.env,
+        CHROME_PATH: linkedinChromePath,
+        LINKEDIN_CHROME_PROFILE: profilePath,
+        HEADLESS: "1",
+      },
+    });
+  } catch (error) {
+    await dbQuery(`update linkedin_integrations set enabled=false, session_status='setup_required', status=$2, updated_at=now() where tenant_id=$1`, [tenantId, "LinkedIn login was not detected yet. Complete login in the temporary browser session and verify again."]);
+    error.statusCode = 409;
+    error.message = "LinkedIn login was not detected yet. Complete login in the temporary browser session and verify again.";
+    throw error;
+  }
+  const session = linkedinLoginSessions.get(tenantId);
+  if (session?.process && !session.process.killed) session.process.kill();
+  linkedinLoginSessions.delete(tenantId);
+  const saved = await dbQuery(
+    `update linkedin_integrations
+     set enabled=true, session_status='authorized', status='LinkedIn session authorized', authorized_at=now(), updated_at=now()
+     where tenant_id=$1
+     returning *`,
+    [tenantId],
+  );
+  return linkedinIntegrationFromRow(saved.rows[0]);
 }
 
 function execFileJson(command, args, options = {}) {
@@ -3298,11 +3387,26 @@ async function handleApi(req, res) {
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
       if (resolved.auth.role !== "platform_admin") return json(res, 403, { error: "Platform admin access required for LinkedIn session setup." });
-      const linkedinIntegration = await authorizeLinkedinSession(resolved.tenantId);
+      const session = await startLinkedinLoginSession(resolved.tenantId);
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "authorize-linkedin-session", target: "linkedin-settings", details: { fields: { sessionStatus: "setup_required" } } });
-      return json(res, 200, { linkedinIntegration, instructions: "Open the tenant Chrome profile on the server and complete LinkedIn login. No LinkedIn password, token, or cookie is stored by CRM." });
+      return json(res, 200, { ...session, instructions: "Open the temporary debug URL through the SSH tunnel, complete LinkedIn login, then click I finished login. No LinkedIn password, token, or cookie is stored by CRM." });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to authorize LinkedIn session.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin/verify-session")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      if (resolved.auth.role !== "platform_admin") return json(res, 403, { error: "Platform admin access required for LinkedIn session setup." });
+      const linkedinIntegration = await verifyLinkedinLoginSession(resolved.tenantId);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "verify-linkedin-session", target: "linkedin-settings", details: { fields: { sessionStatus: "authorized" } } });
+      return json(res, 200, { linkedinIntegration });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to verify LinkedIn session.", detail: error.statusCode ? undefined : error.message });
     }
   }
 

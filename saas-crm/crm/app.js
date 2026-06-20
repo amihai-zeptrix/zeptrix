@@ -248,6 +248,7 @@ let ui = {
   addedGmailContacts: new Set(),
   skippedGmailContacts: new Set(),
   gmailScanProgress: null,
+  linkedinLogin: null,
   toasts: [],
   replyingThread: "",
   correspondenceDrafts: {},
@@ -866,6 +867,10 @@ async function scanLinkedinViaApi(tenantId, values = {}) {
 
 async function authorizeLinkedinSessionViaApi(tenantId) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/authorize-session`, { method: "POST", body: JSON.stringify({}) });
+}
+
+async function verifyLinkedinSessionViaApi(tenantId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/verify-session`, { method: "POST", body: JSON.stringify({}) });
 }
 
 async function saveConfigurationViaApi(tenantId, values) {
@@ -2681,7 +2686,8 @@ function renderLinkedinIntegrationSettings() {
           <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Use LinkedIn conversation/profile context from the Puppeteer scan when available.</small></label>
         </div>
         <p class="subcopy">The scan stores only counts and conversation metadata. It needs a LinkedIn session that has already been authorized outside the CRM password flow.</p>
-        <div class="form-actions integration-actions"><button type="button" class="button" data-action="authorize-linkedin-session" ${authorizeDisabled}>Authorize session</button><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
+        ${ui.linkedinLogin ? `<div class="admin-notice"><strong>Temporary LinkedIn login is running.</strong><br />1. Run: <code>${escapeHtml(ui.linkedinLogin.tunnelCommand)}</code><br />2. Open: <code>${escapeHtml(ui.linkedinLogin.localDebugUrl)}</code><br />3. Complete LinkedIn login, then click <strong>I finished login</strong>.<br />This session expires in ${escapeHtml(ui.linkedinLogin.expiresInMinutes)} minutes.</div>` : ""}
+        <div class="form-actions integration-actions"><button type="button" class="button" data-action="authorize-linkedin-session" ${authorizeDisabled}>Start LinkedIn login</button><button type="button" class="button" data-action="verify-linkedin-session" ${authorizeDisabled}>I finished login</button><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
@@ -3192,7 +3198,24 @@ document.addEventListener("click", async (event) => {
         render();
         const result = await authorizeLinkedinSessionViaApi(tenant.id);
         setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
-        showToast("LinkedIn session profile is ready. Complete LinkedIn login on the server profile.");
+        ui.linkedinLogin = result.login || null;
+        showToast("Temporary LinkedIn login started. Follow the instructions in the LinkedIn panel.");
+      } catch (error) {
+        setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
+        showToast(error.message);
+      }
+      render();
+      return;
+    }
+    if (action === "verify-linkedin-session") {
+      const tenant = currentTenant();
+      try {
+        setTenant({ ...tenant, linkedinIntegration: { ...linkedinIntegration(tenant), status: "Verifying LinkedIn login..." } });
+        render();
+        const result = await verifyLinkedinSessionViaApi(tenant.id);
+        setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
+        ui.linkedinLogin = null;
+        showToast("LinkedIn session authorized");
       } catch (error) {
         setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
         showToast(error.message);
