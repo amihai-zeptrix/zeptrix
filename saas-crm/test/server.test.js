@@ -425,28 +425,20 @@ test("Gmail settings normalization clamps scan thresholds and defaults detection
   assert.throws(() => normalizeGmailSettings({ accountEmail: "not-an-email" }), /Gmail account must be a valid email address/);
 });
 
-test("LinkedIn settings normalization validates account and company URL", () => {
+test("LinkedIn settings normalization avoids password and token capture", () => {
   const settings = normalizeLinkedinSettings({
-    companyPageUrl: "https://www.linkedin.com/company/zeptrix/",
     accountEmail: " owner@example.com ",
     syncContacts: false,
     syncCompanyUpdates: "on",
   });
 
-  assert.equal(settings.companyPageUrl, "https://www.linkedin.com/company/zeptrix/");
+  assert.equal(settings.companyPageUrl, "");
   assert.equal(settings.accountEmail, "owner@example.com");
   assert.equal(settings.syncContacts, false);
-  assert.equal(settings.syncCompanyUpdates, true);
-  assert.equal(
-    normalizeLinkedinSettings({ companyPageUrl: "https://www.linkedin.com/company/zeptrix/about/?trk=public_profile" }).companyPageUrl,
-    "https://www.linkedin.com/company/zeptrix/",
-  );
-  assert.equal(
-    normalizeLinkedinSettings({ companyPageUrl: "https://linkedin.com/in/amihai-hadar/recent-activity/" }).companyPageUrl,
-    "https://www.linkedin.com/in/amihai-hadar/",
-  );
+  assert.equal(settings.syncCompanyUpdates, false);
+  assert.equal(normalizeLinkedinSettings({ companyPageUrl: "https://www.linkedin.com/company/zeptrix/" }).companyPageUrl, "");
   assert.throws(() => normalizeLinkedinSettings({ accountEmail: "bad" }), /LinkedIn account email must be a valid email address/);
-  assert.throws(() => normalizeLinkedinSettings({ companyPageUrl: "https://example.com/company/zeptrix" }), /LinkedIn URL must be a linkedin.com company or profile URL/);
+  assert.doesNotThrow(() => normalizeLinkedinSettings({ accountEmail: "owner@example.com", password: "secret", token: "abc", cookie: "li_at=abc" }));
 });
 
 test("deal payload normalization preserves contact metadata for database persistence", () => {
@@ -1224,6 +1216,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
 
   assert.match(sidebarSource, /connectivityNav\(\)/);
   assert.match(app, /function connectivityNav/);
+  assert.match(app, /connectivityOpen: false/);
   assert.match(app, /data-action="toggle-connectivity"/);
   assert.match(app, /aria-expanded="\$\{open \? "true" : "false"\}"/);
   assert.match(app, /const open = ui\.connectivityOpen/);
@@ -1238,7 +1231,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderSectionSource, /ui\.section === "settings"/);
   assert.match(renderSectionSource, /ui\.section === "templates"/);
   assert.match(renderSectionSource, /renderTemplatesSettingsPanel\(\)/);
-  assert.match(renderSettingsPageSource, /Connectivity/);
+  assert.match(renderSettingsPageSource, /Scan/);
+  assert.doesNotMatch(renderSettingsPageSource, /data-settings-tab="gmail">Connectivity/);
   assert.match(renderSettingsPageSource, /data-settings-tab="gmail"/);
   assert.match(renderSettingsPageSource, /const connectivityActive = \["gmail", "linkedin", "zoom", "wechat"\]\.includes\(ui\.settingsTab\)/);
   assert.match(renderSettingsPageSource, /renderConnectivitySubmenu/);
@@ -1264,6 +1258,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(styles, /\.settings-subtabs/);
   assert.match(styles, /\.side-submenu/);
   assert.match(styles, /\.side-sublink/);
+  assert.match(styles, /font-size: 19px/);
   assert.match(renderConfigurationSource, /data-configuration-form/);
   assert.match(renderConfigurationSource, /gmail\.inboxLookbackDays/);
   assert.match(renderConfigurationSource, /gmailLookbackDays/);
@@ -1273,6 +1268,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderConfigurationSource, /name="mfaRequired"/);
   assert.match(renderConfigurationSource, /Require users to configure and use an authenticator app/);
   assert.match(renderMailSettingsSource, /data-gmail-settings-form/);
+  assert.match(renderMailSettingsSource, /<h3>Gmail<\/h3>/);
   assert.doesNotMatch(renderMailSettingsSource, /formField\("Gmail account", "accountEmail"/);
   assert.doesNotMatch(renderMailSettingsSource, /formField\("Google Workspace domain", "workspaceDomain"/);
   assert.match(renderMailSettingsSource, /Connected mailbox:/);
@@ -1304,19 +1300,22 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderMailSettingsSource, /Find contacts with no sent mail/);
   assert.match(renderMailSettingsSource, /Uses the no-communication threshold from Configuration/);
   assert.match(renderLinkedinSource, /data-linkedin-settings-form/);
-  assert.match(renderLinkedinSource, /LinkedIn integration/);
-  assert.match(renderLinkedinSource, /Puppeteer runner/);
-  assert.match(renderLinkedinSource, /platform-admin diagnostic/);
-  assert.match(renderLinkedinSource, /only platform admins can run them/);
+  assert.match(renderLinkedinSource, /<h3>LinkedIn<\/h3>/);
+  assert.match(renderLinkedinSource, /does not ask for or store a LinkedIn password/);
+  assert.match(renderLinkedinSource, /No LinkedIn password is stored in the CRM/);
+  assert.match(renderLinkedinSource, /Session status/);
+  assert.match(renderLinkedinSource, /data-action="authorize-linkedin-session"/);
   assert.match(renderLinkedinSource, /const canRunLinkedinScan = canUseBackend && isPlatformAdmin\(\)/);
   assert.match(renderLinkedinSource, /data-action="scan-linkedin" \$\{scanDisabled\}/);
-  assert.match(renderLinkedinSource, /LinkedIn company page/);
-  assert.match(renderLinkedinSource, /LinkedIn admin email/);
-  assert.match(renderLinkedinSource, /data-action="open-linkedin-company"/);
-  assert.match(renderLinkedinSource, /data-action="open-linkedin-inbox"/);
+  assert.doesNotMatch(renderLinkedinSource, /LinkedIn company page/);
+  assert.match(renderLinkedinSource, /LinkedIn account email/);
+  assert.doesNotMatch(renderLinkedinSource, /data-action="open-linkedin-company"/);
+  assert.doesNotMatch(renderLinkedinSource, /data-action="open-linkedin-inbox"/);
+  assert.doesNotMatch(renderLinkedinSource, /name="(?:password|token|cookie|sessionCookie|liAt)"/i);
+  assert.doesNotMatch(renderLinkedinSource, /type="password"/i);
   assert.match(renderLinkedinSource, /data-action="scan-linkedin"/);
-  assert.match(renderLinkedinSource, /LINKEDIN_PUPPETEER_ENABLED=1/);
-  assert.match(renderLinkedinSource, /LINKEDIN_CHROME_PROFILE/);
+  assert.doesNotMatch(renderLinkedinSource, /LINKEDIN_PUPPETEER_ENABLED=1/);
+  assert.doesNotMatch(renderLinkedinSource, /LINKEDIN_CHROME_PROFILE/);
   assert.match(renderLinkedinSource, /stores only counts and conversation metadata/);
   assert.match(renderLinkedinSource, /linkedin\.lastScanResult\?\.conversationCount/);
   assert.match(renderMailSettingsSource, /settings-stack/);
@@ -1334,6 +1333,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(app, /saveGmailSettingsViaApi/);
   assert.match(app, /saveLinkedinSettingsViaApi/);
   assert.match(app, /scanLinkedinViaApi/);
+  assert.match(app, /authorizeLinkedinSessionViaApi/);
   assert.match(app, /function linkedinIntegration/);
   assert.match(app, /settingsTab: "gmail"/);
   assert.match(app, /settingsTab === "mail" \? "gmail" : settingsTab/);
@@ -1350,6 +1350,19 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /linkedin_integrations/);
   assert.match(server, /const \{ execFile \} = require\("child_process"\)/);
   assert.match(server, /LINKEDIN_PUPPETEER_ENABLED/);
+  assert.match(server, /LINKEDIN_CHROME_PROFILE_ROOT/);
+  assert.match(server, /function linkedinTenantProfilePath/);
+  assert.match(server, /async function authorizeLinkedinSession/);
+  assert.match(server, /session_status='setup_required'/);
+  assert.match(server, /pathname\.endsWith\("\/linkedin\/authorize-session"\)/);
+  assert.match(server, /operation: "authorize-linkedin-session"/);
+  assert.match(server, /sessionStatus: "setup_required"/);
+  assert.match(server, /LinkedIn scan is not connected yet\. Authorize the server-side LinkedIn session before scanning\./);
+  assert.match(server, /LinkedIn scan is not connected yet\. Authorize a tenant LinkedIn session before scanning\./);
+  assert.match(server, /const profilePath = integration\.profile_path \|\| ""/);
+  assert.doesNotMatch(server, /integration\.profile_path \|\| linkedinChromeProfile/);
+  assert.doesNotMatch(server, /profilePath: row\?\.profile_path/);
+  assert.doesNotMatch(server, /Set LINKEDIN_PUPPETEER_ENABLED=1/);
   assert.match(server, /function linkedinPuppeteerUnavailableReason/);
   assert.match(server, /const linkedinScansInProgress = new Set\(\)/);
   assert.match(server, /function summarizeLinkedinPuppeteerResult/);
@@ -1365,7 +1378,11 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /operation: "update-linkedin-settings"/);
   assert.match(server, /operation: "scan-linkedin"/);
   assert.match(schema, /create table linkedin_integrations/);
+  assert.match(schema, /session_status text not null default 'not_configured'/);
+  assert.match(schema, /profile_path text/);
+  assert.match(schema, /authorized_at timestamptz/);
   assert.match(schema, /last_scan_result jsonb/);
+  assert.doesNotMatch(schema, /linkedin_.*(password|token|cookie)|password.*linkedin|token.*linkedin|cookie.*linkedin/i);
   assert.equal(fs.existsSync(path.join(__dirname, "..", "scripts", "linkedin-puppeteer-spike.js")), true);
   assert.match(linkedinSpikeSource, /if \(headless\) \{/);
   assert.match(linkedinSpikeSource, /Chrome profile is not logged in/);
@@ -1423,12 +1440,14 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(clickHandlerSource, /data-settings-tab/);
   assert.match(clickHandlerSource, /action === "connect-gmail"/);
   assert.match(clickHandlerSource, /action === "scan-linkedin"/);
+  assert.match(clickHandlerSource, /action === "authorize-linkedin-session"/);
+  assert.match(clickHandlerSource, /Complete LinkedIn login on the server profile/);
+  assert.doesNotMatch(app, /profilePath:/);
   assert.match(clickHandlerSource, /action === "toggle-connectivity"/);
   assert.match(clickHandlerSource, /ui\.connectivityOpen = ui\.section === "settings" \? !ui\.connectivityOpen : true/);
   assert.match(clickHandlerSource, /ui\.settingsTab = "gmail"/);
-  assert.match(clickHandlerSource, /action === "open-linkedin-company"/);
-  assert.match(clickHandlerSource, /linkedinFormValues\(form\)\.companyPageUrl/);
-  assert.match(clickHandlerSource, /action === "open-linkedin-inbox"/);
+  assert.doesNotMatch(clickHandlerSource, /action === "open-linkedin-company"/);
+  assert.doesNotMatch(clickHandlerSource, /action === "open-linkedin-inbox"/);
   assert.match(clickHandlerSource, /scanLinkedinViaApi\(tenant\.id, \{ limit: 10 \}\)/);
   assert.match(clickHandlerSource, /action === "scan-gmail"/);
   assert.match(clickHandlerSource, /action === "skip-gmail-contact"/);

@@ -27,6 +27,7 @@ const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
 const linkedinPuppeteerEnabled = ["1", "true", "yes"].includes(String(process.env.LINKEDIN_PUPPETEER_ENABLED || "").toLowerCase());
 const linkedinChromePath = process.env.LINKEDIN_CHROME_PATH || process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const linkedinChromeProfile = process.env.LINKEDIN_CHROME_PROFILE || "";
+const linkedinChromeProfileRoot = process.env.LINKEDIN_CHROME_PROFILE_ROOT || path.join(root, ".linkedin-profiles");
 const linkedinScansInProgress = new Set();
 const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
 const authTokenSecret = process.env.CRM_AUTH_SECRET || tokenSecret;
@@ -760,6 +761,9 @@ async function initDatabase() {
       sync_company_updates boolean not null default false,
       enabled boolean not null default false,
       status text not null default 'Not connected',
+      session_status text not null default 'not_configured',
+      profile_path text,
+      authorized_at timestamptz,
       last_scan_at timestamptz,
       last_scan_result jsonb not null default '{}'::jsonb,
       created_at timestamptz not null default now(),
@@ -807,6 +811,9 @@ async function initDatabase() {
   await dbQuery(`alter table linkedin_integrations add column if not exists sync_company_updates boolean not null default false`);
   await dbQuery(`alter table linkedin_integrations add column if not exists enabled boolean not null default false`);
   await dbQuery(`alter table linkedin_integrations add column if not exists status text not null default 'Not connected'`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists session_status text not null default 'not_configured'`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists profile_path text`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists authorized_at timestamptz`);
   await dbQuery(`alter table linkedin_integrations add column if not exists last_scan_at timestamptz`);
   await dbQuery(`alter table linkedin_integrations add column if not exists last_scan_result jsonb not null default '{}'::jsonb`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
@@ -1323,6 +1330,8 @@ function linkedinIntegrationFromRow(row) {
     accountEmail: row?.account_email || "",
     syncContacts: row?.sync_contacts ?? true,
     syncCompanyUpdates: row?.sync_company_updates ?? false,
+    sessionStatus: row?.session_status || "not_configured",
+    authorizedAt: row?.authorized_at ? row.authorized_at.toISOString() : "",
     lastScanAt: row?.last_scan_at ? row.last_scan_at.toISOString() : "",
     lastScanResult: row?.last_scan_result || {},
     updatedAt: row?.updated_at ? row.updated_at.toISOString() : "",
@@ -1741,25 +1750,11 @@ function normalizeLinkedinSettings(payload = {}) {
     error.statusCode = 400;
     throw error;
   }
-  let companyPageUrl = String(payload.companyPageUrl || "").trim();
-  if (companyPageUrl) {
-    try {
-      const parsed = new URL(companyPageUrl);
-      const hostname = parsed.hostname.toLowerCase();
-      const pathParts = parsed.pathname.split("/").filter(Boolean);
-      if (!["linkedin.com", "www.linkedin.com"].includes(hostname) || !["company", "in"].includes(pathParts[0]) || !pathParts[1]) throw new Error("invalid");
-      companyPageUrl = `https://www.linkedin.com/${pathParts[0]}/${pathParts[1]}/`;
-    } catch {
-      const error = new Error("LinkedIn URL must be a linkedin.com company or profile URL.");
-      error.statusCode = 400;
-      throw error;
-    }
-  }
   return {
-    companyPageUrl,
+    companyPageUrl: "",
     accountEmail,
     syncContacts: payload.syncContacts !== false,
-    syncCompanyUpdates: payload.syncCompanyUpdates === true || payload.syncCompanyUpdates === "true" || payload.syncCompanyUpdates === "on",
+    syncCompanyUpdates: false,
   };
 }
 
@@ -1782,6 +1777,30 @@ async function upsertLinkedinSettings(tenantId, payload) {
   return linkedinIntegrationFromRow(result.rows[0]);
 }
 
+function linkedinTenantProfilePath(tenantId) {
+  return path.join(linkedinChromeProfileRoot, String(tenantId).replace(/[^a-zA-Z0-9_-]/g, ""));
+}
+
+async function authorizeLinkedinSession(tenantId) {
+  const profilePath = linkedinTenantProfilePath(tenantId);
+  await fs.promises.mkdir(profilePath, { recursive: true, mode: 0o700 });
+  const result = await dbQuery(
+    `insert into linkedin_integrations
+       (tenant_id, enabled, status, session_status, profile_path, authorized_at, updated_at)
+     values ($1,false,'Session profile ready - complete LinkedIn login on the server','setup_required',$2,now(),now())
+     on conflict (tenant_id) do update set
+       enabled=false,
+       status='Session profile ready - complete LinkedIn login on the server',
+       session_status='setup_required',
+       profile_path=excluded.profile_path,
+       authorized_at=now(),
+       updated_at=now()
+     returning *`,
+    [tenantId, profilePath],
+  );
+  return linkedinIntegrationFromRow(result.rows[0]);
+}
+
 function execFileJson(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     execFile(command, args, { timeout: 90_000, maxBuffer: 5 * 1024 * 1024, ...options }, (error, stdout, stderr) => {
@@ -1800,12 +1819,12 @@ function execFileJson(command, args, options = {}) {
   });
 }
 
-function linkedinPuppeteerUnavailableReason() {
+function linkedinPuppeteerUnavailableReason(profilePath = "") {
   const scriptPath = path.join(root, "scripts", "linkedin-puppeteer-spike.js");
-  if (!linkedinPuppeteerEnabled) return "LinkedIn Puppeteer scan is disabled. Set LINKEDIN_PUPPETEER_ENABLED=1 and configure a logged-in Chrome profile.";
+  if (!linkedinPuppeteerEnabled) return "LinkedIn scan is not connected yet. Authorize the server-side LinkedIn session before scanning.";
   if (!fs.existsSync(scriptPath)) return "LinkedIn Puppeteer spike script is missing from the deployment.";
-  if (!fs.existsSync(linkedinChromePath)) return `Chrome executable not found at ${linkedinChromePath}. Set LINKEDIN_CHROME_PATH.`;
-  if (!linkedinChromeProfile) return "LINKEDIN_CHROME_PROFILE is not configured. Use a Chrome profile that is already signed in to LinkedIn.";
+  if (!fs.existsSync(linkedinChromePath)) return "LinkedIn scan is not connected yet. The server browser is not available.";
+  if (!profilePath) return "LinkedIn scan is not connected yet. Authorize a tenant LinkedIn session before scanning.";
   return "";
 }
 
@@ -1835,7 +1854,14 @@ async function runLinkedinPuppeteerScan(tenantId, payload = {}) {
     error.statusCode = 400;
     throw error;
   }
-  const unavailable = linkedinPuppeteerUnavailableReason();
+  const profilePath = integration.profile_path || "";
+  if (integration.session_status !== "setup_required" && integration.session_status !== "authorized") {
+    await dbQuery(`update linkedin_integrations set status='LinkedIn scan is not connected yet. Authorize a tenant LinkedIn session before scanning.', updated_at=now() where tenant_id=$1`, [tenantId]);
+    const error = new Error("LinkedIn scan is not connected yet. Authorize a tenant LinkedIn session before scanning.");
+    error.statusCode = 503;
+    throw error;
+  }
+  const unavailable = linkedinPuppeteerUnavailableReason(profilePath);
   if (unavailable) {
     await dbQuery(`update linkedin_integrations set status=$2, updated_at=now() where tenant_id=$1`, [tenantId, unavailable]);
     const error = new Error(unavailable);
@@ -1861,7 +1887,7 @@ async function runLinkedinPuppeteerScan(tenantId, payload = {}) {
       env: {
         ...process.env,
         CHROME_PATH: linkedinChromePath,
-        LINKEDIN_CHROME_PROFILE: linkedinChromeProfile,
+        LINKEDIN_CHROME_PROFILE: profilePath,
         HEADLESS: "1",
       },
     });
@@ -1870,10 +1896,10 @@ async function runLinkedinPuppeteerScan(tenantId, payload = {}) {
     const status = result.ok ? `LinkedIn Puppeteer scan completed (${count} items)` : `LinkedIn Puppeteer scan failed with status ${result.status}`;
     const saved = await dbQuery(
       `update linkedin_integrations
-       set enabled=$2, status=$3, last_scan_at=now(), last_scan_result=$4::jsonb, updated_at=now()
+       set enabled=$2, status=$3, session_status=$4, last_scan_at=now(), last_scan_result=$5::jsonb, updated_at=now()
        where tenant_id=$1
        returning *`,
-      [tenantId, !!result.ok, status, JSON.stringify(summary)],
+      [tenantId, !!result.ok, status, result.ok ? "authorized" : "setup_required", JSON.stringify(summary)],
     );
     return { linkedinIntegration: linkedinIntegrationFromRow(saved.rows[0]), result: summary };
   } finally {
@@ -3262,6 +3288,21 @@ async function handleApi(req, res) {
       return json(res, 200, { linkedinIntegration });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save LinkedIn settings.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin/authorize-session")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      if (resolved.auth.role !== "platform_admin") return json(res, 403, { error: "Platform admin access required for LinkedIn session setup." });
+      const linkedinIntegration = await authorizeLinkedinSession(resolved.tenantId);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "authorize-linkedin-session", target: "linkedin-settings", details: { fields: { sessionStatus: "setup_required" } } });
+      return json(res, 200, { linkedinIntegration, instructions: "Open the tenant Chrome profile on the server and complete LinkedIn login. No LinkedIn password, token, or cookie is stored by CRM." });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to authorize LinkedIn session.", detail: error.statusCode ? undefined : error.message });
     }
   }
 
