@@ -169,6 +169,11 @@ const defaultLinkedinIntegration = {
   accountEmail: "",
   syncContacts: true,
   syncCompanyUpdates: false,
+  sessionStatus: "not_configured",
+  profilePath: "",
+  authorizedAt: "",
+  lastScanAt: "",
+  lastScanResult: {},
   updatedAt: "",
 };
 
@@ -237,7 +242,7 @@ let ui = {
   selectedReportTemplate: "",
   helpTopic: "",
   pendingTag: null,
-  connectivityOpen: true,
+  connectivityOpen: false,
   settingsTab: "gmail",
   gmailDiscoveryPage: 1,
   gmailNotice: "",
@@ -858,6 +863,10 @@ async function saveLinkedinSettingsViaApi(tenantId, values) {
 
 async function scanLinkedinViaApi(tenantId, values = {}) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/scan`, { method: "POST", body: JSON.stringify(values) });
+}
+
+async function authorizeLinkedinSessionViaApi(tenantId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/authorize-session`, { method: "POST", body: JSON.stringify({}) });
 }
 
 async function saveConfigurationViaApi(tenantId, values) {
@@ -2529,7 +2538,7 @@ function renderSettingsPage() {
   return `
     ${renderPageHeader("Settings", "Configure CRM integrations and workspace behavior.")}
     <nav class="settings-tabs">
-      <button class="${connectivityActive ? "active" : ""}" data-settings-tab="gmail">Connectivity</button>
+      <button class="${connectivityActive ? "active" : ""}" data-settings-tab="gmail">Scan</button>
       <button class="${ui.settingsTab === "outgoing" ? "active" : ""}" data-settings-tab="outgoing">Outgoing email</button>
       <button class="${ui.settingsTab === "templates" ? "active" : ""}" data-settings-tab="templates">Email templates</button>
       <button class="${ui.settingsTab === "automation" ? "active" : ""}" data-settings-tab="automation">Workflow automation</button>
@@ -2604,7 +2613,7 @@ function renderGmailConnectivitySettings() {
     <section class="settings-layout">
       <div class="settings-stack">
         <article class="settings-card">
-          <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Connect Gmail with one Google authorization step to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
+          <div class="panel-head"><div><h3>Gmail</h3><p class="subcopy">Connect Gmail with one Google authorization step to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
           ${ui.gmailNotice ? `<p class="admin-notice gmail-notice ${ui.gmailNotice.toLowerCase().includes("failed") ? "error" : ""}">${escapeHtml(ui.gmailNotice)}</p>` : ""}
           <form class="settings-form" data-gmail-settings-form>
             <div class="form-actions gmail-primary-actions"><button type="button" class="button primary" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button></div>
@@ -2655,24 +2664,25 @@ function renderLinkedinIntegrationSettings() {
   const linkedin = linkedinIntegration(tenant);
   const canUseBackend = !!session?.apiToken && session.role !== "demo_user";
   const canRunLinkedinScan = canUseBackend && isPlatformAdmin();
+  const canAuthorizeLinkedin = canUseBackend && isPlatformAdmin();
   const disabled = canUseBackend ? "" : "disabled";
   const scanDisabled = canRunLinkedinScan ? "" : "disabled";
+  const authorizeDisabled = canAuthorizeLinkedin ? "" : "disabled";
   return `<section class="settings-layout linkedin-layout">
     <article class="settings-card linkedin-card">
-      <div class="panel-head"><div><h3>LinkedIn integration</h3><p class="subcopy">Configure LinkedIn account context. The Puppeteer runner is a platform-admin diagnostic until each tenant has its own LinkedIn authorization.</p></div><span class="status-pill ${linkedin.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
+      <div class="panel-head"><div><h3>LinkedIn</h3><p class="subcopy">Scan LinkedIn relationship signals through an authorized connection. Zeptrix does not ask for or store a LinkedIn password.</p></div><span class="status-pill ${linkedin.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
       ${canUseBackend ? "" : `<p class="admin-notice">LinkedIn settings require signing in to a workspace at /crm.</p>`}
-      ${canRunLinkedinScan ? "" : `<p class="admin-notice">LinkedIn scans use a shared server Chrome profile, so only platform admins can run them for now.</p>`}
+      ${canRunLinkedinScan ? "" : `<p class="admin-notice">LinkedIn scan requires an authorized server-side LinkedIn connection. No LinkedIn password is stored in the CRM.</p>`}
       <form class="settings-form" data-linkedin-settings-form>
         <div class="form-grid">
-          ${formField("LinkedIn company page", "companyPageUrl", linkedin.companyPageUrl, "url", false, "full")}
-          ${formField("LinkedIn admin email", "accountEmail", linkedin.accountEmail, "email")}
+          ${formField("LinkedIn account email", "accountEmail", linkedin.accountEmail, "email", false, "full")}
         </div>
+        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Session status<small>${escapeHtml(linkedin.sessionStatus === "authorized" ? `Authorized${linkedin.authorizedAt ? ` · ${formatTimestamp(linkedin.authorizedAt)}` : ""}` : "Not configured")}</small></span></div>
         <div class="check-list compact">
           <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Use LinkedIn conversation/profile context from the Puppeteer scan when available.</small></label>
-          <label class="check-row"><input type="checkbox" name="syncCompanyUpdates" ${linkedin.syncCompanyUpdates ? "checked" : ""} /><span>Track account company updates</span><small>Reserve company-page context for the next LinkedIn data collector.</small></label>
         </div>
-        <p class="subcopy">The diagnostic scan stores only counts and conversation metadata. Server setup requires <strong>LINKEDIN_PUPPETEER_ENABLED=1</strong>, a Chrome executable, and <strong>LINKEDIN_CHROME_PROFILE</strong> already signed in to LinkedIn.</p>
-        <div class="form-actions integration-actions"><button type="button" class="button" data-action="open-linkedin-company" ${linkedin.companyPageUrl ? "" : "disabled"}>Open LinkedIn page</button><button type="button" class="button" data-action="open-linkedin-inbox">Open LinkedIn inbox</button><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
+        <p class="subcopy">The scan stores only counts and conversation metadata. It needs a LinkedIn session that has already been authorized outside the CRM password flow.</p>
+        <div class="form-actions integration-actions"><button type="button" class="button" data-action="authorize-linkedin-session" ${authorizeDisabled}>Authorize session</button><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
@@ -2793,10 +2803,8 @@ function gmailFormValues(form) {
 function linkedinFormValues(form) {
   const values = Object.fromEntries(new FormData(form));
   return {
-    companyPageUrl: values.companyPageUrl || "",
     accountEmail: values.accountEmail || "",
     syncContacts: Boolean(values.syncContacts),
-    syncCompanyUpdates: Boolean(values.syncCompanyUpdates),
   };
 }
 
@@ -3177,15 +3185,20 @@ document.addEventListener("click", async (event) => {
       render();
       return;
     }
-    if (action === "open-linkedin-company") {
-      const form = actionElement.closest("form");
-      const url = (form ? linkedinFormValues(form).companyPageUrl : "") || linkedinIntegration(currentTenant()).companyPageUrl;
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-      else showToast("Add a LinkedIn company or profile URL first");
-      return;
-    }
-    if (action === "open-linkedin-inbox") {
-      window.open("https://www.linkedin.com/messaging/", "_blank", "noopener,noreferrer");
+    if (action === "authorize-linkedin-session") {
+      const tenant = currentTenant();
+      try {
+        const saved = await saveLinkedinSettingsViaApi(tenant.id, linkedinFormValues(actionElement.closest("form")));
+        setTenant({ ...currentTenant(), linkedinIntegration: { ...saved.linkedinIntegration, status: "Preparing LinkedIn session..." } });
+        render();
+        const result = await authorizeLinkedinSessionViaApi(tenant.id);
+        setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
+        showToast("LinkedIn session profile is ready. Complete LinkedIn login on the server profile.");
+      } catch (error) {
+        setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
+        showToast(error.message);
+      }
+      render();
       return;
     }
     if (action === "connect-gmail") {

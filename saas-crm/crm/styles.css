@@ -276,7 +276,9 @@ h3 { font-size: 14px; }
   font-size: 13px;
 }
 .side-link .chevron {
-  font-size: 13px;
+  font-size: 19px;
+  font-weight: 900;
+  line-height: 1;
   color: #d6deeb;
 }
 .count { margin-left: auto; color: #91a0b3; font-size: 11px; }
