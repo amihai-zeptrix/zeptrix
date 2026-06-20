@@ -1880,15 +1880,28 @@ async function startLinkedinLoginSession(tenantId, requestHost = "") {
       linkedinLoginSessions.delete(tenantId);
     }
   }, 20 * 60 * 1000).unref?.();
+  const loginTarget = await linkedinLoginDebugTarget(debugPort);
   return {
     linkedinIntegration,
     login: {
-      localDebugUrl: `http://127.0.0.1:${debugPort}`,
+      localDebugUrl: loginTarget?.devtoolsFrontendUrl || `http://127.0.0.1:${debugPort}/json/list`,
+      targetListUrl: `http://127.0.0.1:${debugPort}/json/list`,
       tunnelCommand: `ssh${linkedinSshKeyPath ? ` -i ${linkedinSshKeyPath}` : ""} -L ${debugPort}:127.0.0.1:${debugPort} ${linkedinSshUser}@${linkedinSshHost || requestHost || "<crm-server>"}`,
       tunnelReady: false,
       expiresInMinutes: 20,
     },
   };
+}
+
+async function linkedinLoginDebugTarget(debugPort) {
+  try {
+    const response = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
+    const targets = await response.json();
+    if (!Array.isArray(targets)) return null;
+    return targets.find((target) => target.type === "page" && !target.parentId && /linkedin\.com/i.test(target.url || "")) || targets.find((target) => target.type === "page") || null;
+  } catch {
+    return null;
+  }
 }
 
 async function verifyLinkedinLoginSession(tenantId) {

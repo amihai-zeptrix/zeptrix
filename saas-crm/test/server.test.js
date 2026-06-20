@@ -1314,7 +1314,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /LinkedIn login session is not running/);
   assert.match(renderLinkedinSource, /Run this tunnel in Terminal/);
   assert.match(renderLinkedinSource, /Connection refused/);
-  assert.match(renderLinkedinSource, /Local login URL/);
+  assert.match(renderLinkedinSource, /Login inspector URL/);
+  assert.match(renderLinkedinSource, /Target list fallback/);
   assert.match(renderLinkedinSource, /ui\.linkedinLogin\.tunnelCommand/);
   assert.match(renderLinkedinSource, /const canRunLinkedinScan = canUseBackend/);
   assert.match(renderLinkedinSource, /const canAuthorizeLinkedin = canUseBackend/);
@@ -1332,6 +1333,9 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /linkedin\.lastScanResult\?\.conversationCount/);
   assert.match(server, /LINKEDIN_SSH_KEY_PATH/);
   assert.match(server, /ssh\$\{linkedinSshKeyPath \? ` -i \$\{linkedinSshKeyPath\}` : ""\} -L/);
+  assert.match(server, /function linkedinLoginDebugTarget/);
+  assert.match(server, /devtoolsFrontendUrl/);
+  assert.match(server, /targetListUrl/);
   assert.match(renderMailSettingsSource, /settings-stack/);
   assert.match(renderMailSettingsSource, /follow-up-card/);
   assert.match(renderMailSettingsSource, /gmailAttentionCorrespondence\(tenant\)/);
