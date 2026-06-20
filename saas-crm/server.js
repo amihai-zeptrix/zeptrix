@@ -1910,7 +1910,7 @@ function execFileJson(command, args, options = {}) {
 
 function linkedinPuppeteerUnavailableReason(profilePath = "") {
   const scriptPath = path.join(root, "scripts", "linkedin-puppeteer-spike.js");
-  if (!linkedinPuppeteerEnabled) return "LinkedIn scan is not connected yet. Authorize the server-side LinkedIn session before scanning.";
+  if (!linkedinPuppeteerEnabled) return "LinkedIn login runtime is not enabled on the server. Set LINKEDIN_PUPPETEER_ENABLED=1 and configure a Chrome runtime before starting LinkedIn login.";
   if (!fs.existsSync(scriptPath)) return "LinkedIn Puppeteer spike script is missing from the deployment.";
   if (!fs.existsSync(linkedinChromePath)) return "LinkedIn scan is not connected yet. The server browser is not available.";
   if (!profilePath) return "LinkedIn scan is not connected yet. Authorize a tenant LinkedIn session before scanning.";

@@ -3199,6 +3199,7 @@ document.addEventListener("click", async (event) => {
         const result = await authorizeLinkedinSessionViaApi(tenant.id);
         setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
         ui.linkedinLogin = result.login || null;
+        if (result.login?.localDebugUrl) window.open(result.login.localDebugUrl, "_blank", "noopener,noreferrer");
         showToast("Temporary LinkedIn login started. Follow the instructions in the LinkedIn panel.");
       } catch (error) {
         setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
