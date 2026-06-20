@@ -1559,6 +1559,8 @@ test("CRM rejects stale local sessions but does not log out on protected request
   const loadSessionSource = functionSource(app, "loadSession", "saveData");
   const apiRequestSource = functionSource(app, "apiRequest", "loadStateFromApi");
 
+  assert.match(app, /location\.hostname === "www\.zeptrix\.io"/);
+  assert.match(app, /location\.replace\(`https:\/\/zeptrix\.io\$\{location\.pathname\}\$\{location\.search\}\$\{location\.hash\}`\)/);
   assert.match(loadSessionSource, /storedSession\.role !== "demo_user" && !storedSession\.apiToken/);
   assert.match(apiRequestSource, /response\.status === 401/);
   assert.match(apiRequestSource, /Please sign in again to continue/);

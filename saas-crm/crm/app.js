@@ -14,6 +14,10 @@ const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm\/demo(?:\/([^/]+))?\/?$
 const IS_DEMO_ROUTE = !!DEMO_ROUTE_MATCH;
 const DEMO_USER_NAME = DEMO_ROUTE_MATCH?.[1] || DEMO_ROUTE_MATCH?.[2] ? titleCase(DEMO_ROUTE_MATCH[1] || DEMO_ROUTE_MATCH[2]) : "Demo User";
 
+if (!IS_DEMO_ROUTE && location.hostname === "www.zeptrix.io") {
+  location.replace(`https://zeptrix.io${location.pathname}${location.search}${location.hash}`);
+}
+
 const stages = ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"];
 const stageClass = {
   Lead: "stage-lead",
