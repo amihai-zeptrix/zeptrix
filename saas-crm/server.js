@@ -1574,14 +1574,15 @@ function escapeHtml(value) {
 
 function normalizeGmailSettings(payload = {}) {
   const accountEmail = String(payload.accountEmail || "").trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
-    const error = new Error("Gmail account is required.");
+  if (accountEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
+    const error = new Error("Gmail account must be a valid email address.");
     error.statusCode = 400;
     throw error;
   }
+  const inferredDomain = accountEmail.includes("@") ? accountEmail.split("@").pop() : "";
   return {
     accountEmail,
-    workspaceDomain: String(payload.workspaceDomain || "zeptrix.io").trim(),
+    workspaceDomain: String(payload.workspaceDomain || inferredDomain || "zeptrix.io").trim(),
     clientId: normalizeOAuthClientId(payload.clientId || googleClientId),
     redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback`,
     labels: String(payload.labels || "Inbox, Sent").trim(),
@@ -1607,8 +1608,8 @@ async function upsertGmailSettings(tenantId, payload) {
        (tenant_id, account_email, workspace_domain, client_id, redirect_uri, labels, gmail_lookback_days, stale_months, detect_new_contacts, detect_dormant_contacts, status, updated_at)
      values ($1,$2,$3,$4,$5,$6,coalesce($7,${GMAIL_NEW_CONTACT_LOOKBACK_DAYS}),$8,$9,$10,'Settings saved',now())
      on conflict (tenant_id) do update set
-       account_email=excluded.account_email,
-       workspace_domain=excluded.workspace_domain,
+       account_email=coalesce(nullif(excluded.account_email,''), gmail_integrations.account_email),
+       workspace_domain=coalesce(nullif(excluded.workspace_domain,''), gmail_integrations.workspace_domain),
        client_id=excluded.client_id,
        redirect_uri=excluded.redirect_uri,
        labels=excluded.labels,
@@ -3087,14 +3088,13 @@ async function handleApi(req, res) {
       );
       const integration = integrationResult.rows[0];
       if (!integration) return json(res, 404, { error: "Tenant not found." });
-      if (!integration.account_email) return json(res, 400, { error: "Save Gmail account before connecting." });
       return json(res, 200, {
         authUrl: gmailAuthUrl({
           tenantId: integration.resolved_tenant_id,
           userId: resolved.auth.userId,
           clientId: googleClientId,
           redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback`,
-          accountEmail: integration.account_email,
+          accountEmail: integration.account_email || "",
         }),
       });
     } catch (error) {
@@ -3114,14 +3114,14 @@ async function handleApi(req, res) {
       if (!integration) throw new Error("Gmail integration settings were not found.");
       const token = await exchangeGmailCode({ code, clientId: googleClientId, redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback` });
       const profile = await gmailApi(token.access_token, "profile");
-      if (!integration.account_email || profile.emailAddress?.toLowerCase() !== String(integration.account_email).toLowerCase()) {
-        throw new Error(`Connected Gmail account ${profile.emailAddress || "unknown"} does not match ${integration.account_email || "the configured Gmail account"}.`);
-      }
+      const connectedEmail = String(profile.emailAddress || "").trim();
+      if (!connectedEmail) throw new Error("Google did not return the connected Gmail account.");
+      const connectedDomain = connectedEmail.includes("@") ? connectedEmail.split("@").pop().toLowerCase() : (integration.workspace_domain || "gmail.com");
       await dbQuery(
         `update gmail_integrations
-         set enabled=true, status='Connected', access_token_enc=$2, refresh_token_enc=coalesce($3, refresh_token_enc), token_expiry=$4, updated_at=now()
+         set enabled=true, status='Connected', access_token_enc=$2, refresh_token_enc=coalesce($3, refresh_token_enc), token_expiry=$4, account_email=$5, workspace_domain=$6, updated_at=now()
          where tenant_id=$1`,
-        [state.tenantId, encryptToken(token.access_token), token.refresh_token ? encryptToken(token.refresh_token) : null, new Date(Date.now() + Number(token.expires_in || 3600) * 1000)],
+        [state.tenantId, encryptToken(token.access_token), token.refresh_token ? encryptToken(token.refresh_token) : null, new Date(Date.now() + Number(token.expires_in || 3600) * 1000), connectedEmail, connectedDomain],
       );
       res.writeHead(302, { location: "/crm/?gmail=connected" });
       res.end();

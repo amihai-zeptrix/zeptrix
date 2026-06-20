@@ -375,18 +375,22 @@ test("SMTP invite message sends only to the tenant login recipient", () => {
 
 test("Gmail settings normalization clamps scan thresholds and defaults detection", () => {
   const settings = normalizeGmailSettings({
-    accountEmail: " user@gmail.com ",
     staleMonths: 99,
     detectNewContacts: false,
   });
 
-  assert.equal(settings.accountEmail, "user@gmail.com");
+  assert.equal(settings.accountEmail, "");
+  assert.equal(settings.workspaceDomain, "zeptrix.io");
   assert.equal(settings.redirectUri.endsWith("/api/gmail/oauth/callback"), true);
   assert.equal(settings.staleMonths, 36);
   assert.equal(settings.detectNewContacts, false);
   assert.equal(settings.detectDormantContacts, true);
   assert.equal(settings.labels, "Inbox, Sent");
-  assert.throws(() => normalizeGmailSettings({ accountEmail: "" }), /Gmail account is required/);
+
+  const explicitMailbox = normalizeGmailSettings({ accountEmail: " user@gmail.com " });
+  assert.equal(explicitMailbox.accountEmail, "user@gmail.com");
+  assert.equal(explicitMailbox.workspaceDomain, "gmail.com");
+  assert.throws(() => normalizeGmailSettings({ accountEmail: "not-an-email" }), /Gmail account must be a valid email address/);
 });
 
 test("deal payload normalization preserves contact metadata for database persistence", () => {
@@ -452,6 +456,14 @@ test("Gmail OAuth URL uses readonly scope and tenant state", () => {
   const state = verifySignedPayload(authUrl.searchParams.get("state"));
   assert.equal(state.tenantId, "tenant-123");
   assert.equal(state.userId, "user-123");
+
+  const chooserUrl = new URL(gmailAuthUrl({
+    tenantId: "tenant-123",
+    userId: "user-123",
+    clientId: "630303201111-etgcku1f78j31regvoc0lm2qdq6gqr5e.apps.googleusercontent.com",
+    redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
+  }));
+  assert.equal(chooserUrl.searchParams.has("login_hint"), false);
 });
 
 test("Gmail helpers parse addresses and encrypt tokens", () => {
@@ -1161,7 +1173,10 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderConfigurationSource, /gmail\.inboxLookbackDays/);
   assert.match(renderConfigurationSource, /gmailLookbackDays/);
   assert.match(renderMailSettingsSource, /data-gmail-settings-form/);
-  assert.match(renderMailSettingsSource, /formField\("Gmail account", "accountEmail", gmail\.accountEmail, "email", true\)/);
+  assert.doesNotMatch(renderMailSettingsSource, /formField\("Gmail account", "accountEmail"/);
+  assert.doesNotMatch(renderMailSettingsSource, /formField\("Google Workspace domain", "workspaceDomain"/);
+  assert.match(renderMailSettingsSource, /Connected mailbox:/);
+  assert.match(renderMailSettingsSource, /choose the Gmail account in Google/);
   assert.doesNotMatch(renderMailSettingsSource, /gmailClientIdDiagnostic/);
   assert.doesNotMatch(renderMailSettingsSource, /gmail-diagnostic/);
   assert.match(renderMailSettingsSource, /ui\.gmailNotice/);
@@ -1173,8 +1188,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /data-action="connect-gmail" \$\{actionDisabled\}/);
   assert.doesNotMatch(renderMailSettingsSource, /OAuth client ID/);
   assert.doesNotMatch(renderMailSettingsSource, /Authorized redirect URI/);
-  assert.match(renderMailSettingsSource, /Google authorization is managed by Zeptrix/);
-  assert.match(renderMailSettingsSource, /no OAuth client setup is required for each tenant/);
+  assert.match(renderMailSettingsSource, /No mailbox password or OAuth client setup is required/);
   assert.match(renderMailSettingsSource, /No-mail threshold in months/);
   assert.match(renderMailSettingsSource, /Identify new contacts from Gmail/);
   assert.match(renderMailSettingsSource, /last \$\{gmailLookbackDays\} days/);
@@ -1234,7 +1248,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.doesNotMatch(app, /Google Cloud Console/);
   assert.match(serverSource(), /clientId: normalizeOAuthClientId\(payload\.clientId \|\| googleClientId\)/);
   assert.match(serverSource(), /clientId: googleClientId/);
-  assert.match(serverSource(), /if \(!integration\.account_email \|\| profile\.emailAddress\?\.toLowerCase\(\) !== String\(integration\.account_email\)\.toLowerCase\(\)\)/);
+  assert.doesNotMatch(serverSource(), /does not match \$\{integration\.account_email/);
+  assert.match(serverSource(), /Google did not return the connected Gmail account/);
+  assert.match(serverSource(), /account_email=\$5, workspace_domain=\$6/);
   assert.match(serverSource(), /Gmail scan completed but workflow automation failed/);
   assert.match(serverSource(), /Gmail scan completed but response hydration failed/);
   assert.match(serverSource(), /Last scan completed\. Refresh to load the latest Gmail signals\./);

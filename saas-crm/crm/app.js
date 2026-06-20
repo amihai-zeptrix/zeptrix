@@ -2436,7 +2436,7 @@ function helpContent() {
     activities: { title: "Activities guide", copy: "Activities are actionable next steps created manually or by workflow automation.", steps: ["Filter open vs all activities.", "Click a task row or check icon to mark it done.", "Workflow automation can create Gmail risk and dormant-contact tasks."] },
     inbox: { title: "Inbox guide", copy: "Inbox stores CRM-sent email and Gmail-imported account threads.", steps: ["Click a row to expand the correspondence.", "Use tracking pills to see CRM vs Gmail source.", "Open the linked account from the thread header."] },
     reports: { title: "Reports guide", copy: "Reports provide saved dashboards for forecast, account risk, campaign impact, and support health.", steps: ["Open saved report templates to focus the report board.", "Use Risk and source table to drill into accounts.", "Support health highlights SLA and sentiment pressure."] },
-    "email-integration": { title: "Email integration guide", copy: "Configure Gmail, outgoing email, templates, workflow automation, and tenant settings.", steps: ["Enter the Gmail account and click Connect Gmail.", "Approve the Google authorization screen; Zeptrix manages the OAuth app configuration.", "Configure lookback days and no-mail thresholds, then scan Gmail."] },
+    "email-integration": { title: "Email integration guide", copy: "Configure Gmail, outgoing email, templates, workflow automation, and tenant settings.", steps: ["Click Connect Gmail and choose the mailbox in Google.", "Approve the Google authorization screen; Zeptrix manages the OAuth app configuration.", "Configure lookback days and no-mail thresholds, then scan Gmail."] },
     "email-templates": { title: "Email templates guide", copy: "Manage reusable templates for follow-ups and campaigns.", steps: ["Create templates with merge fields.", "Select templates in the send email dialog.", "Outgoing email settings control actual sending."] },
     admin: { title: "Admin guide", copy: "Platform admins manage tenants, login emails, password resets, and invite history.", steps: ["Use tenant edit to update owner login and billing metadata.", "Use reset password to send a temporary password.", "Invite email history shows delivery attempts and generated passwords."] },
   };
@@ -2549,12 +2549,10 @@ function renderMailIntegrationsSettings() {
           ${ui.gmailNotice ? `<p class="admin-notice gmail-notice ${ui.gmailNotice.toLowerCase().includes("failed") ? "error" : ""}">${escapeHtml(ui.gmailNotice)}</p>` : ""}
           <form class="settings-form" data-gmail-settings-form>
             <div class="form-grid">
-              ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
-              ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
               ${formField("Labels to read", "labels", gmail.labels)}
               ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
             </div>
-            <p class="admin-notice">Google authorization is managed by Zeptrix. Enter the mailbox and click Connect Gmail; no OAuth client setup is required for each tenant.</p>
+            <p class="admin-notice">${gmail.accountEmail ? `Connected mailbox: <strong>${escapeHtml(gmail.accountEmail)}</strong>` : "Click Connect Gmail and choose the Gmail account in Google. No mailbox password or OAuth client setup is required."}</p>
             <div class="check-list compact">
               <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Scans the last ${gmailLookbackDays} days of non-sent Gmail and suggests people who do not exist in CRM.</small></label>
               <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
@@ -3632,8 +3630,6 @@ document.addEventListener("submit", async (event) => {
         ...tenant,
         gmailIntegration: {
           ...previous,
-          accountEmail: values.accountEmail || "",
-          workspaceDomain: values.workspaceDomain || "",
           labels: values.labels || "Inbox, Sent",
           staleMonths: Math.max(1, Number(values.staleMonths || 3)),
           detectNewContacts: values.detectNewContacts,
