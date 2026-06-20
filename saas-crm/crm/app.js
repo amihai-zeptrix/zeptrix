@@ -528,7 +528,7 @@ const AUDIT_VALUE_ALLOWLIST = new Set([
 ]);
 const AUDIT_CLICK_SKIP_ACTIONS = new Set([
   "back-login", "cancel-contact-edit", "cancel-inline-add", "cancel-reply", "clear-account-focus", "clear-contact-search", "close", "close-whats-new",
-  "filter-activities", "gmail-discovery-page", "google-sso", "jump-home-risk-thread", "jump-risk-thread", "logout", "open-activities", "open-gmail-oauth-guide",
+  "filter-activities", "gmail-discovery-page", "google-sso", "jump-home-risk-thread", "jump-risk-thread", "logout", "open-activities",
   "open-help", "open-import", "open-inbox", "open-settings", "open-whats-new", "reset-campaign-draft", "show-forgot-password", "show-mfa-recovery", "show-register",
 ]);
 
@@ -2345,7 +2345,6 @@ function renderInboxThread(item, deal) {
 function renderModal() {
   if (ui.modal === "whats-new") return renderWhatsNewDialog();
   if (ui.modal === "help") return renderHelpDialog();
-  if (ui.modal === "gmail-oauth-guide") return renderGmailOAuthGuide();
   if (ui.modal === "tag") return renderTagDialog();
   if (ui.modal === "tenant") return renderTenantForm();
   if (ui.modal === "deal") return renderDealForm();
@@ -2379,7 +2378,7 @@ function helpContent() {
     activities: { title: "Activities guide", copy: "Activities are actionable next steps created manually or by workflow automation.", steps: ["Filter open vs all activities.", "Click a task row or check icon to mark it done.", "Workflow automation can create Gmail risk and dormant-contact tasks."] },
     inbox: { title: "Inbox guide", copy: "Inbox stores CRM-sent email and Gmail-imported account threads.", steps: ["Click a row to expand the correspondence.", "Use tracking pills to see CRM vs Gmail source.", "Open the linked account from the thread header."] },
     reports: { title: "Reports guide", copy: "Reports provide saved dashboards for forecast, account risk, campaign impact, and support health.", steps: ["Open saved report templates to focus the report board.", "Use Risk and source table to drill into accounts.", "Support health highlights SLA and sentiment pressure."] },
-    "email-integration": { title: "Email integration guide", copy: "Configure Gmail, outgoing email, templates, workflow automation, and tenant settings.", steps: ["Connect Gmail with readonly OAuth to scan recent inbox messages.", "Configure lookback days and no-mail thresholds.", "Use workflow automation to turn scan signals into tasks and tags."] },
+    "email-integration": { title: "Email integration guide", copy: "Configure Gmail, outgoing email, templates, workflow automation, and tenant settings.", steps: ["Enter the Gmail account and click Connect Gmail.", "Approve the Google authorization screen; Zeptrix manages the OAuth app configuration.", "Configure lookback days and no-mail thresholds, then scan Gmail."] },
     "email-templates": { title: "Email templates guide", copy: "Manage reusable templates for follow-ups and campaigns.", steps: ["Create templates with merge fields.", "Select templates in the send email dialog.", "Outgoing email settings control actual sending."] },
     admin: { title: "Admin guide", copy: "Platform admins manage tenants, login emails, password resets, and invite history.", steps: ["Use tenant edit to update owner login and billing metadata.", "Use reset password to send a temporary password.", "Invite email history shows delivery attempts and generated passwords."] },
   };
@@ -2388,10 +2387,6 @@ function helpContent() {
 function renderHelpDialog() {
   const topic = helpContent()[ui.helpTopic || helpTopicForSection()] || helpContent().home;
   return `<div class="modal-layer center"><section class="modal help-modal"><header class="modal-head"><div><p class="eyebrow">Online user guide</p><h2>${escapeHtml(topic.title)}</h2><p class="subcopy">${escapeHtml(topic.copy)}</p></div><button class="close-button" data-action="close">×</button></header><div class="help-guide">${topic.steps.map((step, index) => `<article><span>${index + 1}</span><p>${escapeHtml(step)}</p></article>`).join("")}</div><div class="help-guide-index">${Object.entries(helpContent()).map(([key, item]) => `<button class="${(ui.helpTopic || helpTopicForSection()) === key ? "is-selected" : ""}" data-action="open-help" data-help-topic="${escapeHtml(key)}">${escapeHtml(item.title.replace(" guide", ""))}</button>`).join("")}</div><div class="form-actions"><button class="button primary" data-action="close">Done</button></div></section></div>`;
-}
-
-function renderGmailOAuthGuide() {
-  return `<div class="modal-layer center"><section class="modal gmail-guide-modal"><header class="modal-head"><div><h2>Configure Gmail OAuth</h2><p class="subcopy">Follow these steps in Google Cloud Console for your Google Workspace project.</p></div><button class="close-button" data-action="close">×</button></header><ol class="guide-steps"><li><strong>Open Google Cloud Console</strong><span>Go to APIs & Services, then OAuth consent screen and Clients.</span></li><li><strong>Create a Web application client</strong><span>Choose application type Web application. Do not use Desktop or Android.</span></li><li><strong>Add the JavaScript origin</strong><code>https://www.zeptrix.io</code></li><li><strong>Add the redirect URI</strong><code>https://www.zeptrix.io/api/gmail/oauth/callback</code></li><li><strong>Publish or add test users</strong><span>In Testing mode, add every Gmail account that will authorize the CRM.</span></li><li><strong>Copy the Client ID</strong><span>Paste the Client ID into this field. The client secret stays on the server.</span></li></ol><div class="form-actions"><button class="button" data-action="close">Done</button><a class="button primary" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Open Google Cloud Console</a></div></section></div>`;
 }
 
 function renderTenantForm() {
@@ -2492,17 +2487,16 @@ function renderMailIntegrationsSettings() {
     <section class="settings-layout">
       <div class="settings-stack">
         <article class="settings-card">
-          <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Read Gmail metadata and messages to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
+          <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Connect Gmail with one Google authorization step to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
           ${ui.gmailNotice ? `<p class="admin-notice gmail-notice ${ui.gmailNotice.toLowerCase().includes("failed") ? "error" : ""}">${escapeHtml(ui.gmailNotice)}</p>` : ""}
           <form class="settings-form" data-gmail-settings-form>
             <div class="form-grid">
               ${formField("Gmail account", "accountEmail", gmail.accountEmail, "email", true)}
               ${formField("Google Workspace domain", "workspaceDomain", gmail.workspaceDomain)}
-              ${formField("OAuth client ID", "clientId", gmail.clientId, "text", false, "full", `<button type="button" class="button small oauth-guide-button" data-action="open-gmail-oauth-guide">Show me now</button>`)}
-              ${formField("Authorized redirect URI", "redirectUri", gmail.redirectUri, "url", false, "full")}
               ${formField("Labels to read", "labels", gmail.labels)}
               ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
             </div>
+            <p class="admin-notice">Google authorization is managed by Zeptrix. Enter the mailbox and click Connect Gmail; no OAuth client setup is required for each tenant.</p>
             <div class="check-list compact">
               <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Scans the last ${gmailLookbackDays} days of non-sent Gmail and suggests people who do not exist in CRM.</small></label>
               <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
@@ -2627,15 +2621,10 @@ function outgoingEmailFormValues(form) {
   };
 }
 
-function normalizedGmailClientId(value) {
-  return String(value || "").replace(/\s+/g, "");
-}
-
 function gmailFormValues(form) {
   const values = Object.fromEntries(new FormData(form));
   return {
     ...values,
-    clientId: normalizedGmailClientId(values.clientId),
     detectNewContacts: Boolean(values.detectNewContacts),
     detectDormantContacts: Boolean(values.detectDormantContacts),
   };
@@ -2980,7 +2969,6 @@ document.addEventListener("click", async (event) => {
       ui.selectedContactEmail = "";
     }
     if (action === "open-settings") ui.modal = "settings";
-    if (action === "open-gmail-oauth-guide") ui.modal = "gmail-oauth-guide";
     if (action === "close-whats-new") {
       dismissWhatsNew();
       render();
@@ -3574,8 +3562,6 @@ document.addEventListener("submit", async (event) => {
           ...previous,
           accountEmail: values.accountEmail || "",
           workspaceDomain: values.workspaceDomain || "",
-          clientId: values.clientId || "",
-          redirectUri: values.redirectUri || defaultGmailIntegration.redirectUri,
           labels: values.labels || "Inbox, Sent",
           staleMonths: Math.max(1, Number(values.staleMonths || 3)),
           detectNewContacts: values.detectNewContacts,

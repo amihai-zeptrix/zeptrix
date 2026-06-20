@@ -376,23 +376,17 @@ test("SMTP invite message sends only to the tenant login recipient", () => {
 test("Gmail settings normalization clamps scan thresholds and defaults detection", () => {
   const settings = normalizeGmailSettings({
     accountEmail: " user@gmail.com ",
-    clientId: " 630303201111-\n etgcku1f78j31regvoc0lm2qdq6gqr5e.app\ns.googleusercontent.com ",
-    redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
     staleMonths: 99,
     detectNewContacts: false,
   });
 
   assert.equal(settings.accountEmail, "user@gmail.com");
-  assert.equal(settings.clientId, "630303201111-etgcku1f78j31regvoc0lm2qdq6gqr5e.apps.googleusercontent.com");
+  assert.equal(settings.redirectUri.endsWith("/api/gmail/oauth/callback"), true);
   assert.equal(settings.staleMonths, 36);
   assert.equal(settings.detectNewContacts, false);
   assert.equal(settings.detectDormantContacts, true);
   assert.equal(settings.labels, "Inbox, Sent");
   assert.throws(() => normalizeGmailSettings({ accountEmail: "" }), /Gmail account is required/);
-  assert.throws(
-    () => normalizeGmailSettings({ accountEmail: "user@gmail.com", clientId: "https://www.zeptrix.io/api/gmail/oauth/callback" }),
-    /OAuth client ID must be the Web application Client ID/,
-  );
 });
 
 test("deal payload normalization preserves contact metadata for database persistence", () => {
@@ -1155,13 +1149,15 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.doesNotMatch(renderMailSettingsSource, /gmail-diagnostic/);
   assert.match(renderMailSettingsSource, /ui\.gmailNotice/);
   assert.match(renderMailSettingsSource, /gmail-notice/);
-  assert.match(renderMailSettingsSource, /data-action="open-gmail-oauth-guide"/);
-  assert.match(renderMailSettingsSource, /Show me now/);
+  assert.doesNotMatch(renderMailSettingsSource, /data-action="open-gmail-oauth-guide"/);
+  assert.doesNotMatch(renderMailSettingsSource, /Show me now/);
   assert.match(renderMailSettingsSource, /canUseGmailBackend/);
   assert.match(renderMailSettingsSource, /Gmail connection requires signing in to a workspace at \/crm\./);
   assert.match(renderMailSettingsSource, /data-action="connect-gmail" \$\{actionDisabled\}/);
-  assert.match(renderMailSettingsSource, /OAuth client ID/);
-  assert.match(renderMailSettingsSource, /Authorized redirect URI/);
+  assert.doesNotMatch(renderMailSettingsSource, /OAuth client ID/);
+  assert.doesNotMatch(renderMailSettingsSource, /Authorized redirect URI/);
+  assert.match(renderMailSettingsSource, /Google authorization is managed by Zeptrix/);
+  assert.match(renderMailSettingsSource, /no OAuth client setup is required for each tenant/);
   assert.match(renderMailSettingsSource, /No-mail threshold in months/);
   assert.match(renderMailSettingsSource, /Identify new contacts from Gmail/);
   assert.match(renderMailSettingsSource, /last \$\{gmailLookbackDays\} days/);
@@ -1216,9 +1212,11 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /Automation created \$\{Number\(result\.automationSummary\.tasksCreated/);
   assert.match(app, /await loadStateFromApi\(\)/);
   assert.match(app, /Gmail settings saved\./);
-  assert.match(app, /renderGmailOAuthGuide/);
-  assert.match(app, /ui\.modal === "gmail-oauth-guide"/);
-  assert.match(app, /Google Cloud Console/);
+  assert.doesNotMatch(app, /renderGmailOAuthGuide/);
+  assert.doesNotMatch(app, /ui\.modal === "gmail-oauth-guide"/);
+  assert.doesNotMatch(app, /Google Cloud Console/);
+  assert.match(serverSource(), /clientId: normalizeOAuthClientId\(payload\.clientId \|\| googleClientId\)/);
+  assert.match(serverSource(), /clientId: googleClientId/);
   assert.match(serverSource(), /if \(!integration\.account_email \|\| profile\.emailAddress\?\.toLowerCase\(\) !== String\(integration\.account_email\)\.toLowerCase\(\)\)/);
   assert.match(serverSource(), /Gmail scan completed but workflow automation failed/);
   assert.match(serverSource(), /Gmail scan completed but response hydration failed/);
@@ -1488,7 +1486,7 @@ test("CRM page headers expose contextual online help", () => {
   const renderPageHeaderSource = functionSource(app, "renderPageHeader", "renderAdmin");
   const renderModalSource = functionSource(app, "renderModal", "renderTagDialog");
   const helpContentSource = functionSource(app, "helpContent", "renderHelpDialog");
-  const renderHelpSource = functionSource(app, "renderHelpDialog", "renderGmailOAuthGuide");
+  const renderHelpSource = functionSource(app, "renderHelpDialog", "renderTenantForm");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
 
   assert.match(app, /function helpTopicForSection/);

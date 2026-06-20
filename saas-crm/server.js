@@ -1574,22 +1574,16 @@ function escapeHtml(value) {
 
 function normalizeGmailSettings(payload = {}) {
   const accountEmail = String(payload.accountEmail || "").trim();
-  const clientId = normalizeOAuthClientId(payload.clientId);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
     const error = new Error("Gmail account is required.");
-    error.statusCode = 400;
-    throw error;
-  }
-  if (clientId && !isValidGoogleOAuthClientId(clientId)) {
-    const error = new Error("OAuth client ID must be the Web application Client ID ending in .apps.googleusercontent.com.");
     error.statusCode = 400;
     throw error;
   }
   return {
     accountEmail,
     workspaceDomain: String(payload.workspaceDomain || "zeptrix.io").trim(),
-    clientId,
-    redirectUri: String(payload.redirectUri || `${publicBaseUrl}/api/gmail/oauth/callback`).trim(),
+    clientId: normalizeOAuthClientId(payload.clientId || googleClientId),
+    redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback`,
     labels: String(payload.labels || "Inbox, Sent").trim(),
     gmailLookbackDays: payload.gmailLookbackDays == null ? null : Math.max(1, Math.min(365, Number(payload.gmailLookbackDays || GMAIL_NEW_CONTACT_LOOKBACK_DAYS))),
     staleMonths: Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
@@ -1751,13 +1745,13 @@ async function sendCrmEmailForTenant(tenantId, auth, payload) {
 }
 
 function gmailAuthUrl({ tenantId, userId, clientId, redirectUri, accountEmail }) {
-  const normalizedClientId = normalizeOAuthClientId(clientId);
+  const normalizedClientId = normalizeOAuthClientId(clientId || googleClientId);
   if (!isValidGoogleOAuthClientId(normalizedClientId)) {
-    throw new Error("Saved OAuth client ID is not a valid Google Web application Client ID.");
+    throw new Error("Google OAuth client ID is not configured correctly.");
   }
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", normalizedClientId);
-  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("redirect_uri", redirectUri || `${publicBaseUrl}/api/gmail/oauth/callback`);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
@@ -3081,7 +3075,7 @@ async function handleApi(req, res) {
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail/connect")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!googleClientSecret) return json(res, 400, { error: "GOOGLE_CLIENT_SECRET is not configured." });
+      if (!googleClientId || !googleClientSecret) return json(res, 400, { error: "Google connection is not configured on the server." });
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
@@ -3094,13 +3088,12 @@ async function handleApi(req, res) {
       const integration = integrationResult.rows[0];
       if (!integration) return json(res, 404, { error: "Tenant not found." });
       if (!integration.account_email) return json(res, 400, { error: "Save Gmail account before connecting." });
-      if (!integration.client_id || !integration.redirect_uri) return json(res, 400, { error: "Save Gmail client ID and redirect URI before connecting." });
       return json(res, 200, {
         authUrl: gmailAuthUrl({
           tenantId: integration.resolved_tenant_id,
           userId: resolved.auth.userId,
-          clientId: integration.client_id,
-          redirectUri: integration.redirect_uri,
+          clientId: googleClientId,
+          redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback`,
           accountEmail: integration.account_email,
         }),
       });
@@ -3112,14 +3105,14 @@ async function handleApi(req, res) {
   if (req.method === "GET" && pathname === "/api/gmail/oauth/callback") {
     try {
       if (!pool) throw new Error("DATABASE_URL is not configured.");
-      if (!googleClientSecret) throw new Error("GOOGLE_CLIENT_SECRET is not configured.");
+      if (!googleClientId || !googleClientSecret) throw new Error("Google connection is not configured on the server.");
       const state = verifySignedPayload(requestUrl.searchParams.get("state"));
       const code = requestUrl.searchParams.get("code");
       if (!state.tenantId || !code) throw new Error("Gmail OAuth response is missing state or code.");
       const integrationResult = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [state.tenantId]);
       const integration = integrationResult.rows[0];
       if (!integration) throw new Error("Gmail integration settings were not found.");
-      const token = await exchangeGmailCode({ code, clientId: integration.client_id, redirectUri: integration.redirect_uri });
+      const token = await exchangeGmailCode({ code, clientId: googleClientId, redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback` });
       const profile = await gmailApi(token.access_token, "profile");
       if (!integration.account_email || profile.emailAddress?.toLowerCase() !== String(integration.account_email).toLowerCase()) {
         throw new Error(`Connected Gmail account ${profile.emailAddress || "unknown"} does not match ${integration.account_email || "the configured Gmail account"}.`);
