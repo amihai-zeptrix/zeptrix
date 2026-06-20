@@ -1220,6 +1220,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
   const server = serverSource();
+  const summarizeLinkedinSource = server.slice(server.indexOf("function summarizeLinkedinPuppeteerResult"), server.indexOf("async function runLinkedinPuppeteerScan"));
 
   assert.match(sidebarSource, /sideLink\("settings", "⚙", "Settings"\)/);
   assert.doesNotMatch(sidebarSource, /sideLink\("templates", "✎", "Email templates"/);
@@ -1289,12 +1290,17 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /data-linkedin-settings-form/);
   assert.match(renderLinkedinSource, /LinkedIn integration/);
   assert.match(renderLinkedinSource, /Puppeteer runner/);
+  assert.match(renderLinkedinSource, /platform-admin diagnostic/);
+  assert.match(renderLinkedinSource, /only platform admins can run them/);
+  assert.match(renderLinkedinSource, /const canRunLinkedinScan = canUseBackend && isPlatformAdmin\(\)/);
+  assert.match(renderLinkedinSource, /data-action="scan-linkedin" \$\{scanDisabled\}/);
   assert.match(renderLinkedinSource, /LinkedIn company page/);
   assert.match(renderLinkedinSource, /LinkedIn admin email/);
   assert.match(renderLinkedinSource, /data-action="scan-linkedin"/);
   assert.match(renderLinkedinSource, /LINKEDIN_PUPPETEER_ENABLED=1/);
   assert.match(renderLinkedinSource, /LINKEDIN_CHROME_PROFILE/);
-  assert.match(renderLinkedinSource, /linkedin\.lastScanResult\?\.conversations/);
+  assert.match(renderLinkedinSource, /stores only counts and conversation metadata/);
+  assert.match(renderLinkedinSource, /linkedin\.lastScanResult\?\.conversationCount/);
   assert.match(renderMailSettingsSource, /settings-stack/);
   assert.match(renderMailSettingsSource, /follow-up-card/);
   assert.match(renderMailSettingsSource, /gmailAttentionCorrespondence\(tenant\)/);
@@ -1327,9 +1333,16 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /const \{ execFile \} = require\("child_process"\)/);
   assert.match(server, /LINKEDIN_PUPPETEER_ENABLED/);
   assert.match(server, /function linkedinPuppeteerUnavailableReason/);
+  assert.match(server, /const linkedinScansInProgress = new Set\(\)/);
+  assert.match(server, /function summarizeLinkedinPuppeteerResult/);
+  assert.match(server, /conversationCount: conversations\.length/);
+  assert.ok(summarizeLinkedinSource.length > 0, "summarizeLinkedinPuppeteerResult should be defined before runLinkedinPuppeteerScan");
+  assert.doesNotMatch(summarizeLinkedinSource, /text|body|messageText|content/);
   assert.match(server, /async function runLinkedinPuppeteerScan/);
+  assert.match(server, /LinkedIn scan is already running for this tenant/);
   assert.match(server, /scripts", "linkedin-puppeteer-spike\.js"/);
   assert.match(server, /pathname\.endsWith\("\/linkedin\/scan"\)/);
+  assert.match(server, /Platform admin access required for LinkedIn Puppeteer scans/);
   assert.match(server, /function normalizeLinkedinSettings/);
   assert.match(server, /operation: "update-linkedin-settings"/);
   assert.match(server, /operation: "scan-linkedin"/);
