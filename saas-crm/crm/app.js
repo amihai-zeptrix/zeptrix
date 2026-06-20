@@ -162,6 +162,16 @@ const defaultGmailIntegration = {
   lastScanAt: "",
 };
 
+const defaultLinkedinIntegration = {
+  enabled: false,
+  status: "Not connected",
+  companyPageUrl: "",
+  accountEmail: "",
+  syncContacts: true,
+  syncCompanyUpdates: false,
+  updatedAt: "",
+};
+
 const defaultOutgoingEmail = {
   configured: false,
   status: "Not configured",
@@ -227,7 +237,7 @@ let ui = {
   selectedReportTemplate: "",
   helpTopic: "",
   pendingTag: null,
-  settingsTab: "mail",
+  settingsTab: "gmail",
   gmailDiscoveryPage: 1,
   gmailNotice: "",
   addedGmailContacts: new Set(),
@@ -254,13 +264,13 @@ function handleGmailCallbackQuery() {
   const params = new URLSearchParams(window.location.search);
   if (params.get("gmail") === "connected") {
     ui.section = "settings";
-    ui.settingsTab = "mail";
+    ui.settingsTab = "gmail";
     ui.gmailNotice = "Gmail connected. Refreshing integration status...";
     window.history.replaceState({}, "", window.location.pathname);
   }
   if (params.get("gmail") === "error") {
     ui.section = "settings";
-    ui.settingsTab = "mail";
+    ui.settingsTab = "gmail";
     ui.gmailNotice = `Gmail connection failed: ${params.get("detail") || "Unknown error."}`;
     window.history.replaceState({}, "", window.location.pathname);
   }
@@ -287,6 +297,7 @@ function normalizeData(nextData) {
     mailTemplates: normalizeMailTemplates(tenant.mailTemplates),
     outgoingEmail: { ...defaultOutgoingEmail, ...(tenant.outgoingEmail || {}) },
     workflowAutomation: { ...defaultWorkflowAutomation, ...(tenant.workflowAutomation || {}) },
+    linkedinIntegration: { ...defaultLinkedinIntegration, ...(tenant.linkedinIntegration || {}) },
     campaigns: (tenant.campaigns?.length ? tenant.campaigns : defaultCampaignsForTenant(tenant)).map((campaign) => ({ recurrence: "one-time", ...campaign })),
     supportTickets: normalizeSupportTickets(tenant),
     gmailIntegration: { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) },
@@ -452,7 +463,7 @@ function setGmailStatus(status, tenant = currentTenant()) {
   const previous = gmailIntegration(tenant);
   setTenant({ ...tenant, gmailIntegration: { ...previous, status } });
   ui.section = "settings";
-  ui.settingsTab = "mail";
+  ui.settingsTab = "gmail";
   render();
 }
 
@@ -836,6 +847,10 @@ async function createTagViaApi(tenantId, name) {
 
 async function saveGmailSettingsViaApi(tenantId, values) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+async function saveLinkedinSettingsViaApi(tenantId, values) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin`, { method: "PUT", body: JSON.stringify(values) });
 }
 
 async function saveConfigurationViaApi(tenantId, values) {
@@ -2444,7 +2459,7 @@ function helpContent() {
     activities: { title: "Activities guide", copy: "Activities are actionable next steps created manually or by workflow automation.", steps: ["Filter open vs all activities.", "Click a task row or check icon to mark it done.", "Workflow automation can create Gmail risk and dormant-contact tasks."] },
     inbox: { title: "Inbox guide", copy: "Inbox stores CRM-sent email and Gmail-imported account threads.", steps: ["Click a row to expand the correspondence.", "Use tracking pills to see CRM vs Gmail source.", "Open the linked account from the thread header."] },
     reports: { title: "Reports guide", copy: "Reports provide saved dashboards for forecast, account risk, campaign impact, and support health.", steps: ["Open saved report templates to focus the report board.", "Use Risk and source table to drill into accounts.", "Support health highlights SLA and sentiment pressure."] },
-    "email-integration": { title: "Email integration guide", copy: "Configure Gmail, outgoing email, templates, workflow automation, and tenant settings.", steps: ["Click Connect Gmail and choose the mailbox in Google.", "Approve the Google authorization screen; Zeptrix manages the OAuth app configuration.", "Configure lookback days and no-mail thresholds, then scan Gmail."] },
+    "email-integration": { title: "Connectivity guide", copy: "Configure Gmail, LinkedIn, outgoing email, templates, workflow automation, and tenant settings.", steps: ["Open Connectivity and choose Gmail or LinkedIn.", "Connect Gmail with Google authorization, then scan Gmail for contacts and relationship signals.", "Use Configuration for lookback days and the no-communication threshold."] },
     "email-templates": { title: "Email templates guide", copy: "Manage reusable templates for follow-ups and campaigns.", steps: ["Create templates with merge fields.", "Select templates in the send email dialog.", "Outgoing email settings control actual sending."] },
     admin: { title: "Admin guide", copy: "Platform admins manage tenants, login emails, password resets, and invite history.", steps: ["Use tenant edit to update owner login and billing metadata.", "Use reset password to send a temporary password.", "Invite email history shows delivery attempts and generated passwords."] },
   };
@@ -2493,16 +2508,26 @@ function renderSettings() {
 }
 
 function renderSettingsPage() {
+  if (ui.settingsTab === "mail") ui.settingsTab = "gmail";
+  const connectivityActive = ["gmail", "linkedin"].includes(ui.settingsTab);
   return `
     ${renderPageHeader("Settings", "Configure CRM integrations and workspace behavior.")}
     <nav class="settings-tabs">
-      <button class="${ui.settingsTab === "mail" ? "active" : ""}" data-settings-tab="mail">Mail integrations</button>
+      <button class="${connectivityActive ? "active" : ""}" data-settings-tab="gmail">Connectivity</button>
       <button class="${ui.settingsTab === "outgoing" ? "active" : ""}" data-settings-tab="outgoing">Outgoing email</button>
       <button class="${ui.settingsTab === "templates" ? "active" : ""}" data-settings-tab="templates">Email templates</button>
       <button class="${ui.settingsTab === "automation" ? "active" : ""}" data-settings-tab="automation">Workflow automation</button>
       <button class="${ui.settingsTab === "configuration" ? "active" : ""}" data-settings-tab="configuration">Configuration</button>
     </nav>
-    ${ui.settingsTab === "mail" ? renderMailIntegrationsSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : ui.settingsTab === "automation" ? renderWorkflowAutomationSettingsPanel() : renderConfigurationSettingsPanel()}`;
+    ${connectivityActive ? renderConnectivitySubmenu() : ""}
+    ${ui.settingsTab === "gmail" ? renderGmailConnectivitySettings() : ui.settingsTab === "linkedin" ? renderLinkedinIntegrationSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : ui.settingsTab === "automation" ? renderWorkflowAutomationSettingsPanel() : renderConfigurationSettingsPanel()}`;
+}
+
+function renderConnectivitySubmenu() {
+  return `<nav class="settings-subtabs" aria-label="Connectivity integrations">
+    <button class="${ui.settingsTab === "gmail" ? "active" : ""}" data-settings-tab="gmail">Gmail</button>
+    <button class="${ui.settingsTab === "linkedin" ? "active" : ""}" data-settings-tab="linkedin">LinkedIn</button>
+  </nav>`;
 }
 
 function renderTemplatesSettingsPanel() {
@@ -2536,7 +2561,7 @@ function renderOutgoingEmailSettingsPanel() {
     </form></section>`;
 }
 
-function renderMailIntegrationsSettings() {
+function renderGmailConnectivitySettings() {
   const tenant = currentTenant();
   const gmail = gmailIntegration(tenant);
   const gmailLookbackDays = Number(gmail.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS);
@@ -2560,11 +2585,10 @@ function renderMailIntegrationsSettings() {
             <p class="admin-notice">${gmail.accountEmail ? `Connected mailbox: <strong>${escapeHtml(gmail.accountEmail)}</strong>` : "Click Connect Gmail and choose the Gmail account in Google. No mailbox password or OAuth client setup is required."}</p>
             <div class="form-grid">
               ${formField("Gmail folders to scan", "labels", gmail.labels)}
-              ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
             </div>
             <div class="check-list compact">
               <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Scans the last ${gmailLookbackDays} days of non-sent Gmail and suggests people who do not exist in CRM.</small></label>
-              <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
+              <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Uses the no-communication threshold from Configuration.</small></label>
             </div>
             ${canUseGmailBackend ? "" : `<p class="admin-notice">Gmail connection requires signing in to a workspace at /crm.</p>`}
             <p class="subcopy">Uses server-side OAuth with <strong>gmail.readonly</strong>; refresh tokens are encrypted on the server and the browser never stores the Google client secret.</p>
@@ -2598,6 +2622,43 @@ function renderMailIntegrationsSettings() {
         <p class="subcopy">Last scan: ${gmail.lastScanAt ? formatTimestamp(gmail.lastScanAt) : "Not scanned yet"}</p>
       </article>
     </section>`;
+}
+
+function renderLinkedinIntegrationSettings() {
+  const tenant = currentTenant();
+  const linkedin = linkedinIntegration(tenant);
+  const canUseBackend = !!session?.apiToken && session.role !== "demo_user";
+  const disabled = canUseBackend ? "" : "disabled";
+  return `<section class="settings-layout linkedin-layout">
+    <article class="settings-card linkedin-card">
+      <div class="panel-head"><div><h3>LinkedIn integration</h3><p class="subcopy">Prepare LinkedIn enrichment for contacts, account context, and company activity.</p></div><span class="status-pill ${linkedin.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
+      ${canUseBackend ? "" : `<p class="admin-notice">LinkedIn settings require signing in to a workspace at /crm.</p>`}
+      <form class="settings-form" data-linkedin-settings-form>
+        <div class="form-grid">
+          ${formField("LinkedIn company page", "companyPageUrl", linkedin.companyPageUrl, "url", false, "full")}
+          ${formField("LinkedIn admin email", "accountEmail", linkedin.accountEmail, "email")}
+        </div>
+        <div class="check-list compact">
+          <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Match known contacts to titles, companies, and public profile context when API access is enabled.</small></label>
+          <label class="check-row"><input type="checkbox" name="syncCompanyUpdates" ${linkedin.syncCompanyUpdates ? "checked" : ""} /><span>Track account company updates</span><small>Surface public company activity as account context after LinkedIn authorization is connected.</small></label>
+        </div>
+        <p class="subcopy">This stores the LinkedIn integration settings now. Live LinkedIn sync will require LinkedIn OAuth/API approval before it can import profile or company data.</p>
+        <div class="form-actions"><button type="button" class="button" data-action="connect-linkedin" ${disabled}>Connect LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
+      </form>
+    </article>
+    <article class="settings-card linkedin-preview-card">
+      <h3>What LinkedIn will add</h3>
+      <div class="integration-metrics">
+        ${summaryCard("♙", "var(--blue-soft)", "var(--blue)", "Contact enrichment", linkedin.syncContacts ? "On" : "Off", "titles and public profile context")}
+        ${summaryCard("▣", "#d8f4e8", "#18764e", "Account activity", linkedin.syncCompanyUpdates ? "On" : "Off", "company posts and updates")}
+      </div>
+      <div class="signal-list">
+        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Match contact profiles<small>Use email/domain plus account name to enrich contacts when authorized.</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">↗</span><span class="list-primary">Add account context<small>Show company activity in the account timeline when LinkedIn sync is available.</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Find relationship changes<small>Flag title/company changes that may affect renewals and campaigns.</small></span></div>
+      </div>
+    </article>
+  </section>`;
 }
 
 function renderGmailDiscoveryPagination(total, page, totalPages) {
@@ -2663,11 +2724,15 @@ function renderWorkflowRuleCard(trigger, condition, action, enabled, fieldName, 
 function renderConfigurationSettingsPanel() {
   const gmail = gmailIntegration(currentTenant());
   const tenant = currentTenant();
-  return `<section class="settings-card configuration-card"><div class="panel-head"><div><h3>Configuration</h3><p class="subcopy">Tenant-level keys that control CRM behavior.</p></div></div><form class="configuration-list" data-configuration-form><label class="configuration-row"><span><strong>gmail.inboxLookbackDays</strong><small>Number of days to look back when scanning Gmail for new contacts.</small></span><input name="gmailLookbackDays" type="number" min="1" max="365" value="${Number(gmail.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS)}" /></label><label class="configuration-row"><span><strong>security.mfaRequired</strong><small>Require users to configure and use an authenticator app at sign-in.</small></span><input name="mfaRequired" type="checkbox" ${tenant.mfaRequired ? "checked" : ""} /></label><div class="form-actions"><button class="button primary">Save configuration</button></div></form></section>`;
+  return `<section class="settings-card configuration-card"><div class="panel-head"><div><h3>Configuration</h3><p class="subcopy">Tenant-level keys that control CRM behavior.</p></div></div><form class="configuration-list" data-configuration-form><label class="configuration-row"><span><strong>gmail.inboxLookbackDays</strong><small>Number of days to look back when scanning Gmail for new contacts.</small></span><input name="gmailLookbackDays" type="number" min="1" max="365" value="${Number(gmail.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS)}" /></label><label class="configuration-row"><span><strong>Identify no communication in months:</strong><small>Contacts with no sent Gmail in this window appear as needing follow-up.</small></span><input name="staleMonths" type="number" min="1" max="36" value="${Number(gmail.staleMonths || 3)}" /></label><label class="configuration-row"><span><strong>security.mfaRequired</strong><small>Require users to configure and use an authenticator app at sign-in.</small></span><input name="mfaRequired" type="checkbox" ${tenant.mfaRequired ? "checked" : ""} /></label><div class="form-actions"><button class="button primary">Save configuration</button></div></form></section>`;
 }
 
 function gmailIntegration(tenant = currentTenant()) {
   return { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) };
+}
+
+function linkedinIntegration(tenant = currentTenant()) {
+  return { ...defaultLinkedinIntegration, ...(tenant.linkedinIntegration || {}) };
 }
 
 function outgoingEmailSettings(tenant = currentTenant()) {
@@ -2693,6 +2758,16 @@ function gmailFormValues(form) {
     ...values,
     detectNewContacts: Boolean(values.detectNewContacts),
     detectDormantContacts: Boolean(values.detectDormantContacts),
+  };
+}
+
+function linkedinFormValues(form) {
+  const values = Object.fromEntries(new FormData(form));
+  return {
+    companyPageUrl: values.companyPageUrl || "",
+    accountEmail: values.accountEmail || "",
+    syncContacts: Boolean(values.syncContacts),
+    syncCompanyUpdates: Boolean(values.syncCompanyUpdates),
   };
 }
 
@@ -2859,7 +2934,7 @@ document.addEventListener("click", async (event) => {
   }
   if (collapse) ui.collapsed = ui.collapsed.includes(collapse) ? ui.collapsed.filter((item) => item !== collapse) : [...ui.collapsed, collapse];
   if (column) data.visibleColumns = event.target.checked ? [...data.visibleColumns, column] : data.visibleColumns.filter((item) => item !== column);
-  if (settingsTab) ui.settingsTab = settingsTab;
+  if (settingsTab) ui.settingsTab = settingsTab === "mail" ? "gmail" : settingsTab;
   if (adminTab) ui.adminTab = adminTab;
 
   if (actionElement) {
@@ -3043,9 +3118,12 @@ document.addEventListener("click", async (event) => {
     if (action === "open-gmail-settings") {
       dismissWhatsNew();
       ui.section = "settings";
-      ui.settingsTab = "mail";
+      ui.settingsTab = "gmail";
       render();
       return;
+    }
+    if (action === "connect-linkedin") {
+      showToast("LinkedIn OAuth/API approval is not connected yet. Save the settings here, then connect LinkedIn authorization when the API app is approved.");
     }
     if (action === "connect-gmail") {
       const tenant = currentTenant();
@@ -3644,7 +3722,6 @@ document.addEventListener("submit", async (event) => {
         gmailIntegration: {
           ...previous,
           labels: values.labels || "Inbox, Sent",
-          staleMonths: Math.max(1, Number(values.staleMonths || 3)),
           detectNewContacts: values.detectNewContacts,
           detectDormantContacts: values.detectDormantContacts,
           status: error.message,
@@ -3652,8 +3729,26 @@ document.addEventListener("submit", async (event) => {
       });
     }
     ui.section = "settings";
-    ui.settingsTab = "mail";
+    ui.settingsTab = "gmail";
     ui.gmailNotice = "";
+    render();
+    return;
+  }
+  if (event.target.matches("[data-linkedin-settings-form]")) {
+    event.preventDefault();
+    const tenant = currentTenant();
+    const values = linkedinFormValues(event.target);
+    try {
+      const result = await saveLinkedinSettingsViaApi(tenant.id, values);
+      setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
+      showToast("LinkedIn settings saved");
+      auditSubmitEvent(event.target);
+    } catch (error) {
+      setTenant({ ...tenant, linkedinIntegration: { ...linkedinIntegration(tenant), ...values, status: session?.apiToken ? error.message : "LinkedIn settings saved locally" } });
+      showToast(session?.apiToken ? error.message : "LinkedIn settings saved locally");
+    }
+    ui.section = "settings";
+    ui.settingsTab = "linkedin";
     render();
     return;
   }
@@ -3698,15 +3793,16 @@ document.addEventListener("submit", async (event) => {
     const tenant = currentTenant();
     const values = Object.fromEntries(new FormData(event.target));
     const gmailLookbackDays = Math.max(1, Math.min(365, Number(values.gmailLookbackDays || DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS)));
+    const staleMonths = Math.max(1, Math.min(36, Number(values.staleMonths || 3)));
     const mfaRequired = values.mfaRequired === "on";
     try {
-      const result = await saveConfigurationViaApi(tenant.id, { gmailLookbackDays, mfaRequired });
+      const result = await saveConfigurationViaApi(tenant.id, { gmailLookbackDays, staleMonths, mfaRequired });
       setTenant({ ...currentTenant(), mfaRequired: result.tenantSettings?.mfaRequired ?? mfaRequired, gmailIntegration: { ...result.gmailIntegration, status: "Configuration saved." } });
       showToast("Configuration saved");
       auditSubmitEvent(event.target);
     } catch (error) {
       const previous = gmailIntegration(tenant);
-      setTenant({ ...tenant, mfaRequired, gmailIntegration: { ...previous, gmailLookbackDays, status: error.message } });
+      setTenant({ ...tenant, mfaRequired, gmailIntegration: { ...previous, gmailLookbackDays, staleMonths, status: error.message } });
       showToast(error.message);
     }
     ui.section = "settings";

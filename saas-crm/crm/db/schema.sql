@@ -117,6 +117,7 @@ create table gmail_integrations (
   client_id text,
   redirect_uri text,
   labels text not null default 'Inbox, Sent',
+  gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365),
   stale_months integer not null default 3 check (stale_months > 0 and stale_months <= 36),
   detect_new_contacts boolean not null default true,
   detect_dormant_contacts boolean not null default true,
@@ -126,6 +127,18 @@ create table gmail_integrations (
   refresh_token_enc text,
   token_expiry timestamptz,
   last_scan_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table linkedin_integrations (
+  tenant_id uuid primary key references tenants(id) on delete cascade,
+  company_page_url text,
+  account_email citext,
+  sync_contacts boolean not null default true,
+  sync_company_updates boolean not null default false,
+  enabled boolean not null default false,
+  status text not null default 'Not connected',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -747,6 +747,18 @@ async function initDatabase() {
       unique(tenant_id, email)
     )`);
   await dbQuery(`
+    create table if not exists linkedin_integrations (
+      tenant_id uuid primary key references tenants(id) on delete cascade,
+      company_page_url text,
+      account_email citext,
+      sync_contacts boolean not null default true,
+      sync_company_updates boolean not null default false,
+      enabled boolean not null default false,
+      status text not null default 'Not connected',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )`);
+  await dbQuery(`
     create table if not exists workflow_automations (
       tenant_id uuid primary key references tenants(id) on delete cascade,
       enabled boolean not null default true,
@@ -782,6 +794,12 @@ async function initDatabase() {
   await dbQuery(`alter table communications add column if not exists gmail_thread_id text`);
   await dbQuery(`alter table communications add column if not exists source text not null default 'crm'`);
   await dbQuery(`alter table gmail_integrations add column if not exists gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365)`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists company_page_url text`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists account_email citext`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists sync_contacts boolean not null default true`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists sync_company_updates boolean not null default false`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists enabled boolean not null default false`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists status text not null default 'Not connected'`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists contact_tags_tenant_name_idx on contact_tags(tenant_id, lower(name))`);
   await dbQuery(`create index if not exists mail_templates_tenant_updated_idx on mail_templates(tenant_id, updated_at desc)`);
@@ -789,6 +807,7 @@ async function initDatabase() {
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
+  await dbQuery(`create index if not exists linkedin_integrations_updated_idx on linkedin_integrations(updated_at desc)`);
   await dbQuery(`create index if not exists communications_tenant_thread_idx on communications(tenant_id, gmail_thread_id)`);
   await dbQuery(`create index if not exists workflow_automations_updated_idx on workflow_automations(updated_at desc)`);
   await dbQuery(`create index if not exists audit_logs_created_idx on audit_logs(created_at desc)`);
@@ -1093,7 +1112,7 @@ async function upsertMailTemplateForTenant(tenantId, payload, templateId = "") {
 }
 
 async function readState(auth) {
-  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult, workflowAutomationResult, auditLogResult] = await Promise.all([
+  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, linkedinResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult, workflowAutomationResult, auditLogResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
     dbQuery(`select * from users order by created_at`),
     dbQuery(`select * from deals order by created_at`),
@@ -1102,6 +1121,7 @@ async function readState(auth) {
     dbQuery(`select i.*, t.name tenant_name from invite_emails i join tenants t on t.id=i.tenant_id order by i.created_at desc limit 25`),
     dbQuery(`select * from gmail_integrations`),
     dbQuery(`select * from gmail_contact_signals order by created_at desc limit 500`),
+    dbQuery(`select * from linkedin_integrations`),
     dbQuery(`select * from contact_tags order by lower(name), name`),
     dbQuery(`select * from mail_templates order by updated_at desc`),
     dbQuery(`select * from outgoing_email_settings`),
@@ -1120,6 +1140,7 @@ async function readState(auth) {
       communicationsResult.rows.filter((communication) => communication.tenant_id === tenant.id),
       gmailResult.rows.find((integration) => integration.tenant_id === tenant.id),
       gmailSignalResult.rows.filter((signal) => signal.tenant_id === tenant.id),
+      linkedinResult.rows.find((integration) => integration.tenant_id === tenant.id),
       contactTagsResult.rows.filter((tag) => tag.tenant_id === tenant.id),
       mailTemplatesResult.rows.filter((template) => template.tenant_id === tenant.id),
       outgoingEmailResult.rows.find((settings) => settings.tenant_id === tenant.id),
@@ -1130,7 +1151,7 @@ async function readState(auth) {
   };
 }
 
-function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], contactTags = [], mailTemplates = [], outgoingEmailSettings = null, workflowAutomation = null) {
+function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], linkedinIntegration = null, contactTags = [], mailTemplates = [], outgoingEmailSettings = null, workflowAutomation = null) {
   const normalizedDeals = deals.map(dealFromRow);
   return {
     id: tenant.id,
@@ -1147,6 +1168,7 @@ function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegra
     tasks: tasks.map(taskFromRow),
     communications: communications.map(communicationFromRow),
     gmailIntegration: gmailIntegrationFromRow(gmailIntegration, gmailSignals),
+    linkedinIntegration: linkedinIntegrationFromRow(linkedinIntegration),
     availableTags: availableContactTags(contactTags, normalizedDeals),
     mailTemplates: mailTemplates.map(mailTemplateFromRow),
     outgoingEmail: outgoingEmailSettingsFromRow(outgoingEmailSettings),
@@ -1281,6 +1303,18 @@ function gmailIntegrationFromRow(row, signals = []) {
     detectDormantContacts: row?.detect_dormant_contacts ?? true,
     lastScanAt: row?.last_scan_at ? row.last_scan_at.toISOString() : "",
     signals: signals.map(gmailSignalFromRow),
+  };
+}
+
+function linkedinIntegrationFromRow(row) {
+  return {
+    enabled: !!row?.enabled,
+    status: row?.status || "Not connected",
+    companyPageUrl: row?.company_page_url || "",
+    accountEmail: row?.account_email || "",
+    syncContacts: row?.sync_contacts ?? true,
+    syncCompanyUpdates: row?.sync_company_updates ?? false,
+    updatedAt: row?.updated_at ? row.updated_at.toISOString() : "",
   };
 }
 
@@ -1623,7 +1657,7 @@ function normalizeGmailSettings(payload = {}) {
     redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback`,
     labels: String(payload.labels || "Inbox, Sent").trim(),
     gmailLookbackDays: payload.gmailLookbackDays == null ? null : Math.max(1, Math.min(365, Number(payload.gmailLookbackDays || GMAIL_NEW_CONTACT_LOOKBACK_DAYS))),
-    staleMonths: Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
+    staleMonths: payload.staleMonths == null ? null : Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
     detectNewContacts: payload.detectNewContacts !== false,
     detectDormantContacts: payload.detectDormantContacts !== false,
   };
@@ -1642,7 +1676,7 @@ async function upsertGmailSettings(tenantId, payload) {
   const result = await dbQuery(
     `insert into gmail_integrations
        (tenant_id, account_email, workspace_domain, client_id, redirect_uri, labels, gmail_lookback_days, stale_months, detect_new_contacts, detect_dormant_contacts, status, updated_at)
-     values ($1,$2,$3,$4,$5,$6,coalesce($7,${GMAIL_NEW_CONTACT_LOOKBACK_DAYS}),$8,$9,$10,'Settings saved',now())
+     values ($1,$2,$3,$4,$5,$6,coalesce($7,${GMAIL_NEW_CONTACT_LOOKBACK_DAYS}),coalesce($8,3),$9,$10,'Settings saved',now())
      on conflict (tenant_id) do update set
        account_email=coalesce(nullif(excluded.account_email,''), gmail_integrations.account_email),
        workspace_domain=coalesce(nullif(excluded.workspace_domain,''), gmail_integrations.workspace_domain),
@@ -1650,7 +1684,7 @@ async function upsertGmailSettings(tenantId, payload) {
        redirect_uri=excluded.redirect_uri,
        labels=excluded.labels,
        gmail_lookback_days=coalesce($7,gmail_integrations.gmail_lookback_days),
-       stale_months=excluded.stale_months,
+       stale_months=coalesce($8,gmail_integrations.stale_months),
        detect_new_contacts=excluded.detect_new_contacts,
        detect_dormant_contacts=excluded.detect_dormant_contacts,
        status=case when gmail_integrations.enabled then 'Settings saved' else 'Not connected' end,
@@ -1664,6 +1698,7 @@ async function upsertGmailSettings(tenantId, payload) {
 function normalizeConfigurationSettings(payload = {}) {
   return {
     gmailLookbackDays: Math.max(1, Math.min(365, Number(payload.gmailLookbackDays || GMAIL_NEW_CONTACT_LOOKBACK_DAYS))),
+    staleMonths: Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
     mfaRequired: payload.mfaRequired === true || payload.mfaRequired === "true" || payload.mfaRequired === "on",
   };
 }
@@ -1675,16 +1710,57 @@ async function upsertConfigurationSettings(tenantId, payload) {
     dbQuery(`update users set mfa_enabled=$2 where tenant_id=$1 and role <> 'platform_admin'`, [tenantId, settings.mfaRequired]),
   ]);
   const result = await dbQuery(
-    `insert into gmail_integrations (tenant_id, gmail_lookback_days, status, updated_at)
-     values ($1,$2,'Configuration saved',now())
+    `insert into gmail_integrations (tenant_id, gmail_lookback_days, stale_months, status, updated_at)
+     values ($1,$2,$3,'Configuration saved',now())
      on conflict (tenant_id) do update set
        gmail_lookback_days=excluded.gmail_lookback_days,
+       stale_months=excluded.stale_months,
        status=case when gmail_integrations.enabled then gmail_integrations.status else gmail_integrations.status end,
        updated_at=now()
      returning *`,
-    [tenantId, settings.gmailLookbackDays],
+    [tenantId, settings.gmailLookbackDays, settings.staleMonths],
   );
   return { tenant: tenantResult.rows[0], gmailIntegration: gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId)) };
+}
+
+function normalizeLinkedinSettings(payload = {}) {
+  const accountEmail = String(payload.accountEmail || "").trim();
+  if (accountEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
+    const error = new Error("LinkedIn account email must be a valid email address.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const companyPageUrl = String(payload.companyPageUrl || "").trim();
+  if (companyPageUrl && !/^https:\/\/(www\.)?linkedin\.com\/(company|in)\/[^/\s]+\/?$/i.test(companyPageUrl)) {
+    const error = new Error("LinkedIn URL must be a linkedin.com company or profile URL.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return {
+    companyPageUrl,
+    accountEmail,
+    syncContacts: payload.syncContacts !== false,
+    syncCompanyUpdates: payload.syncCompanyUpdates === true || payload.syncCompanyUpdates === "true" || payload.syncCompanyUpdates === "on",
+  };
+}
+
+async function upsertLinkedinSettings(tenantId, payload) {
+  const settings = normalizeLinkedinSettings(payload);
+  const result = await dbQuery(
+    `insert into linkedin_integrations
+       (tenant_id, company_page_url, account_email, sync_contacts, sync_company_updates, enabled, status, updated_at)
+     values ($1,$2,$3,$4,$5,false,'Settings saved - LinkedIn OAuth is not connected yet',now())
+     on conflict (tenant_id) do update set
+       company_page_url=excluded.company_page_url,
+       account_email=excluded.account_email,
+       sync_contacts=excluded.sync_contacts,
+       sync_company_updates=excluded.sync_company_updates,
+       status='Settings saved - LinkedIn OAuth is not connected yet',
+       updated_at=now()
+     returning *`,
+    [tenantId, settings.companyPageUrl, settings.accountEmail, settings.syncContacts, settings.syncCompanyUpdates],
+  );
+  return linkedinIntegrationFromRow(result.rows[0]);
 }
 
 async function upsertWorkflowAutomationSettings(tenantId, payload) {
@@ -3056,6 +3132,21 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const payload = await readBody(req);
+      const linkedinIntegration = await upsertLinkedinSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-linkedin-settings", target: "linkedin-settings", details: { fields: payload } });
+      return json(res, 200, { linkedinIntegration });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save LinkedIn settings.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
   if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/workflow-automation")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -3307,6 +3398,7 @@ module.exports = {
   mfaRecoveryEmailContent,
   normalizeDealPayload,
   normalizeGmailSettings,
+  normalizeLinkedinSettings,
   normalizeOutgoingEmailSettings,
   normalizeOutgoingMailPayload,
   normalizeRegistrationPayload,

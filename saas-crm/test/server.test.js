@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { authChallengeForUser, authenticatorUri, consumeGoogleAuthResult, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, mfaRecoveryEmailContent, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, passwordResetEmailContent, registrationNotificationContent, signAuthToken, signGoogleAuthState, signMfaRecoveryToken, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, storeGoogleAuthResult, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyMfaRecoveryToken, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
+const { authChallengeForUser, authenticatorUri, consumeGoogleAuthResult, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, mfaRecoveryEmailContent, normalizeDealPayload, normalizeGmailSettings, normalizeLinkedinSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, passwordResetEmailContent, registrationNotificationContent, signAuthToken, signGoogleAuthState, signMfaRecoveryToken, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, storeGoogleAuthResult, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyMfaRecoveryToken, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -421,7 +421,24 @@ test("Gmail settings normalization clamps scan thresholds and defaults detection
   const explicitMailbox = normalizeGmailSettings({ accountEmail: " user@gmail.com " });
   assert.equal(explicitMailbox.accountEmail, "user@gmail.com");
   assert.equal(explicitMailbox.workspaceDomain, "gmail.com");
+  assert.equal(normalizeGmailSettings({ labels: "Inbox" }).staleMonths, null);
   assert.throws(() => normalizeGmailSettings({ accountEmail: "not-an-email" }), /Gmail account must be a valid email address/);
+});
+
+test("LinkedIn settings normalization validates account and company URL", () => {
+  const settings = normalizeLinkedinSettings({
+    companyPageUrl: "https://www.linkedin.com/company/zeptrix/",
+    accountEmail: " owner@example.com ",
+    syncContacts: false,
+    syncCompanyUpdates: "on",
+  });
+
+  assert.equal(settings.companyPageUrl, "https://www.linkedin.com/company/zeptrix/");
+  assert.equal(settings.accountEmail, "owner@example.com");
+  assert.equal(settings.syncContacts, false);
+  assert.equal(settings.syncCompanyUpdates, true);
+  assert.throws(() => normalizeLinkedinSettings({ accountEmail: "bad" }), /LinkedIn account email must be a valid email address/);
+  assert.throws(() => normalizeLinkedinSettings({ companyPageUrl: "https://example.com/company/zeptrix" }), /LinkedIn URL must be a linkedin.com company or profile URL/);
 });
 
 test("deal payload normalization preserves contact metadata for database persistence", () => {
@@ -1178,17 +1195,21 @@ test("CRM reports provide custom dashboards and saved report templates", () => {
   assert.match(styles, /\.report-table/);
 });
 
-test("CRM settings include Gmail mail integration controls", () => {
+test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   const app = crmAppSource();
   const styles = crmStylesSource();
+  const schema = fs.readFileSync(path.join(__dirname, "..", "crm", "db", "schema.sql"), "utf8");
   const sidebarSource = functionSource(app, "renderSidebar", "sideLink");
   const topbarSource = functionSource(app, "renderTopbar", "renderSection");
   const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
-  const renderSettingsPageSource = functionSource(app, "renderSettingsPage", "renderMailIntegrationsSettings");
-  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderConfigurationSettingsPanel");
+  const renderSettingsPageSource = functionSource(app, "renderSettingsPage", "renderConnectivitySubmenu");
+  const renderConnectivitySubmenuSource = functionSource(app, "renderConnectivitySubmenu", "renderTemplatesSettingsPanel");
+  const renderMailSettingsSource = functionSource(app, "renderGmailConnectivitySettings", "renderLinkedinIntegrationSettings");
+  const renderLinkedinSource = functionSource(app, "renderLinkedinIntegrationSettings", "renderGmailDiscoveryPagination");
   const renderConfigurationSource = functionSource(app, "renderConfigurationSettingsPanel", "gmailIntegration");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
+  const server = serverSource();
 
   assert.match(sidebarSource, /sideLink\("settings", "⚙", "Settings"\)/);
   assert.doesNotMatch(sidebarSource, /sideLink\("templates", "✎", "Email templates"/);
@@ -1197,8 +1218,10 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSectionSource, /ui\.section === "settings"/);
   assert.match(renderSectionSource, /ui\.section === "templates"/);
   assert.match(renderSectionSource, /renderTemplatesSettingsPanel\(\)/);
-  assert.match(renderSettingsPageSource, /Mail integrations/);
-  assert.match(renderSettingsPageSource, /data-settings-tab="mail"/);
+  assert.match(renderSettingsPageSource, /Connectivity/);
+  assert.match(renderSettingsPageSource, /data-settings-tab="gmail"/);
+  assert.match(renderSettingsPageSource, /const connectivityActive = \["gmail", "linkedin"\]\.includes\(ui\.settingsTab\)/);
+  assert.match(renderSettingsPageSource, /renderConnectivitySubmenu/);
   assert.match(renderSettingsPageSource, /Outgoing email/);
   assert.match(renderSettingsPageSource, /data-settings-tab="outgoing"/);
   assert.match(renderSettingsPageSource, /renderOutgoingEmailSettingsPanel/);
@@ -1211,9 +1234,14 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderSettingsPageSource, /Configuration/);
   assert.match(renderSettingsPageSource, /data-settings-tab="configuration"/);
   assert.doesNotMatch(renderSettingsPageSource, /data-settings-tab="workspace"/);
+  assert.match(renderConnectivitySubmenuSource, /data-settings-tab="gmail">Gmail/);
+  assert.match(renderConnectivitySubmenuSource, /data-settings-tab="linkedin">LinkedIn/);
+  assert.match(styles, /\.settings-subtabs/);
   assert.match(renderConfigurationSource, /data-configuration-form/);
   assert.match(renderConfigurationSource, /gmail\.inboxLookbackDays/);
   assert.match(renderConfigurationSource, /gmailLookbackDays/);
+  assert.match(renderConfigurationSource, /Identify no communication in months:/);
+  assert.match(renderConfigurationSource, /name="staleMonths"/);
   assert.match(renderConfigurationSource, /security\.mfaRequired/);
   assert.match(renderConfigurationSource, /name="mfaRequired"/);
   assert.match(renderConfigurationSource, /Require users to configure and use an authenticator app/);
@@ -1237,16 +1265,23 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /Gmail folders to scan/);
   assert.doesNotMatch(renderMailSettingsSource, /Labels to read/);
   assert.ok(renderMailSettingsSource.indexOf('data-action="connect-gmail"') < renderMailSettingsSource.indexOf('formField("Gmail folders to scan"'));
-  assert.ok(renderMailSettingsSource.indexOf('data-action="scan-gmail"') < renderMailSettingsSource.indexOf('formField("No-mail threshold in months"'));
   assert.ok(renderMailSettingsSource.indexOf("New-contact discovery scans") < renderMailSettingsSource.indexOf("gmail-save-actions"));
   assert.doesNotMatch(renderMailSettingsSource, /OAuth client ID/);
   assert.doesNotMatch(renderMailSettingsSource, /Authorized redirect URI/);
   assert.match(renderMailSettingsSource, /No mailbox password or OAuth client setup is required/);
-  assert.match(renderMailSettingsSource, /No-mail threshold in months/);
+  assert.doesNotMatch(renderMailSettingsSource, /No-mail threshold in months/);
+  assert.doesNotMatch(renderMailSettingsSource, /name="staleMonths"/);
   assert.match(renderMailSettingsSource, /Identify new contacts from Gmail/);
   assert.match(renderMailSettingsSource, /last \$\{gmailLookbackDays\} days/);
   assert.match(renderMailSettingsSource, /filters out contacts already in CRM/);
   assert.match(renderMailSettingsSource, /Find contacts with no sent mail/);
+  assert.match(renderMailSettingsSource, /Uses the no-communication threshold from Configuration/);
+  assert.match(renderLinkedinSource, /data-linkedin-settings-form/);
+  assert.match(renderLinkedinSource, /LinkedIn integration/);
+  assert.match(renderLinkedinSource, /LinkedIn company page/);
+  assert.match(renderLinkedinSource, /LinkedIn admin email/);
+  assert.match(renderLinkedinSource, /data-action="connect-linkedin"/);
+  assert.match(renderLinkedinSource, /Live LinkedIn sync will require LinkedIn OAuth\/API approval/);
   assert.match(renderMailSettingsSource, /settings-stack/);
   assert.match(renderMailSettingsSource, /follow-up-card/);
   assert.match(renderMailSettingsSource, /gmailAttentionCorrespondence\(tenant\)/);
@@ -1260,32 +1295,42 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /gmailDormantContacts/);
   assert.match(app, /if \(gmail\.lastScanAt\) return \[\]/);
   assert.match(app, /saveGmailSettingsViaApi/);
+  assert.match(app, /saveLinkedinSettingsViaApi/);
+  assert.match(app, /function linkedinIntegration/);
+  assert.match(app, /settingsTab: "gmail"/);
+  assert.match(app, /settingsTab === "mail" \? "gmail" : settingsTab/);
   assert.match(app, /mfaRequired = values\.mfaRequired === "on"/);
+  assert.match(app, /staleMonths = Math\.max\(1, Math\.min\(36/);
   assert.match(app, /tenantSettings\?\.mfaRequired/);
   assert.match(app, /saveWorkflowAutomationViaApi/);
   assert.match(app, /connectGmailViaApi/);
   assert.match(app, /returnOrigin: window\.location\.origin/);
   assert.match(app, /scanGmailViaApi/);
-  assert.match(serverSource(), /GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30/);
+  assert.match(server, /GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30/);
   assert.match(app, /DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS = 30/);
-  assert.match(serverSource(), /gmail_lookback_days/);
-  assert.match(serverSource(), /update tenants set mfa_required=\$2/);
-  assert.match(serverSource(), /update users set mfa_enabled=\$2 where tenant_id=\$1 and role <> 'platform_admin'/);
-  assert.match(serverSource(), /GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000/);
-  assert.match(serverSource(), /GMAIL_NEW_CONTACT_FULL_LIMIT = 250/);
-  assert.match(serverSource(), /GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250/);
-  assert.match(serverSource(), /listGmailMessages/);
-  assert.match(serverSource(), /gmailNewContactScope\(integration\.labels\)/);
-  assert.match(serverSource(), /newer_than:\$\{gmailLookbackDays\}d/);
-  assert.match(serverSource(), /format: "metadata"/);
-  assert.match(serverSource(), /inboundMetadata\.slice\(0, GMAIL_NEW_CONTACT_FULL_LIMIT\)/);
-  assert.match(serverSource(), /GMAIL_ATTENTION_SIGNAL_LIMIT = 100/);
-  assert.match(serverSource(), /format: "full"/);
-  assert.match(serverSource(), /Skipping Gmail full message/);
-  assert.match(serverSource(), /Skipping Gmail dormant check/);
-  assert.match(serverSource(), /add column if not exists phone text/);
-  assert.match(serverSource(), /gmail_contact_blacklist/);
-  assert.match(serverSource(), /scanProgressById/);
+  assert.match(server, /gmail_lookback_days/);
+  assert.match(server, /linkedin_integrations/);
+  assert.match(server, /function normalizeLinkedinSettings/);
+  assert.match(server, /operation: "update-linkedin-settings"/);
+  assert.match(schema, /create table linkedin_integrations/);
+  assert.match(schema, /gmail_lookback_days/);
+  assert.match(server, /update tenants set mfa_required=\$2/);
+  assert.match(server, /update users set mfa_enabled=\$2 where tenant_id=\$1 and role <> 'platform_admin'/);
+  assert.match(server, /GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000/);
+  assert.match(server, /GMAIL_NEW_CONTACT_FULL_LIMIT = 250/);
+  assert.match(server, /GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250/);
+  assert.match(server, /listGmailMessages/);
+  assert.match(server, /gmailNewContactScope\(integration\.labels\)/);
+  assert.match(server, /newer_than:\$\{gmailLookbackDays\}d/);
+  assert.match(server, /format: "metadata"/);
+  assert.match(server, /inboundMetadata\.slice\(0, GMAIL_NEW_CONTACT_FULL_LIMIT\)/);
+  assert.match(server, /GMAIL_ATTENTION_SIGNAL_LIMIT = 100/);
+  assert.match(server, /format: "full"/);
+  assert.match(server, /Skipping Gmail full message/);
+  assert.match(server, /Skipping Gmail dormant check/);
+  assert.match(server, /add column if not exists phone text/);
+  assert.match(server, /gmail_contact_blacklist/);
+  assert.match(server, /scanProgressById/);
   assert.match(app, /handleGmailCallbackQuery/);
   assert.match(app, /Gmail connected\. Refreshing integration status/);
   assert.match(app, /setGmailStatus\("Saving Gmail settings\.\.\."/);
@@ -1304,24 +1349,27 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.doesNotMatch(app, /renderGmailOAuthGuide/);
   assert.doesNotMatch(app, /ui\.modal === "gmail-oauth-guide"/);
   assert.doesNotMatch(app, /Google Cloud Console/);
-  assert.match(serverSource(), /clientId: normalizeOAuthClientId\(payload\.clientId \|\| googleClientId\)/);
-  assert.match(serverSource(), /clientId: googleClientId/);
-  assert.match(serverSource(), /function safeGmailReturnOrigin/);
-  assert.match(serverSource(), /returnOrigin: body\.returnOrigin \|\| req\.headers\.origin \|\| req\.headers\.referer/);
-  assert.match(serverSource(), /safeGmailReturnOrigin\(state\.returnOrigin\).*\/crm\/\?gmail=connected/);
-  assert.doesNotMatch(serverSource(), /does not match \$\{integration\.account_email/);
-  assert.match(serverSource(), /Google did not return the connected Gmail account/);
-  assert.match(serverSource(), /account_email=\$5, workspace_domain=\$6/);
-  assert.match(serverSource(), /Gmail scan completed but workflow automation failed/);
-  assert.match(serverSource(), /Gmail scan completed but response hydration failed/);
-  assert.match(serverSource(), /Last scan completed\. Refresh to load the latest Gmail signals\./);
+  assert.match(server, /clientId: normalizeOAuthClientId\(payload\.clientId \|\| googleClientId\)/);
+  assert.match(server, /clientId: googleClientId/);
+  assert.match(server, /function safeGmailReturnOrigin/);
+  assert.match(server, /returnOrigin: body\.returnOrigin \|\| req\.headers\.origin \|\| req\.headers\.referer/);
+  assert.match(server, /safeGmailReturnOrigin\(state\.returnOrigin\).*\/crm\/\?gmail=connected/);
+  assert.doesNotMatch(server, /does not match \$\{integration\.account_email/);
+  assert.match(server, /Google did not return the connected Gmail account/);
+  assert.match(server, /account_email=\$5, workspace_domain=\$6/);
+  assert.match(server, /Gmail scan completed but workflow automation failed/);
+  assert.match(server, /Gmail scan completed but response hydration failed/);
+  assert.match(server, /Last scan completed\. Refresh to load the latest Gmail signals\./);
   assert.match(clickHandlerSource, /data-settings-tab/);
   assert.match(clickHandlerSource, /action === "connect-gmail"/);
+  assert.match(clickHandlerSource, /action === "connect-linkedin"/);
   assert.match(clickHandlerSource, /action === "scan-gmail"/);
   assert.match(clickHandlerSource, /action === "skip-gmail-contact"/);
   assert.match(clickHandlerSource, /action === "add-gmail-contact"/);
   assert.match(submitHandlerSource, /data-gmail-settings-form/);
   assert.match(submitHandlerSource, /saveGmailSettingsViaApi\(tenant\.id, gmailFormValues\(event\.target\)\)/);
+  assert.match(submitHandlerSource, /data-linkedin-settings-form/);
+  assert.match(submitHandlerSource, /saveLinkedinSettingsViaApi\(tenant\.id, values\)/);
   assert.match(submitHandlerSource, /data-workflow-automation-form/);
   assert.match(submitHandlerSource, /saveWorkflowAutomationViaApi\(tenant\.id, values\)/);
   assert.match(submitHandlerSource, /data-configuration-form/);
@@ -1402,7 +1450,7 @@ test("CRM outgoing email settings and send email flow are wired to SMTP API", ()
   const styles = crmStylesSource();
   const server = serverSource();
   const renderSettingsPageSource = functionSource(app, "renderSettingsPage", "renderTemplatesSettingsPanel");
-  const renderOutgoingSource = functionSource(app, "renderOutgoingEmailSettingsPanel", "renderMailIntegrationsSettings");
+  const renderOutgoingSource = functionSource(app, "renderOutgoingEmailSettingsPanel", "renderGmailConnectivitySettings");
   const renderEmailFormSource = functionSource(app, "renderEmailForm", "renderImportModal");
   const submitHandlerSource = app.slice(app.indexOf("document.addEventListener(\"submit\""), app.indexOf("document.addEventListener(\"dragstart\""));
 
@@ -1464,8 +1512,8 @@ test("CRM mail templates can be managed and selected from follow-up email", () =
   const app = crmAppSource();
   const styles = crmStylesSource();
   const renderTemplatesSource = functionSource(app, "renderTemplatesSettingsPanel", "renderTemplateForm");
-  const renderTemplateFormSource = functionSource(app, "renderTemplateForm", "renderMailIntegrationsSettings");
-  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderGmailDiscoveryPagination");
+  const renderTemplateFormSource = functionSource(app, "renderTemplateForm", "renderOutgoingEmailSettingsPanel");
+  const renderMailSettingsSource = functionSource(app, "renderGmailConnectivitySettings", "renderLinkedinIntegrationSettings");
   const renderEmailFormSource = functionSource(app, "renderEmailForm", "renderImportModal");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
   const changeHandlerSource = app.slice(app.indexOf("document.addEventListener(\"change\""), app.indexOf("document.addEventListener(\"submit\""));
@@ -1502,7 +1550,7 @@ test("CRM mail templates can be managed and selected from follow-up email", () =
 test("CRM Gmail discovered contacts provide add feedback and disappear after add", () => {
   const app = crmAppSource();
   const styles = crmStylesSource();
-  const renderMailSettingsSource = functionSource(app, "renderMailIntegrationsSettings", "renderConfigurationSettingsPanel");
+  const renderMailSettingsSource = functionSource(app, "renderGmailConnectivitySettings", "renderLinkedinIntegrationSettings");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
 
   assert.match(renderMailSettingsSource, /New contacts found in Gmail/);
@@ -1591,7 +1639,7 @@ test("CRM page headers expose contextual online help", () => {
   assert.match(helpContentSource, /Home guide/);
   assert.match(helpContentSource, /Accounts guide/);
   assert.match(helpContentSource, /Reports guide/);
-  assert.match(helpContentSource, /Email integration guide/);
+  assert.match(helpContentSource, /Connectivity guide/);
   assert.match(renderHelpSource, /Online user guide/);
   assert.match(renderHelpSource, /help-guide-index/);
   assert.match(clickHandlerSource, /action === "open-help"/);
