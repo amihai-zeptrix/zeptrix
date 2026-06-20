@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { authChallengeForUser, authenticatorUri, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, mfaRecoveryEmailContent, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, passwordResetEmailContent, registrationNotificationContent, signAuthToken, signGoogleAuthState, signMfaRecoveryToken, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyMfaRecoveryToken, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
+const { authChallengeForUser, authenticatorUri, consumeGoogleAuthResult, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, mfaRecoveryEmailContent, normalizeDealPayload, normalizeGmailSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, passwordResetEmailContent, registrationNotificationContent, signAuthToken, signGoogleAuthState, signMfaRecoveryToken, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, storeGoogleAuthResult, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyMfaRecoveryToken, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -200,10 +200,12 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   assert.match(completeAuthSource, /await loadStateFromApi\(\)/);
   assert.match(app, /async function mfaSetupViaApi/);
   assert.match(app, /async function mfaVerifyViaApi/);
+  assert.match(app, /async function googleAuthExchangeViaApi/);
   assert.match(app, /consumeGoogleAuthRedirect\(\)\.finally/);
   assert.ok(server.includes('pathname === "/api/auth/register"'));
   assert.ok(server.includes('pathname === "/api/auth/google/start"'));
   assert.ok(server.includes('pathname === "/api/auth/google/callback"'));
+  assert.ok(server.includes('pathname === "/api/auth/google/exchange"'));
   assert.ok(server.includes('pathname === "/api/auth/mfa/setup"'));
   assert.ok(server.includes('pathname === "/api/auth/mfa/verify"'));
   assert.match(server, /normalizeRegistrationPayload/);
@@ -272,6 +274,8 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   const secret = "JBSWY3DPEHPK3PXP";
   const code = totpCode(secret);
   const state = signGoogleAuthState("register");
+  const authPayload = { user: { id: "user-123", email: "ron@example.com" }, token: "server-side-only" };
+  const exchangeCode = storeGoogleAuthResult(authPayload);
 
   assert.equal(challenge.mfaRequired, true);
   assert.equal(challenge.mfaSetupRequired, true);
@@ -288,12 +292,17 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.equal(platformAdminChallenge.preAuthToken, "");
   assert.equal(verifySignedPayload(platformAdminChallenge.token).role, "platform_admin");
   assert.equal(verifyGoogleAuthState(state).mode, "register");
+  assert.deepEqual(consumeGoogleAuthResult(exchangeCode), authPayload);
+  assert.equal(consumeGoogleAuthResult(exchangeCode), null);
   assert.match(authenticatorUri({ secret, email: "ron@example.com" }), /^otpauth:\/\/totp\/Zeptrix%20CRM/);
   assert.equal(verifyTotpCode(secret, code), true);
   assert.equal(verifyTotpCode(secret, "000000"), false);
   assert.match(server, /openid email profile/);
   assert.match(server, /verifyGoogleIdentity/);
   assert.match(server, /exchangeGoogleAuthCode/);
+  assert.match(server, /storeGoogleAuthResult\(\{ \.\.\.challenge, tenant \}\)/);
+  assert.match(server, /redirect\.searchParams\.set\("googleCode"/);
+  assert.doesNotMatch(server, /redirect\.searchParams\.set\("googleAuth"/);
   assert.match(server, /const QRCode = require\("qrcode"\)/);
   assert.match(server, /QRCode\.toDataURL\(otpauth/);
   assert.doesNotMatch(server, /chart\.googleapis\.com\/chart/);
@@ -347,6 +356,8 @@ test("login screen supports password reset and authenticator recovery", () => {
   assert.match(renderMfaRecoverySource, /Send authenticator link/);
   assert.match(redirectSource, /mfaRecovery/);
   assert.match(redirectSource, /mfaRecoveryConfirmViaApi\(mfaRecovery\)/);
+  assert.match(redirectSource, /ui\.authStep = "password"/);
+  assert.doesNotMatch(redirectSource, /await prepareMfaChallenge\(result\)/);
   assert.match(clickHandlerSource, /action === "show-forgot-password"/);
   assert.match(clickHandlerSource, /action === "show-mfa-recovery"/);
   assert.match(submitHandlerSource, /data-forgot-password-form/);
@@ -358,6 +369,8 @@ test("login screen supports password reset and authenticator recovery", () => {
   assert.ok(server.includes('pathname === "/api/auth/mfa/recovery-confirm"'));
   assert.match(server, /password_change_required=true/);
   assert.match(server, /mfa_secret_enc=null, mfa_confirmed=false, mfa_enabled=true/);
+  assert.match(server, /requiresLogin: true/);
+  assert.doesNotMatch(server, /const updated = await userById\(user\.id\);\s+return json\(res, 200, authChallengeForUser\(updated\)\)/);
   assert.match(server, /signMfaRecoveryToken\(user\)/);
   assert.match(server, /verifyMfaRecoveryToken\(token\)/);
   assert.match(styles, /\.success/);
@@ -579,12 +592,21 @@ test("Gmail message text extraction prefers plain text and falls back to html", 
 test("Gmail attention detection uses a large negative wording lexicon and persists matches", () => {
   const server = serverSource();
   const lexiconSource = server.slice(server.indexOf("const NEGATIVE_CORRESPONDENCE_PHRASES"), server.indexOf("const scanProgressById"));
+  const scanSource = server.slice(server.indexOf("async function scanGmailForTenant"), server.indexOf("async function runWorkflowAutomationForTenant"));
+  const refreshSource = functionSource(server, "refreshGmailAccessToken", "getGmailAccessToken");
   const matches = detectNegativeCorrespondence("I am angrey because you've promised a recovery plan and this is still broken.");
 
   assert.ok(matches.includes("angrey"));
   assert.ok(matches.includes("you've promised"));
   assert.ok(matches.includes("still broken"));
   assert.ok((lexiconSource.match(/"[^"]+"/g) || []).length >= 100);
+  assert.match(scanSource, /listGmailMessages\(accessToken, \{ q: `\$\{gmailNewContactScope\(integration\.labels\)\} newer_than:\$\{gmailLookbackDays\}d -in:sent` \}, GMAIL_NEW_CONTACT_METADATA_LIMIT\)/);
+  assert.match(scanSource, /if \(integration\.detect_new_contacts\) \{/);
+  assert.match(scanSource, /const attentionCorrespondence = fullInboundMessages/);
+  assert.doesNotMatch(scanSource, /integration\.detect_new_contacts\s+\?\s+listGmailMessages/);
+  assert.match(refreshSource, /const refreshClientId = integration\.client_id \|\| googleClientId/);
+  assert.match(refreshSource, /client_id: refreshClientId/);
+  assert.match(server, /client_id=\$7, redirect_uri=\$8/);
   assert.match(server, /attention_correspondence/);
   assert.match(server, /detectNegativeCorrespondence/);
   assert.match(server, /Matched: \$\{matches\.join\(", "\)\}/);

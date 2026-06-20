@@ -688,6 +688,10 @@ async function mfaRecoveryConfirmViaApi(token) {
   return apiRequest("/api/auth/mfa/recovery-confirm", { method: "POST", body: JSON.stringify({ token }) });
 }
 
+async function googleAuthExchangeViaApi(code) {
+  return apiRequest("/api/auth/google/exchange", { method: "POST", body: JSON.stringify({ code }) });
+}
+
 async function changePasswordViaApi(email, password) {
   return apiRequest("/api/auth/change-password", { method: "POST", body: JSON.stringify({ email, password }) });
 }
@@ -739,9 +743,9 @@ async function completeAuthSession(user) {
 async function consumeGoogleAuthRedirect() {
   const params = new URLSearchParams(window.location.search);
   const authError = params.get("authError");
-  const googleAuth = params.get("googleAuth");
+  const googleCode = params.get("googleCode");
   const mfaRecovery = params.get("mfaRecovery");
-  if (!authError && !googleAuth && !mfaRecovery) return;
+  if (!authError && !googleCode && !mfaRecovery) return;
   window.history.replaceState({}, "", window.location.pathname);
   if (authError) {
     ui.authError = authError;
@@ -751,8 +755,8 @@ async function consumeGoogleAuthRedirect() {
   if (mfaRecovery) {
     try {
       const result = await mfaRecoveryConfirmViaApi(mfaRecovery);
-      ui.authNotice = "Authenticator reset. Scan the new QR code and enter the verification code.";
-      await prepareMfaChallenge(result);
+      ui.authNotice = result.message || "Authenticator reset. Sign in with your password to configure a new authenticator.";
+      ui.authStep = "password";
     } catch (error) {
       ui.authError = error.message;
       ui.authStep = "mfa-recovery";
@@ -760,8 +764,7 @@ async function consumeGoogleAuthRedirect() {
     return;
   }
   try {
-    const base64 = googleAuth.replace(/-/g, "+").replace(/_/g, "/");
-    const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
+    const payload = await googleAuthExchangeViaApi(googleCode);
     await prepareMfaChallenge(payload);
   } catch (error) {
     ui.authError = `Google sign-in could not be completed: ${error.message}`;

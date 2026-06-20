@@ -1483,6 +1483,22 @@ function verifyGoogleAuthState(token) {
   return payload?.purpose === "google-auth" ? payload : null;
 }
 
+const googleAuthResults = new Map();
+
+function storeGoogleAuthResult(payload) {
+  const code = `${crypto.randomUUID()}-${crypto.randomBytes(12).toString("base64url")}`;
+  googleAuthResults.set(code, { payload, exp: Date.now() + 2 * 60 * 1000 });
+  setTimeout(() => googleAuthResults.delete(code), 2 * 60 * 1000).unref?.();
+  return code;
+}
+
+function consumeGoogleAuthResult(code) {
+  const entry = googleAuthResults.get(String(code || ""));
+  googleAuthResults.delete(String(code || ""));
+  if (!entry || entry.exp < Date.now()) return null;
+  return entry.payload;
+}
+
 function userAuthPayload(user) {
   return {
     id: user.id,
@@ -1819,12 +1835,14 @@ async function exchangeGmailCode({ code, clientId, redirectUri }) {
 
 async function refreshGmailAccessToken(integration) {
   if (!integration.refresh_token_enc) throw new Error("Gmail refresh token is missing. Reconnect Gmail.");
+  const refreshClientId = integration.client_id || googleClientId;
+  if (!refreshClientId) throw new Error("Google OAuth client ID is missing. Reconnect Gmail.");
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       refresh_token: decryptToken(integration.refresh_token_enc),
-      client_id: integration.client_id,
+      client_id: refreshClientId,
       client_secret: googleClientSecret,
       grant_type: "refresh_token",
     }),
@@ -2290,9 +2308,7 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
   const [dealsResult, blacklistResult, inboundList] = await Promise.all([
     dbQuery(`select distinct on (lower(email)) id, lower(email) email, contact, account from deals where tenant_id=$1 and email is not null and email<>'' order by lower(email), updated_at desc`, [tenantId]),
     dbQuery(`select lower(email::text) email from gmail_contact_blacklist where tenant_id=$1`, [tenantId]),
-    integration.detect_new_contacts
-      ? listGmailMessages(accessToken, { q: `${gmailNewContactScope(integration.labels)} newer_than:${gmailLookbackDays}d -in:sent` }, GMAIL_NEW_CONTACT_METADATA_LIMIT)
-      : { messages: [] },
+    listGmailMessages(accessToken, { q: `${gmailNewContactScope(integration.labels)} newer_than:${gmailLookbackDays}d -in:sent` }, GMAIL_NEW_CONTACT_METADATA_LIMIT),
   ]);
   const knownEmails = new Set(dealsResult.rows.map((row) => row.email));
   const blacklistedEmails = new Set(blacklistResult.rows.map((row) => row.email));
@@ -2307,11 +2323,13 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
   });
   const unknownMetadata = [];
   const seenNew = new Set();
-  for (const message of inboundMetadata) {
-    const parsed = parseEmailAddress(headerValue(message, "From"));
-    if (!parsed || isAutomatedSenderEmail(parsed.email) || knownEmails.has(parsed.email) || blacklistedEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
-    seenNew.add(parsed.email);
-    unknownMetadata.push({ ...message, parsed });
+  if (integration.detect_new_contacts) {
+    for (const message of inboundMetadata) {
+      const parsed = parseEmailAddress(headerValue(message, "From"));
+      if (!parsed || isAutomatedSenderEmail(parsed.email) || knownEmails.has(parsed.email) || blacklistedEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
+      seenNew.add(parsed.email);
+      unknownMetadata.push({ ...message, parsed });
+    }
   }
   updateGmailScanProgress(scanId, { status: "enriching", totalMessages: inboundCandidates.length, scannedMessages, candidatesFound: unknownMetadata.length });
   const fullInboundMessages = (await mapLimit(inboundMetadata.slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT), 6, async (message) => {
@@ -2560,12 +2578,23 @@ async function handleApi(req, res) {
         user.google_subject = profile.subject;
       }
       const challenge = authChallengeForUser(user);
-      redirect.searchParams.set("googleAuth", Buffer.from(JSON.stringify({ ...challenge, tenant })).toString("base64url"));
+      redirect.searchParams.set("googleCode", storeGoogleAuthResult({ ...challenge, tenant }));
     } catch (error) {
       redirect.searchParams.set("authError", error.message);
     }
     res.writeHead(302, { location: redirect.toString() });
     return res.end();
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/google/exchange") {
+    try {
+      const { code } = await readBody(req);
+      const payload = consumeGoogleAuthResult(code);
+      if (!payload) return json(res, 401, { error: "Google sign-in session expired. Please try again." });
+      return json(res, 200, payload);
+    } catch (error) {
+      return json(res, 500, { error: "Unable to complete Google sign-in.", detail: error.message });
+    }
   }
 
   if (req.method === "POST" && pathname === "/api/auth/login") {
@@ -2633,8 +2662,7 @@ async function handleApi(req, res) {
         `update users set mfa_secret_enc=null, mfa_confirmed=false, mfa_enabled=true where id=$1`,
         [user.id],
       );
-      const updated = await userById(user.id);
-      return json(res, 200, authChallengeForUser(updated));
+      return json(res, 200, { ok: true, requiresLogin: true, message: "Authenticator reset. Sign in with your password to configure a new authenticator." });
     } catch (error) {
       return json(res, 500, { error: "Unable to configure authenticator recovery.", detail: error.message });
     }
@@ -3146,9 +3174,9 @@ async function handleApi(req, res) {
       const connectedDomain = connectedEmail.includes("@") ? connectedEmail.split("@").pop().toLowerCase() : (integration.workspace_domain || "gmail.com");
       await dbQuery(
         `update gmail_integrations
-         set enabled=true, status='Connected', access_token_enc=$2, refresh_token_enc=coalesce($3, refresh_token_enc), token_expiry=$4, account_email=$5, workspace_domain=$6, updated_at=now()
+         set enabled=true, status='Connected', access_token_enc=$2, refresh_token_enc=coalesce($3, refresh_token_enc), token_expiry=$4, account_email=$5, workspace_domain=$6, client_id=$7, redirect_uri=$8, updated_at=now()
          where tenant_id=$1`,
-        [state.tenantId, encryptToken(token.access_token), token.refresh_token ? encryptToken(token.refresh_token) : null, new Date(Date.now() + Number(token.expires_in || 3600) * 1000), connectedEmail, connectedDomain],
+        [state.tenantId, encryptToken(token.access_token), token.refresh_token ? encryptToken(token.refresh_token) : null, new Date(Date.now() + Number(token.expires_in || 3600) * 1000), connectedEmail, connectedDomain, googleClientId, `${publicBaseUrl}/api/gmail/oauth/callback`],
       );
       res.writeHead(302, { location: `${safeGmailReturnOrigin(state.returnOrigin)}/crm/?gmail=connected` });
       res.end();
@@ -3291,6 +3319,7 @@ module.exports = {
   signGoogleAuthState,
   signMfaRecoveryToken,
   signPreAuthToken,
+  storeGoogleAuthResult,
   staticFilePathForUrlPath,
   smtpInviteMessage,
   totpCode,
@@ -3298,6 +3327,7 @@ module.exports = {
   updateTenantWithClient,
   validateTenant,
   verifyGoogleAuthState,
+  consumeGoogleAuthResult,
   verifyMfaRecoveryToken,
   verifyPreAuthToken,
   verifySignedPayload,
