@@ -13,8 +13,9 @@ const CRM_SECTION_ROUTE = CRM_NAMED_ROUTE_MATCH && ["admin", "home", "pipeline",
 const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm\/demo(?:\/([^/]+))?\/?$/) || (!CRM_SECTION_ROUTE ? CRM_NAMED_ROUTE_MATCH : null);
 const IS_DEMO_ROUTE = !!DEMO_ROUTE_MATCH;
 const DEMO_USER_NAME = DEMO_ROUTE_MATCH?.[1] || DEMO_ROUTE_MATCH?.[2] ? titleCase(DEMO_ROUTE_MATCH[1] || DEMO_ROUTE_MATCH[2]) : "Demo User";
+const IS_CANONICAL_REDIRECT = !IS_DEMO_ROUTE && location.hostname === "www.zeptrix.io";
 
-if (!IS_DEMO_ROUTE && location.hostname === "www.zeptrix.io") {
+if (IS_CANONICAL_REDIRECT) {
   location.replace(`https://zeptrix.io${location.pathname}${location.search}${location.hash}`);
 }
 
@@ -262,9 +263,11 @@ let ui = {
   },
 };
 
-handleGmailCallbackQuery();
-loadStateFromApi();
-if (IS_DEMO_ROUTE) applyDemoSession();
+if (!IS_CANONICAL_REDIRECT) {
+  handleGmailCallbackQuery();
+  loadStateFromApi();
+  if (IS_DEMO_ROUTE) applyDemoSession();
+}
 
 function handleGmailCallbackQuery() {
   const params = new URLSearchParams(window.location.search);
@@ -531,6 +534,9 @@ function authenticate(email, password) {
 }
 
 async function apiRequest(path, options = {}) {
+  if (!session?.apiToken && !path.startsWith("/api/auth/")) {
+    throw new Error("Your CRM session is not available in this browser tab. Open zeptrix.io/crm and sign in again.");
+  }
   const response = await fetch(path, {
     ...options,
     headers: { "content-type": "application/json", ...(session?.apiToken ? { authorization: `Bearer ${session.apiToken}` } : {}), ...(options.headers || {}) },
@@ -542,7 +548,7 @@ async function apiRequest(path, options = {}) {
       : body.error === "Unable to scan LinkedIn." && body.detail
       ? body.detail
       : response.status === 401 && body.error === "Authentication required."
-      ? "Please sign in again to continue."
+      ? "Your CRM session expired or belongs to another browser domain. Open zeptrix.io/crm and sign in again."
       : body.error || body.detail || "Request failed.";
     throw new Error(message);
   }
@@ -4122,4 +4128,6 @@ async function importSampleRecords(source = "csv") {
   }
 }
 
-consumeGoogleAuthRedirect().finally(() => render());
+if (!IS_CANONICAL_REDIRECT) {
+  consumeGoogleAuthRedirect().finally(() => render());
+}

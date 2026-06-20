@@ -1772,9 +1772,14 @@ test("CRM rejects stale local sessions but does not log out on protected request
 
   assert.match(app, /location\.hostname === "www\.zeptrix\.io"/);
   assert.match(app, /location\.replace\(`https:\/\/zeptrix\.io\$\{location\.pathname\}\$\{location\.search\}\$\{location\.hash\}`\)/);
+  assert.match(app, /const IS_CANONICAL_REDIRECT = !IS_DEMO_ROUTE && location\.hostname === "www\.zeptrix\.io"/);
+  assert.match(app, /if \(!IS_CANONICAL_REDIRECT\) \{\s*handleGmailCallbackQuery\(\);\s*loadStateFromApi\(\);/);
+  assert.match(app, /if \(!IS_CANONICAL_REDIRECT\) \{\s*consumeGoogleAuthRedirect\(\)\.finally\(\(\) => render\(\)\);/);
   assert.match(loadSessionSource, /storedSession\.role !== "demo_user" && !storedSession\.apiToken/);
   assert.match(apiRequestSource, /response\.status === 401/);
-  assert.match(apiRequestSource, /Please sign in again to continue/);
+  assert.match(apiRequestSource, /Your CRM session is not available in this browser tab/);
+  assert.match(apiRequestSource, /Your CRM session expired or belongs to another browser domain/);
+  assert.doesNotMatch(apiRequestSource, /Please sign in again to continue/);
   assert.doesNotMatch(apiRequestSource, /session = null/);
 });
 
