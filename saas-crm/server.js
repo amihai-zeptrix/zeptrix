@@ -2,9 +2,11 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { execFile } = require("child_process");
 const { SendEmailCommand, SESClient } = require("@aws-sdk/client-ses");
 const nodemailer = require("nodemailer");
 const { Pool } = require("pg");
+const QRCode = require("qrcode");
 
 const root = __dirname;
 loadEnv(path.join(root, ".env"));
@@ -12,6 +14,7 @@ loadEnv(path.join(root, ".env"));
 const port = Number(process.env.PORT || 4173);
 const region = process.env.AWS_REGION || "us-east-1";
 const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SES_FROM_EMAIL;
+const registrationNotificationEmail = process.env.REGISTRATION_NOTIFICATION_EMAIL || "amihaih@gmail.com";
 const smtpHost = process.env.SMTP_HOST || "smtp.porkbun.com";
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpUser = process.env.SMTP_USER || fromEmail;
@@ -19,14 +22,27 @@ const smtpPassword = process.env.SMTP_PASSWORD || process.env.PORKBUN_SMTP_PASSW
 const emailProvider = (process.env.EMAIL_PROVIDER || (smtpPassword ? "smtp" : "ses")).toLowerCase();
 const appBaseUrl = process.env.APP_BASE_URL || `http://localhost:${port}/crm/`;
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL?.replace(/\/crm\/?$/, "") || `http://localhost:${port}`;
+const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_SSO_CLIENT_ID || "";
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+const linkedinPuppeteerEnabled = ["1", "true", "yes"].includes(String(process.env.LINKEDIN_PUPPETEER_ENABLED || "").toLowerCase());
+const linkedinChromePath = process.env.LINKEDIN_CHROME_PATH || process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const linkedinChromeProfile = process.env.LINKEDIN_CHROME_PROFILE || "";
 const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
 const authTokenSecret = process.env.CRM_AUTH_SECRET || tokenSecret;
+const GOOGLE_SSO_REDIRECT_URI = `${publicBaseUrl}/api/auth/google/callback`;
 const GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30;
 const GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000;
 const GMAIL_NEW_CONTACT_FULL_LIMIT = 250;
 const GMAIL_NEW_CONTACT_SIGNAL_LIMIT = 250;
 const GMAIL_ATTENTION_SIGNAL_LIMIT = 100;
+const DEFAULT_WORKFLOW_AUTOMATION = {
+  enabled: true,
+  createFollowUpTasks: true,
+  tagRiskAccounts: true,
+  riskTag: "At risk",
+  dormantDueDays: 3,
+  attentionDueDays: 1,
+};
 const NEGATIVE_CORRESPONDENCE_PHRASES = [
   "angry", "angrey", "frustrated", "upset", "unhappy", "disappointed", "dissatisfied", "concerned", "worried", "annoyed",
   "irritated", "furious", "outraged", "mad", "displeased", "unacceptable", "not acceptable", "totally unacceptable", "very disappointed", "deeply disappointed",
@@ -44,6 +60,8 @@ const NEGATIVE_CORRESPONDENCE_PHRASES = [
   "account review", "postmortem", "root cause", "corrective action", "recovery plan", "remediation", "mitigation", "action plan", "where is the update", "why should we renew",
 ];
 const scanProgressById = new Map();
+const mfaAttemptsByChallenge = new Map();
+const consumedMfaChallenges = new Set();
 const ses = new SESClient({ region });
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false } })
@@ -92,6 +110,39 @@ function readBody(req) {
     req.on("end", () => resolve(body ? JSON.parse(body) : {}));
     req.on("error", reject);
   });
+}
+
+const AUDIT_VALUE_ALLOWLIST = new Set([
+  "account", "enabled", "gmailLookbackDays", "group", "priority", "recurrence", "region", "seats", "stage", "status", "type", "value",
+  "close", "due", "staleMonths", "detectNewContacts", "detectDormantContacts", "createFollowUpTasks", "tagRiskAccounts", "dormantDueDays", "attentionDueDays",
+]);
+
+function redactAuditValue(name, value) {
+  const field = String(name || "");
+  if (!AUDIT_VALUE_ALLOWLIST.has(field) || /(password|secret|token|code|temporary|authorization|credential|email|phone|body|subject|message|note|template|client|smtp|label|uri|url|name|contact|owner|user)/i.test(field)) return "[redacted]";
+  return String(value ?? "").slice(0, 500);
+}
+
+function sanitizedAuditMap(value, maxEntries = 40) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .slice(0, maxEntries)
+      .map(([key, item]) => [String(key).slice(0, 80), redactAuditValue(key, item)]),
+  );
+}
+
+function sanitizeAuditDetails(details) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return {};
+  const sanitized = {};
+  if ("section" in details) sanitized.section = String(details.section || "").slice(0, 80);
+  if ("status" in details) sanitized.status = String(details.status || "").slice(0, 40);
+  if ("label" in details) sanitized.label = String(details.label || "").slice(0, 160);
+  if ("editedTenantId" in details) sanitized.editedTenantId = String(details.editedTenantId || "").slice(0, 80);
+  if ("editedTenantName" in details) sanitized.editedTenantName = String(details.editedTenantName || "").slice(0, 160);
+  if (details.dataset && typeof details.dataset === "object") sanitized.dataset = sanitizedAuditMap(details.dataset, 20);
+  if (details.fields && typeof details.fields === "object") sanitized.fields = sanitizedAuditMap(details.fields, 50);
+  return sanitized;
 }
 
 function slugify(value) {
@@ -168,6 +219,20 @@ function normalizeDealPayload(payload = {}) {
     tags,
     note: String(payload.note || payload.notes || "").trim(),
     updated: String(payload.updated || "Just now").trim(),
+  };
+}
+
+function normalizeWorkflowAutomationSettings(payload = {}) {
+  const enabled = payload.enabled == null ? DEFAULT_WORKFLOW_AUTOMATION.enabled : Boolean(payload.enabled);
+  const createFollowUpTasks = payload.createFollowUpTasks == null ? DEFAULT_WORKFLOW_AUTOMATION.createFollowUpTasks : Boolean(payload.createFollowUpTasks);
+  const tagRiskAccounts = payload.tagRiskAccounts == null ? DEFAULT_WORKFLOW_AUTOMATION.tagRiskAccounts : Boolean(payload.tagRiskAccounts);
+  return {
+    enabled,
+    createFollowUpTasks,
+    tagRiskAccounts,
+    riskTag: normalizeTagName(payload.riskTag || DEFAULT_WORKFLOW_AUTOMATION.riskTag) || DEFAULT_WORKFLOW_AUTOMATION.riskTag,
+    dormantDueDays: Math.max(1, Math.min(30, Number(payload.dormantDueDays || DEFAULT_WORKFLOW_AUTOMATION.dormantDueDays))),
+    attentionDueDays: Math.max(0, Math.min(14, Number(payload.attentionDueDays ?? DEFAULT_WORKFLOW_AUTOMATION.attentionDueDays))),
   };
 }
 
@@ -251,7 +316,7 @@ function inviteEmailContent({ to, tenantName, temporaryPassword }) {
     `Sign in: ${appBaseUrl}`,
     `Email: ${to}`,
     `Temporary password: ${temporaryPassword}`,
-    "MFA code for this demo: 123456",
+    "Authenticator MFA: after signing in, you will be prompted to scan a QR code with Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.",
     "",
     "You will be asked to create a permanent password after login.",
   ].join("\n");
@@ -262,10 +327,134 @@ function inviteEmailContent({ to, tenantName, temporaryPassword }) {
       <p><a href="${escapeHtml(appBaseUrl)}">Open Zeptrix CRM</a></p>
       <p><strong>Email:</strong> ${escapeHtml(to)}<br>
       <strong>Temporary password:</strong> ${escapeHtml(temporaryPassword)}<br>
-      <strong>MFA code for this demo:</strong> 123456</p>
+      <strong>Authenticator MFA:</strong> after signing in, you will be prompted to scan a QR code with Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.</p>
       <p>You will be asked to create a permanent password after login.</p>
     </div>`;
   return { subject, text, html };
+}
+
+function passwordResetEmailContent({ to, tenantName, temporaryPassword }) {
+  const subject = "Reset your Zeptrix CRM password";
+  const text = [
+    `A password reset was requested for your ${tenantName} Zeptrix CRM account.`,
+    "",
+    `Sign in: ${appBaseUrl}`,
+    `Email: ${to}`,
+    `Temporary password: ${temporaryPassword}`,
+    "",
+    "After signing in, you will be asked to create a new permanent password.",
+    "If you did not request this reset, contact your CRM administrator.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#20242b">
+      <h2>Reset your Zeptrix CRM password</h2>
+      <p>A password reset was requested for your <strong>${escapeHtml(tenantName)}</strong> account.</p>
+      <p><a href="${escapeHtml(appBaseUrl)}">Open Zeptrix CRM</a></p>
+      <p><strong>Email:</strong> ${escapeHtml(to)}<br>
+      <strong>Temporary password:</strong> ${escapeHtml(temporaryPassword)}</p>
+      <p>After signing in, you will be asked to create a new permanent password.</p>
+      <p style="color:#667085">If you did not request this reset, contact your CRM administrator.</p>
+    </div>`;
+  return { subject, text, html };
+}
+
+function mfaRecoveryEmailContent({ to, tenantName, recoveryUrl }) {
+  const subject = "Configure a new Zeptrix CRM authenticator";
+  const text = [
+    `A request was made to configure a new authenticator for your ${tenantName} Zeptrix CRM account.`,
+    "",
+    `Open this link within 30 minutes: ${recoveryUrl}`,
+    "",
+    "You will be asked to scan a new QR code in Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.",
+    "If you did not request this, ignore this email and contact your CRM administrator.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#20242b">
+      <h2>Configure a new authenticator</h2>
+      <p>A request was made to configure a new authenticator for your <strong>${escapeHtml(tenantName)}</strong> account.</p>
+      <p><a href="${escapeHtml(recoveryUrl)}">Configure authenticator</a></p>
+      <p>This link expires in 30 minutes. You will be asked to scan a new QR code in Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.</p>
+      <p style="color:#667085">If you did not request this, ignore this email and contact your CRM administrator.</p>
+    </div>`;
+  return { subject, text, html };
+}
+
+function registrationNotificationContent({ tenantName, userName, userEmail, method }) {
+  const subject = `New Zeptrix CRM registration: ${tenantName}`;
+  const text = [
+    "A new user registered to Zeptrix CRM.",
+    "",
+    `Tenant: ${tenantName}`,
+    `User: ${userName}`,
+    `Email: ${userEmail}`,
+    `Method: ${method}`,
+    `Time: ${new Date().toISOString()}`,
+    "",
+    `Admin: ${appBaseUrl}`,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#20242b">
+      <h2>New Zeptrix CRM registration</h2>
+      <p>A new user registered to Zeptrix CRM.</p>
+      <table style="border-collapse:collapse">
+        <tr><td style="padding:4px 12px 4px 0;color:#667085">Tenant</td><td style="padding:4px 0"><strong>${escapeHtml(tenantName)}</strong></td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#667085">User</td><td style="padding:4px 0">${escapeHtml(userName)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#667085">Email</td><td style="padding:4px 0">${escapeHtml(userEmail)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#667085">Method</td><td style="padding:4px 0">${escapeHtml(method)}</td></tr>
+      </table>
+      <p><a href="${escapeHtml(appBaseUrl)}">Open Zeptrix CRM</a></p>
+    </div>`;
+  return { subject, text, html };
+}
+
+async function sendTransactionalEmail({ to, subject, text, html }) {
+  if (!fromEmail) return { status: "not_configured", messageId: null, detail: "Sender email is not configured." };
+  if (emailProvider === "smtp") {
+    if (!smtpUser || !smtpPassword) return { status: "not_configured", messageId: null, detail: "SMTP user or password is not configured." };
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPassword },
+    });
+    const response = await transporter.sendMail({
+      from: `Zeptrix CRM <${fromEmail}>`,
+      to,
+      subject,
+      text,
+      html,
+    });
+    return { status: "sent", messageId: response.messageId || null, detail: `Sent through SMTP (${smtpHost}).` };
+  }
+  const response = await ses.send(new SendEmailCommand({
+    Source: fromEmail,
+    Destination: { ToAddresses: [to] },
+    Message: {
+      Subject: { Charset: "UTF-8", Data: subject },
+      Body: {
+        Text: { Charset: "UTF-8", Data: text },
+        Html: { Charset: "UTF-8", Data: html },
+      },
+    },
+  }));
+  return { status: "sent", messageId: response.MessageId, detail: "Sent through Amazon SES." };
+}
+
+async function sendRegistrationNotification(args) {
+  if (!registrationNotificationEmail) return { status: "disabled", detail: "REGISTRATION_NOTIFICATION_EMAIL is empty." };
+  const content = registrationNotificationContent(args);
+  return sendTransactionalEmail({ to: registrationNotificationEmail, ...content });
+}
+
+async function notifyRegistration(args) {
+  try {
+    const result = await sendRegistrationNotification(args);
+    if (result.status !== "sent") console.log(`Registration notification was not sent: ${result.detail}`);
+    return result;
+  } catch (error) {
+    console.log(`Registration notification failed: ${error.message}`);
+    return { status: "failed", detail: error.message };
+  }
 }
 
 async function sendInviteEmailViaSmtp(args) {
@@ -388,9 +577,11 @@ async function initDatabase() {
       region text not null default 'US-East',
       seats integer not null default 1 check (seats > 0),
       billing_email citext not null,
+      mfa_required boolean not null default false,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     )`);
+  await dbQuery(`alter table tenants add column if not exists mfa_required boolean not null default false`);
   await dbQuery(`
     create table if not exists users (
       id uuid primary key default gen_random_uuid(),
@@ -400,11 +591,19 @@ async function initDatabase() {
       password_hash text,
       password_change_required boolean not null default true,
       role text not null check (role in ('platform_admin', 'tenant_admin', 'sales_manager', 'sales_rep')),
-      mfa_enabled boolean not null default true,
+      mfa_enabled boolean not null default false,
+      mfa_secret_enc text,
+      mfa_confirmed boolean not null default false,
       google_subject text unique,
       last_login_at timestamptz,
       created_at timestamptz not null default now()
     )`);
+  await dbQuery(`alter table users add column if not exists mfa_enabled boolean not null default false`);
+  await dbQuery(`alter table users add column if not exists mfa_secret_enc text`);
+  await dbQuery(`alter table users add column if not exists mfa_confirmed boolean not null default false`);
+  await dbQuery(`alter table users add column if not exists google_subject text`);
+  await dbQuery(`alter table users add column if not exists last_login_at timestamptz`);
+  await dbQuery(`create unique index if not exists users_google_subject_key on users(google_subject) where google_subject is not null`);
   await dbQuery(`
     create table if not exists deals (
       id uuid primary key default gen_random_uuid(),
@@ -458,6 +657,11 @@ async function initDatabase() {
       body text,
       owner text,
       tracked text,
+      tracking_status text not null default 'Logged',
+      opened_at timestamptz,
+      replied_at timestamptz,
+      gmail_thread_id text,
+      source text not null default 'crm',
       occurred_at timestamptz not null default now()
     )`);
   await dbQuery(`
@@ -546,10 +750,64 @@ async function initDatabase() {
       created_at timestamptz not null default now(),
       unique(tenant_id, email)
     )`);
+  await dbQuery(`
+    create table if not exists linkedin_integrations (
+      tenant_id uuid primary key references tenants(id) on delete cascade,
+      company_page_url text,
+      account_email citext,
+      sync_contacts boolean not null default true,
+      sync_company_updates boolean not null default false,
+      enabled boolean not null default false,
+      status text not null default 'Not connected',
+      last_scan_at timestamptz,
+      last_scan_result jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )`);
+  await dbQuery(`
+    create table if not exists workflow_automations (
+      tenant_id uuid primary key references tenants(id) on delete cascade,
+      enabled boolean not null default true,
+      create_follow_up_tasks boolean not null default true,
+      tag_risk_accounts boolean not null default true,
+      risk_tag text not null default 'At risk',
+      dormant_due_days integer not null default 3 check (dormant_due_days >= 1 and dormant_due_days <= 30),
+      attention_due_days integer not null default 1 check (attention_due_days >= 0 and attention_due_days <= 14),
+      last_run_at timestamptz,
+      last_run_summary jsonb not null default '{}'::jsonb,
+      updated_at timestamptz not null default now(),
+      created_at timestamptz not null default now()
+    )`);
+  await dbQuery(`
+    create table if not exists audit_logs (
+      id uuid primary key default gen_random_uuid(),
+      tenant_id uuid references tenants(id) on delete set null,
+      user_id uuid references users(id) on delete set null,
+      user_email citext,
+      user_role text,
+      event_type text not null,
+      operation text not null,
+      target text,
+      details jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    )`);
   await dbQuery(`alter table gmail_contact_signals add column if not exists phone text`);
   await dbQuery(`alter table deals add column if not exists phone text`);
   await dbQuery(`alter table deals add column if not exists tags jsonb not null default '[]'::jsonb`);
+  await dbQuery(`alter table communications add column if not exists tracking_status text not null default 'Logged'`);
+  await dbQuery(`alter table communications add column if not exists opened_at timestamptz`);
+  await dbQuery(`alter table communications add column if not exists replied_at timestamptz`);
+  await dbQuery(`alter table communications add column if not exists gmail_thread_id text`);
+  await dbQuery(`alter table communications add column if not exists source text not null default 'crm'`);
   await dbQuery(`alter table gmail_integrations add column if not exists gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365)`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists company_page_url text`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists account_email citext`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists sync_contacts boolean not null default true`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists sync_company_updates boolean not null default false`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists enabled boolean not null default false`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists status text not null default 'Not connected'`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists last_scan_at timestamptz`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists last_scan_result jsonb not null default '{}'::jsonb`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists contact_tags_tenant_name_idx on contact_tags(tenant_id, lower(name))`);
   await dbQuery(`create index if not exists mail_templates_tenant_updated_idx on mail_templates(tenant_id, updated_at desc)`);
@@ -557,6 +815,11 @@ async function initDatabase() {
   await dbQuery(`create index if not exists invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc)`);
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
+  await dbQuery(`create index if not exists linkedin_integrations_updated_idx on linkedin_integrations(updated_at desc)`);
+  await dbQuery(`create index if not exists communications_tenant_thread_idx on communications(tenant_id, gmail_thread_id)`);
+  await dbQuery(`create index if not exists workflow_automations_updated_idx on workflow_automations(updated_at desc)`);
+  await dbQuery(`create index if not exists audit_logs_created_idx on audit_logs(created_at desc)`);
+  await dbQuery(`create index if not exists audit_logs_tenant_created_idx on audit_logs(tenant_id, created_at desc)`);
   await seedDatabase();
 }
 
@@ -704,9 +967,9 @@ async function updateTenantWithClient(client, idOrSlug, values) {
 async function insertUser(tenantId, user) {
   const result = await dbQuery(
     `insert into users (tenant_id, name, email, password_hash, password_change_required, role, mfa_enabled, google_subject)
-     values ($1, $2, $3, $4, $5, $6, true, $7)
+     values ($1, $2, $3, $4, $5, $6, false, $7)
      returning *`,
-    [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.sso ? `google-${user.email}` : null],
+    [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.googleSubject || (user.sso ? `google-${user.email}` : null)],
   );
   return result.rows[0];
 }
@@ -714,9 +977,9 @@ async function insertUser(tenantId, user) {
 async function insertUserWithClient(client, tenantId, user) {
   const result = await client.query(
     `insert into users (tenant_id, name, email, password_hash, password_change_required, role, mfa_enabled, google_subject)
-     values ($1, $2, $3, $4, $5, $6, true, $7)
+     values ($1, $2, $3, $4, $5, $6, false, $7)
      returning *`,
-    [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.sso ? `google-${user.email}` : null],
+    [tenantId, user.name, user.email, hashPassword(user.password), !!user.mustChangePassword, user.role, user.googleSubject || (user.sso ? `google-${user.email}` : null)],
   );
   return result.rows[0];
 }
@@ -857,7 +1120,7 @@ async function upsertMailTemplateForTenant(tenantId, payload, templateId = "") {
 }
 
 async function readState(auth) {
-  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult] = await Promise.all([
+  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, linkedinResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult, workflowAutomationResult, auditLogResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
     dbQuery(`select * from users order by created_at`),
     dbQuery(`select * from deals order by created_at`),
@@ -866,9 +1129,14 @@ async function readState(auth) {
     dbQuery(`select i.*, t.name tenant_name from invite_emails i join tenants t on t.id=i.tenant_id order by i.created_at desc limit 25`),
     dbQuery(`select * from gmail_integrations`),
     dbQuery(`select * from gmail_contact_signals order by created_at desc limit 500`),
+    dbQuery(`select * from linkedin_integrations`),
     dbQuery(`select * from contact_tags order by lower(name), name`),
     dbQuery(`select * from mail_templates order by updated_at desc`),
     dbQuery(`select * from outgoing_email_settings`),
+    dbQuery(`select * from workflow_automations`),
+    auth.role === "platform_admin"
+      ? dbQuery(`select a.*, t.name tenant_name from audit_logs a left join tenants t on t.id=a.tenant_id order by a.created_at desc limit 300`)
+      : dbQuery(`select a.*, t.name tenant_name from audit_logs a left join tenants t on t.id=a.tenant_id where a.tenant_id=$1 order by a.created_at desc limit 100`, [auth.tenantId]),
   ]);
   const visibleTenants = auth.role === "platform_admin" ? tenantsResult.rows : tenantsResult.rows.filter((tenant) => tenant.id === auth.tenantId);
   return {
@@ -880,15 +1148,18 @@ async function readState(auth) {
       communicationsResult.rows.filter((communication) => communication.tenant_id === tenant.id),
       gmailResult.rows.find((integration) => integration.tenant_id === tenant.id),
       gmailSignalResult.rows.filter((signal) => signal.tenant_id === tenant.id),
+      linkedinResult.rows.find((integration) => integration.tenant_id === tenant.id),
       contactTagsResult.rows.filter((tag) => tag.tenant_id === tenant.id),
       mailTemplatesResult.rows.filter((template) => template.tenant_id === tenant.id),
       outgoingEmailResult.rows.find((settings) => settings.tenant_id === tenant.id),
+      workflowAutomationResult.rows.find((settings) => settings.tenant_id === tenant.id),
     )),
     inviteEmails: auth.role === "platform_admin" ? invitesResult.rows.map(inviteFromRow) : [],
+    auditLogs: auth.role === "platform_admin" ? auditLogResult.rows.map(auditLogFromRow) : [],
   };
 }
 
-function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], contactTags = [], mailTemplates = [], outgoingEmailSettings = null) {
+function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], linkedinIntegration = null, contactTags = [], mailTemplates = [], outgoingEmailSettings = null, workflowAutomation = null) {
   const normalizedDeals = deals.map(dealFromRow);
   return {
     id: tenant.id,
@@ -899,14 +1170,17 @@ function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegra
     region: tenant.region,
     seats: tenant.seats,
     billingEmail: tenant.billing_email,
+    mfaRequired: !!tenant.mfa_required,
     users: users.map(userFromRow),
     deals: normalizedDeals,
     tasks: tasks.map(taskFromRow),
     communications: communications.map(communicationFromRow),
     gmailIntegration: gmailIntegrationFromRow(gmailIntegration, gmailSignals),
+    linkedinIntegration: linkedinIntegrationFromRow(linkedinIntegration),
     availableTags: availableContactTags(contactTags, normalizedDeals),
     mailTemplates: mailTemplates.map(mailTemplateFromRow),
     outgoingEmail: outgoingEmailSettingsFromRow(outgoingEmailSettings),
+    workflowAutomation: workflowAutomationFromRow(workflowAutomation),
   };
 }
 
@@ -926,6 +1200,7 @@ function userFromRow(user) {
     mustChangePassword: user.password_change_required,
     role: user.role,
     mfa: user.mfa_enabled,
+    mfaConfirmed: user.mfa_confirmed,
     sso: !!user.google_subject,
   };
 }
@@ -974,6 +1249,11 @@ function communicationFromRow(item) {
     date: item.occurred_at.toISOString(),
     owner: item.owner || "",
     tracked: item.tracked || "",
+    trackingStatus: item.tracking_status || item.tracked || "Logged",
+    openedAt: item.opened_at ? item.opened_at.toISOString() : "",
+    repliedAt: item.replied_at ? item.replied_at.toISOString() : "",
+    gmailThreadId: item.gmail_thread_id || "",
+    source: item.source || "crm",
   };
 }
 
@@ -1002,6 +1282,20 @@ function outgoingEmailSettingsFromRow(row) {
   };
 }
 
+function workflowAutomationFromRow(row) {
+  return {
+    ...DEFAULT_WORKFLOW_AUTOMATION,
+    enabled: row?.enabled ?? DEFAULT_WORKFLOW_AUTOMATION.enabled,
+    createFollowUpTasks: row?.create_follow_up_tasks ?? DEFAULT_WORKFLOW_AUTOMATION.createFollowUpTasks,
+    tagRiskAccounts: row?.tag_risk_accounts ?? DEFAULT_WORKFLOW_AUTOMATION.tagRiskAccounts,
+    riskTag: row?.risk_tag || DEFAULT_WORKFLOW_AUTOMATION.riskTag,
+    dormantDueDays: row?.dormant_due_days || DEFAULT_WORKFLOW_AUTOMATION.dormantDueDays,
+    attentionDueDays: row?.attention_due_days ?? DEFAULT_WORKFLOW_AUTOMATION.attentionDueDays,
+    lastRunAt: row?.last_run_at ? row.last_run_at.toISOString() : "",
+    lastRunSummary: row?.last_run_summary || {},
+  };
+}
+
 function gmailIntegrationFromRow(row, signals = []) {
   return {
     enabled: !!row?.enabled,
@@ -1017,6 +1311,20 @@ function gmailIntegrationFromRow(row, signals = []) {
     detectDormantContacts: row?.detect_dormant_contacts ?? true,
     lastScanAt: row?.last_scan_at ? row.last_scan_at.toISOString() : "",
     signals: signals.map(gmailSignalFromRow),
+  };
+}
+
+function linkedinIntegrationFromRow(row) {
+  return {
+    enabled: !!row?.enabled,
+    status: row?.status || "Not connected",
+    companyPageUrl: row?.company_page_url || "",
+    accountEmail: row?.account_email || "",
+    syncContacts: row?.sync_contacts ?? true,
+    syncCompanyUpdates: row?.sync_company_updates ?? false,
+    lastScanAt: row?.last_scan_at ? row.last_scan_at.toISOString() : "",
+    lastScanResult: row?.last_scan_result || {},
+    updatedAt: row?.updated_at ? row.updated_at.toISOString() : "",
   };
 }
 
@@ -1047,9 +1355,46 @@ function inviteFromRow(invite) {
   };
 }
 
+function auditLogFromRow(row) {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id || "",
+    tenantName: row.tenant_name || "Unknown tenant",
+    userEmail: row.user_email || "",
+    userRole: row.user_role || "",
+    eventType: row.event_type,
+    operation: row.operation,
+    target: row.target || "",
+    details: row.details || {},
+    createdAt: row.created_at ? row.created_at.toISOString() : "",
+  };
+}
+
+async function recordServerAudit({ auth, tenantId, eventType = "server_mutation", operation, target = "", details = {} }) {
+  if (!pool || !auth) return;
+  try {
+    await dbQuery(
+      `insert into audit_logs (tenant_id, user_id, user_email, user_role, event_type, operation, target, details)
+       values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+      [
+        tenantId || null,
+        auth.userId || null,
+        auth.email || "",
+        auth.role || "",
+        eventType,
+        String(operation || "unknown").slice(0, 160),
+        String(target || "").slice(0, 220),
+        JSON.stringify(sanitizeAuditDetails(details)),
+      ],
+    );
+  } catch (error) {
+    console.log(`Audit log write failed for ${operation}: ${error.message}`);
+  }
+}
+
 async function authenticateUser(email, password) {
   const result = await dbQuery(
-    `select u.*, t.id tenant_id, t.name tenant_name
+    `select u.*, t.id tenant_id, t.name tenant_name, t.mfa_required tenant_mfa_required
      from users u join tenants t on t.id=u.tenant_id
      where lower(u.email)=lower($1) and u.password_hash=$2`,
     [email, hashPassword(password)],
@@ -1057,15 +1402,7 @@ async function authenticateUser(email, password) {
   const user = result.rows[0];
   if (!user) return null;
   await dbQuery(`update users set last_login_at=now() where id=$1`, [user.id]);
-  return {
-    id: user.id,
-    tenantId: user.tenant_id,
-    tenantName: user.tenant_name,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    mustChangePassword: user.password_change_required,
-  };
+  return userAuthPayload(user);
 }
 
 function signPayload(payload) {
@@ -1087,6 +1424,38 @@ function verifySignedPayload(token) {
 
 function signAuthToken(user) {
   return signPayload({ userId: user.id, tenantId: user.tenantId, email: user.email, role: user.role, exp: Date.now() + 12 * 60 * 60 * 1000 });
+}
+
+function signPreAuthToken(user) {
+  return signPayload({ purpose: "mfa", jti: crypto.randomUUID(), userId: user.id, tenantId: user.tenantId, email: user.email, role: user.role, exp: Date.now() + 10 * 60 * 1000 });
+}
+
+function verifyPreAuthToken(token) {
+  const payload = verifySignedPayload(token);
+  return payload?.purpose === "mfa" ? payload : null;
+}
+
+function signMfaRecoveryToken(user) {
+  const payload = userAuthPayload(user);
+  return signPayload({ purpose: "mfa-recovery", jti: crypto.randomUUID(), userId: payload.id, tenantId: payload.tenantId, email: payload.email, role: payload.role, exp: Date.now() + 30 * 60 * 1000 });
+}
+
+function verifyMfaRecoveryToken(token) {
+  const payload = verifySignedPayload(token);
+  return payload?.purpose === "mfa-recovery" ? payload : null;
+}
+
+function mfaChallengeKey(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("base64url");
+}
+
+function registerMfaAttempt(token) {
+  const key = mfaChallengeKey(token);
+  const existing = mfaAttemptsByChallenge.get(key) || { count: 0, firstAt: Date.now() };
+  const next = Date.now() - existing.firstAt > 10 * 60 * 1000 ? { count: 1, firstAt: Date.now() } : { ...existing, count: existing.count + 1 };
+  mfaAttemptsByChallenge.set(key, next);
+  setTimeout(() => mfaAttemptsByChallenge.delete(key), 10 * 60 * 1000).unref?.();
+  return next.count;
 }
 
 function authFromRequest(req) {
@@ -1129,8 +1498,154 @@ async function resolveAuthorizedTenant(req, res, idOrSlug) {
   return { auth, tenantId };
 }
 
-function signGmailState({ tenantId, userId }) {
-  return signPayload({ tenantId, userId, exp: Date.now() + 10 * 60 * 1000 });
+function safeGmailReturnOrigin(value) {
+  const fallback = new URL(publicBaseUrl).origin;
+  try {
+    const origin = new URL(String(value || fallback)).origin;
+    const allowed = new Set([
+      fallback,
+      "https://www.zeptrix.io",
+      "https://zeptrix.io",
+    ]);
+    if (allowed.has(origin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return origin;
+  } catch {
+    return fallback;
+  }
+  return fallback;
+}
+
+function signGmailState({ tenantId, userId, returnOrigin }) {
+  return signPayload({ tenantId, userId, returnOrigin: safeGmailReturnOrigin(returnOrigin), exp: Date.now() + 10 * 60 * 1000 });
+}
+
+function signGoogleAuthState(mode = "login") {
+  return signPayload({ purpose: "google-auth", mode: mode === "register" ? "register" : "login", exp: Date.now() + 10 * 60 * 1000 });
+}
+
+function verifyGoogleAuthState(token) {
+  const payload = verifySignedPayload(token);
+  return payload?.purpose === "google-auth" ? payload : null;
+}
+
+const googleAuthResults = new Map();
+
+function storeGoogleAuthResult(payload) {
+  const code = `${crypto.randomUUID()}-${crypto.randomBytes(12).toString("base64url")}`;
+  googleAuthResults.set(code, { payload, exp: Date.now() + 2 * 60 * 1000 });
+  setTimeout(() => googleAuthResults.delete(code), 2 * 60 * 1000).unref?.();
+  return code;
+}
+
+function consumeGoogleAuthResult(code) {
+  const entry = googleAuthResults.get(String(code || ""));
+  googleAuthResults.delete(String(code || ""));
+  if (!entry || entry.exp < Date.now()) return null;
+  return entry.payload;
+}
+
+function userAuthPayload(user) {
+  return {
+    id: user.id,
+    tenantId: user.tenant_id || user.tenantId,
+    tenantName: user.tenant_name || user.tenantName,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    tenantMfaRequired: !!(user.tenant_mfa_required ?? user.mfa_required ?? user.tenantMfaRequired),
+    mustChangePassword: user.password_change_required ?? user.mustChangePassword,
+    mfaEnabled: user.mfa_enabled ?? user.mfaEnabled,
+    mfaConfirmed: user.mfa_confirmed ?? user.mfaConfirmed,
+    sso: !!(user.google_subject || user.sso),
+  };
+}
+
+function authChallengeForUser(user) {
+  const payload = userAuthPayload(user);
+  const mfaRequired = payload.role === "platform_admin" ? false : !!payload.tenantMfaRequired && !!payload.mfaEnabled;
+  return {
+    user: payload,
+    preAuthToken: mfaRequired ? signPreAuthToken(payload) : "",
+    mfaRequired,
+    mfaSetupRequired: mfaRequired && !payload.mfaConfirmed,
+    token: mfaRequired ? "" : signAuthToken(payload),
+  };
+}
+
+const base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+function base32Encode(buffer) {
+  let bits = "";
+  let output = "";
+  for (const byte of buffer) bits += byte.toString(2).padStart(8, "0");
+  for (let index = 0; index < bits.length; index += 5) {
+    const chunk = bits.slice(index, index + 5).padEnd(5, "0");
+    output += base32Alphabet[parseInt(chunk, 2)];
+  }
+  return output;
+}
+
+function base32Decode(value = "") {
+  const cleaned = String(value).replace(/=+$/g, "").replace(/\s+/g, "").toUpperCase();
+  let bits = "";
+  for (const char of cleaned) {
+    const index = base32Alphabet.indexOf(char);
+    if (index >= 0) bits += index.toString(2).padStart(5, "0");
+  }
+  const bytes = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) bytes.push(parseInt(bits.slice(index, index + 8), 2));
+  return Buffer.from(bytes);
+}
+
+function generateTotpSecret() {
+  return base32Encode(crypto.randomBytes(20));
+}
+
+function totpCode(secret, time = Date.now()) {
+  const counter = Math.floor(time / 30000);
+  const buffer = Buffer.alloc(8);
+  buffer.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+  buffer.writeUInt32BE(counter >>> 0, 4);
+  const hmac = crypto.createHmac("sha1", base32Decode(secret)).update(buffer).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const binary = ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16) | ((hmac[offset + 2] & 0xff) << 8) | (hmac[offset + 3] & 0xff);
+  return String(binary % 1000000).padStart(6, "0");
+}
+
+function verifyTotpCode(secret, code, window = 1) {
+  const normalized = String(code || "").replace(/\s+/g, "");
+  if (!/^\d{6}$/.test(normalized)) return false;
+  for (let step = -window; step <= window; step += 1) {
+    const expected = totpCode(secret, Date.now() + step * 30000);
+    if (crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(normalized))) return true;
+  }
+  return false;
+}
+
+function authenticatorUri({ secret, email, issuer = "Zeptrix CRM" }) {
+  const label = `${issuer}:${email}`;
+  return `otpauth://totp/${encodeURIComponent(label)}?secret=${encodeURIComponent(secret)}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+}
+
+async function userById(userId) {
+  const result = await dbQuery(
+    `select u.*, t.id tenant_id, t.name tenant_name, t.mfa_required tenant_mfa_required
+     from users u join tenants t on t.id=u.tenant_id
+     where u.id=$1`,
+    [userId],
+  );
+  return result.rows[0] || null;
+}
+
+async function userByEmail(email) {
+  if (!email) return null;
+  const result = await dbQuery(
+    `select u.*, t.id tenant_id, t.name tenant_name, t.mfa_required tenant_mfa_required
+     from users u join tenants t on t.id=u.tenant_id
+     where lower(u.email)=lower($1)
+     limit 1`,
+    [String(email).trim()],
+  );
+  return result.rows[0] || null;
 }
 
 function escapeHtml(value) {
@@ -1139,25 +1654,20 @@ function escapeHtml(value) {
 
 function normalizeGmailSettings(payload = {}) {
   const accountEmail = String(payload.accountEmail || "").trim();
-  const clientId = normalizeOAuthClientId(payload.clientId);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
-    const error = new Error("Gmail account is required.");
+  if (accountEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
+    const error = new Error("Gmail account must be a valid email address.");
     error.statusCode = 400;
     throw error;
   }
-  if (clientId && !isValidGoogleOAuthClientId(clientId)) {
-    const error = new Error("OAuth client ID must be the Web application Client ID ending in .apps.googleusercontent.com.");
-    error.statusCode = 400;
-    throw error;
-  }
+  const inferredDomain = accountEmail.includes("@") ? accountEmail.split("@").pop() : "";
   return {
     accountEmail,
-    workspaceDomain: String(payload.workspaceDomain || "zeptrix.io").trim(),
-    clientId,
-    redirectUri: String(payload.redirectUri || `${publicBaseUrl}/api/gmail/oauth/callback`).trim(),
+    workspaceDomain: String(payload.workspaceDomain || inferredDomain || "zeptrix.io").trim(),
+    clientId: normalizeOAuthClientId(payload.clientId || googleClientId),
+    redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback`,
     labels: String(payload.labels || "Inbox, Sent").trim(),
     gmailLookbackDays: payload.gmailLookbackDays == null ? null : Math.max(1, Math.min(365, Number(payload.gmailLookbackDays || GMAIL_NEW_CONTACT_LOOKBACK_DAYS))),
-    staleMonths: Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
+    staleMonths: payload.staleMonths == null ? null : Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
     detectNewContacts: payload.detectNewContacts !== false,
     detectDormantContacts: payload.detectDormantContacts !== false,
   };
@@ -1176,15 +1686,15 @@ async function upsertGmailSettings(tenantId, payload) {
   const result = await dbQuery(
     `insert into gmail_integrations
        (tenant_id, account_email, workspace_domain, client_id, redirect_uri, labels, gmail_lookback_days, stale_months, detect_new_contacts, detect_dormant_contacts, status, updated_at)
-     values ($1,$2,$3,$4,$5,$6,coalesce($7,${GMAIL_NEW_CONTACT_LOOKBACK_DAYS}),$8,$9,$10,'Settings saved',now())
+     values ($1,$2,$3,$4,$5,$6,coalesce($7,${GMAIL_NEW_CONTACT_LOOKBACK_DAYS}),coalesce($8,3),$9,$10,'Settings saved',now())
      on conflict (tenant_id) do update set
-       account_email=excluded.account_email,
-       workspace_domain=excluded.workspace_domain,
+       account_email=coalesce(nullif(excluded.account_email,''), gmail_integrations.account_email),
+       workspace_domain=coalesce(nullif(excluded.workspace_domain,''), gmail_integrations.workspace_domain),
        client_id=excluded.client_id,
        redirect_uri=excluded.redirect_uri,
        labels=excluded.labels,
        gmail_lookback_days=coalesce($7,gmail_integrations.gmail_lookback_days),
-       stale_months=excluded.stale_months,
+       stale_months=coalesce($8,gmail_integrations.stale_months),
        detect_new_contacts=excluded.detect_new_contacts,
        detect_dormant_contacts=excluded.detect_dormant_contacts,
        status=case when gmail_integrations.enabled then 'Settings saved' else 'Not connected' end,
@@ -1198,22 +1708,167 @@ async function upsertGmailSettings(tenantId, payload) {
 function normalizeConfigurationSettings(payload = {}) {
   return {
     gmailLookbackDays: Math.max(1, Math.min(365, Number(payload.gmailLookbackDays || GMAIL_NEW_CONTACT_LOOKBACK_DAYS))),
+    staleMonths: Math.max(1, Math.min(36, Number(payload.staleMonths || 3))),
+    mfaRequired: payload.mfaRequired === true || payload.mfaRequired === "true" || payload.mfaRequired === "on",
   };
 }
 
 async function upsertConfigurationSettings(tenantId, payload) {
   const settings = normalizeConfigurationSettings(payload);
+  const [tenantResult] = await Promise.all([
+    dbQuery(`update tenants set mfa_required=$2, updated_at=now() where id=$1 returning *`, [tenantId, settings.mfaRequired]),
+    dbQuery(`update users set mfa_enabled=$2 where tenant_id=$1 and role <> 'platform_admin'`, [tenantId, settings.mfaRequired]),
+  ]);
   const result = await dbQuery(
-    `insert into gmail_integrations (tenant_id, gmail_lookback_days, status, updated_at)
-     values ($1,$2,'Configuration saved',now())
+    `insert into gmail_integrations (tenant_id, gmail_lookback_days, stale_months, status, updated_at)
+     values ($1,$2,$3,'Configuration saved',now())
      on conflict (tenant_id) do update set
        gmail_lookback_days=excluded.gmail_lookback_days,
+       stale_months=excluded.stale_months,
        status=case when gmail_integrations.enabled then gmail_integrations.status else gmail_integrations.status end,
        updated_at=now()
      returning *`,
-    [tenantId, settings.gmailLookbackDays],
+    [tenantId, settings.gmailLookbackDays, settings.staleMonths],
   );
-  return gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId));
+  return { tenant: tenantResult.rows[0], gmailIntegration: gmailIntegrationFromRow(result.rows[0], await readGmailSignals(tenantId)) };
+}
+
+function normalizeLinkedinSettings(payload = {}) {
+  const accountEmail = String(payload.accountEmail || "").trim();
+  if (accountEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
+    const error = new Error("LinkedIn account email must be a valid email address.");
+    error.statusCode = 400;
+    throw error;
+  }
+  let companyPageUrl = String(payload.companyPageUrl || "").trim();
+  if (companyPageUrl) {
+    try {
+      const parsed = new URL(companyPageUrl);
+      const hostname = parsed.hostname.toLowerCase();
+      const pathParts = parsed.pathname.split("/").filter(Boolean);
+      if (!["linkedin.com", "www.linkedin.com"].includes(hostname) || !["company", "in"].includes(pathParts[0]) || !pathParts[1]) throw new Error("invalid");
+      companyPageUrl = `https://www.linkedin.com/${pathParts[0]}/${pathParts[1]}/`;
+    } catch {
+      const error = new Error("LinkedIn URL must be a linkedin.com company or profile URL.");
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+  return {
+    companyPageUrl,
+    accountEmail,
+    syncContacts: payload.syncContacts !== false,
+    syncCompanyUpdates: payload.syncCompanyUpdates === true || payload.syncCompanyUpdates === "true" || payload.syncCompanyUpdates === "on",
+  };
+}
+
+async function upsertLinkedinSettings(tenantId, payload) {
+  const settings = normalizeLinkedinSettings(payload);
+  const result = await dbQuery(
+    `insert into linkedin_integrations
+       (tenant_id, company_page_url, account_email, sync_contacts, sync_company_updates, enabled, status, updated_at)
+     values ($1,$2,$3,$4,$5,false,'Settings saved - LinkedIn OAuth is not connected yet',now())
+     on conflict (tenant_id) do update set
+       company_page_url=excluded.company_page_url,
+       account_email=excluded.account_email,
+       sync_contacts=excluded.sync_contacts,
+       sync_company_updates=excluded.sync_company_updates,
+       status='Settings saved - LinkedIn OAuth is not connected yet',
+       updated_at=now()
+     returning *`,
+    [tenantId, settings.companyPageUrl, settings.accountEmail, settings.syncContacts, settings.syncCompanyUpdates],
+  );
+  return linkedinIntegrationFromRow(result.rows[0]);
+}
+
+function execFileJson(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { timeout: 90_000, maxBuffer: 5 * 1024 * 1024, ...options }, (error, stdout, stderr) => {
+      if (error) {
+        error.message = [error.message, stderr.trim()].filter(Boolean).join("\n");
+        reject(error);
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout));
+      } catch (parseError) {
+        parseError.message = `LinkedIn Puppeteer returned invalid JSON: ${parseError.message}`;
+        reject(parseError);
+      }
+    });
+  });
+}
+
+function linkedinPuppeteerUnavailableReason() {
+  const scriptPath = path.join(root, "scripts", "linkedin-puppeteer-spike.js");
+  if (!linkedinPuppeteerEnabled) return "LinkedIn Puppeteer scan is disabled. Set LINKEDIN_PUPPETEER_ENABLED=1 and configure a logged-in Chrome profile.";
+  if (!fs.existsSync(scriptPath)) return "LinkedIn Puppeteer spike script is missing from the deployment.";
+  if (!fs.existsSync(linkedinChromePath)) return `Chrome executable not found at ${linkedinChromePath}. Set LINKEDIN_CHROME_PATH.`;
+  if (!linkedinChromeProfile) return "LINKEDIN_CHROME_PROFILE is not configured. Use a Chrome profile that is already signed in to LinkedIn.";
+  return "";
+}
+
+async function runLinkedinPuppeteerScan(tenantId, payload = {}) {
+  const integrationResult = await dbQuery(`select * from linkedin_integrations where tenant_id=$1`, [tenantId]);
+  const integration = integrationResult.rows[0];
+  if (!integration) {
+    const error = new Error("LinkedIn settings are not configured.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const unavailable = linkedinPuppeteerUnavailableReason();
+  if (unavailable) {
+    await dbQuery(`update linkedin_integrations set status=$2, updated_at=now() where tenant_id=$1`, [tenantId, unavailable]);
+    const error = new Error(unavailable);
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const limit = Math.max(1, Math.min(50, Number(payload.limit || 10)));
+  const scriptPath = path.join(root, "scripts", "linkedin-puppeteer-spike.js");
+  const args = [scriptPath, "--json", "--headless", "--limit", String(limit)];
+  if (payload.profileId) args.push("--profile-id", String(payload.profileId));
+  if (payload.conversationId) args.push("--conversation-id", String(payload.conversationId));
+
+  const result = await execFileJson(process.execPath, args, {
+    cwd: root,
+    env: {
+      ...process.env,
+      CHROME_PATH: linkedinChromePath,
+      LINKEDIN_CHROME_PROFILE: linkedinChromeProfile,
+      HEADLESS: "1",
+    },
+  });
+  const count = result.messages?.length ?? result.conversations?.length ?? 0;
+  const status = result.ok ? `LinkedIn Puppeteer scan completed (${count} items)` : `LinkedIn Puppeteer scan failed with status ${result.status}`;
+  const saved = await dbQuery(
+    `update linkedin_integrations
+     set enabled=$2, status=$3, last_scan_at=now(), last_scan_result=$4::jsonb, updated_at=now()
+     where tenant_id=$1
+     returning *`,
+    [tenantId, !!result.ok, status, JSON.stringify(result)],
+  );
+  return { linkedinIntegration: linkedinIntegrationFromRow(saved.rows[0]), result };
+}
+
+async function upsertWorkflowAutomationSettings(tenantId, payload) {
+  const settings = normalizeWorkflowAutomationSettings(payload);
+  const result = await dbQuery(
+    `insert into workflow_automations
+       (tenant_id, enabled, create_follow_up_tasks, tag_risk_accounts, risk_tag, dormant_due_days, attention_due_days, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,now())
+     on conflict (tenant_id) do update set
+       enabled=excluded.enabled,
+       create_follow_up_tasks=excluded.create_follow_up_tasks,
+       tag_risk_accounts=excluded.tag_risk_accounts,
+       risk_tag=excluded.risk_tag,
+       dormant_due_days=excluded.dormant_due_days,
+       attention_due_days=excluded.attention_due_days,
+       updated_at=now()
+     returning *`,
+    [tenantId, settings.enabled, settings.createFollowUpTasks, settings.tagRiskAccounts, settings.riskTag, settings.dormantDueDays, settings.attentionDueDays],
+  );
+  return workflowAutomationFromRow(result.rows[0]);
 }
 
 async function upsertOutgoingEmailSettings(tenantId, payload) {
@@ -1286,28 +1941,28 @@ async function sendCrmEmailForTenant(tenantId, auth, payload) {
     text: message.body,
   });
   const saved = await dbQuery(
-    `insert into communications (tenant_id, deal_id, type, direction, subject, body, owner, tracked, occurred_at)
-     values ($1,$2,'Email',$3,$4,$5,$6,$7,now())
+    `insert into communications (tenant_id, deal_id, type, direction, subject, body, owner, tracked, tracking_status, source, occurred_at)
+     values ($1,$2,'Email',$3,$4,$5,$6,$7,$8,'crm',now())
      returning *`,
-    [tenantId, message.dealId, message.direction, message.subject, message.body, auth.name || auth.email || "", response.messageId ? `Sent · ${response.messageId}` : "Sent"],
+    [tenantId, message.dealId, message.direction, message.subject, message.body, auth.name || auth.email || "", response.messageId ? `Sent · ${response.messageId}` : "Sent", response.messageId ? "Sent via SMTP" : "Sent"],
   );
   await dbQuery(`update outgoing_email_settings set status='Last email sent', updated_at=now() where tenant_id=$1`, [tenantId]);
   return { communication: communicationFromRow(saved.rows[0]), messageId: response.messageId || null };
 }
 
-function gmailAuthUrl({ tenantId, userId, clientId, redirectUri, accountEmail }) {
-  const normalizedClientId = normalizeOAuthClientId(clientId);
+function gmailAuthUrl({ tenantId, userId, clientId, redirectUri, accountEmail, returnOrigin }) {
+  const normalizedClientId = normalizeOAuthClientId(clientId || googleClientId);
   if (!isValidGoogleOAuthClientId(normalizedClientId)) {
-    throw new Error("Saved OAuth client ID is not a valid Google Web application Client ID.");
+    throw new Error("Google OAuth client ID is not configured correctly.");
   }
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", normalizedClientId);
-  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("redirect_uri", redirectUri || `${publicBaseUrl}/api/gmail/oauth/callback`);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
   url.searchParams.set("scope", "https://www.googleapis.com/auth/gmail.readonly");
-  url.searchParams.set("state", signGmailState({ tenantId, userId }));
+  url.searchParams.set("state", signGmailState({ tenantId, userId, returnOrigin }));
   if (accountEmail) url.searchParams.set("login_hint", accountEmail);
   return url.toString();
 }
@@ -1344,12 +1999,14 @@ async function exchangeGmailCode({ code, clientId, redirectUri }) {
 
 async function refreshGmailAccessToken(integration) {
   if (!integration.refresh_token_enc) throw new Error("Gmail refresh token is missing. Reconnect Gmail.");
+  const refreshClientId = integration.client_id || googleClientId;
+  if (!refreshClientId) throw new Error("Google OAuth client ID is missing. Reconnect Gmail.");
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       refresh_token: decryptToken(integration.refresh_token_enc),
-      client_id: integration.client_id,
+      client_id: refreshClientId,
       client_secret: googleClientSecret,
       grant_type: "refresh_token",
     }),
@@ -1596,6 +2253,87 @@ function gmailContactSignalSource(item = {}) {
   return details ? `${item.source} - ${details}` : item.source;
 }
 
+function googleSsoConfigured() {
+  return Boolean(googleClientId && googleClientSecret);
+}
+
+async function exchangeGoogleAuthCode(code, redirectUri = GOOGLE_SSO_REDIRECT_URI) {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: googleClientId,
+      client_secret: googleClientSecret,
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+    }),
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error_description || payload.error || "Google authorization failed.");
+  return payload;
+}
+
+async function verifyGoogleIdentity(idToken) {
+  const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+  const profile = await response.json();
+  if (!response.ok) throw new Error(profile.error_description || profile.error || "Unable to verify Google identity.");
+  if (profile.aud !== googleClientId) throw new Error("Google OAuth client mismatch.");
+  if (profile.email_verified !== "true" && profile.email_verified !== true) throw new Error("Google account email is not verified.");
+  return {
+    subject: profile.sub,
+    email: String(profile.email || "").toLowerCase(),
+    name: profile.name || profile.email?.split("@")[0] || "Google user",
+    picture: profile.picture || "",
+    hostedDomain: profile.hd || "",
+  };
+}
+
+async function findUserByGoogleIdentity(profile) {
+  const result = await dbQuery(
+    `select u.*, t.id tenant_id, t.name tenant_name, t.mfa_required tenant_mfa_required
+     from users u join tenants t on t.id=u.tenant_id
+     where u.google_subject=$1 or lower(u.email)=lower($2)
+     order by case when u.google_subject=$1 then 0 else 1 end
+     limit 1`,
+    [profile.subject, profile.email],
+  );
+  return result.rows[0] || null;
+}
+
+async function createGoogleRegistration(profile) {
+  const domain = profile.email.split("@")[1] || "workspace";
+  const company = profile.hostedDomain ? profile.hostedDomain.split(".")[0] : domain.split(".")[0];
+  const created = await withTransaction(async (client) => {
+    const tenantRow = await insertTenantWithClient(client, {
+      name: `${company.charAt(0).toUpperCase()}${company.slice(1)} Workspace`,
+      slug: crypto.randomUUID(),
+      plan: "Growth",
+      status: "Trial",
+      region: "US-East",
+      seats: 3,
+      billingEmail: profile.email,
+    });
+    const userRow = await insertUserWithClient(client, tenantRow.id, {
+      name: profile.name,
+      email: profile.email,
+      password: generateTemporaryPassword(),
+      role: "tenant_admin",
+      mustChangePassword: false,
+      sso: false,
+      googleSubject: profile.subject,
+    });
+    return { tenantRow, userRow };
+  });
+  await notifyRegistration({
+    tenantName: created.tenantRow.name,
+    userName: created.userRow.name,
+    userEmail: created.userRow.email,
+    method: "Google SSO",
+  });
+  return { user: { ...created.userRow, tenant_name: created.tenantRow.name }, tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []) };
+}
+
 function updateGmailScanProgress(scanId, patch) {
   if (!scanId) return;
   scanProgressById.set(scanId, { ...(scanProgressById.get(scanId) || {}), ...patch, updatedAt: new Date().toISOString() });
@@ -1607,6 +2345,122 @@ function finishGmailScanProgress(scanId, patch = {}) {
   setTimeout(() => scanProgressById.delete(scanId), 10 * 60 * 1000).unref?.();
 }
 
+function isoDateInDays(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + Number(days || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+async function findDealForSignal(client, tenantId, signal) {
+  const result = await client.query(
+    `select * from deals
+     where tenant_id=$1
+       and (
+         lower(email::text)=lower($2)
+         or ($3<>'' and lower(account)=lower($3))
+       )
+     order by case when lower(email::text)=lower($2) then 0 else 1 end,
+              case when stage in ('Won','Lost') then 1 else 0 end,
+              updated_at desc
+     limit 1`,
+    [tenantId, signal.email || "", signal.account || ""],
+  );
+  return result.rows[0] || null;
+}
+
+async function insertWorkflowTaskIfMissing(client, tenantId, deal, task) {
+  if (!deal?.id) return false;
+  const existing = await client.query(
+    `select id from activities
+     where tenant_id=$1 and deal_id=$2 and title=$3 and completed=false
+     limit 1`,
+    [tenantId, deal.id, task.title],
+  );
+  if (existing.rows.length) return false;
+  await client.query(
+    `insert into activities (tenant_id, deal_id, title, type, owner, due_date, priority, completed)
+     values ($1,$2,$3,$4,$5,$6::date,$7,false)`,
+    [tenantId, deal.id, task.title, task.type, deal.owner || "", task.due, task.priority],
+  );
+  return true;
+}
+
+async function addRiskTagToAccountDeals(client, tenantId, account, riskTag) {
+  if (!account || !riskTag) return 0;
+  const result = await client.query(`select id, tags from deals where tenant_id=$1 and lower(account)=lower($2)`, [tenantId, account]);
+  let updated = 0;
+  for (const row of result.rows) {
+    const tags = normalizeTags([...(Array.isArray(row.tags) ? row.tags : []), riskTag]);
+    if (JSON.stringify(tags) === JSON.stringify(normalizeTags(row.tags || []))) continue;
+    await client.query(`update deals set tags=$3::jsonb, updated_label='Workflow automation', updated_at=now() where tenant_id=$1 and id=$2`, [tenantId, row.id, JSON.stringify(tags)]);
+    updated += 1;
+  }
+  if (updated) {
+    await client.query(
+      `insert into contact_tags (tenant_id, name)
+       values ($1,$2)
+       on conflict (tenant_id, name) do nothing`,
+      [tenantId, riskTag],
+    );
+  }
+  return updated;
+}
+
+async function applyWorkflowAutomationToGmailSignals(tenantId, { dormant = [], attentionCorrespondence = [] } = {}) {
+  const settingsResult = await dbQuery(`select * from workflow_automations where tenant_id=$1`, [tenantId]);
+  const settings = workflowAutomationFromRow(settingsResult.rows[0]);
+  const summary = { tasksCreated: 0, accountsTagged: 0, dormantSignals: dormant.length, riskSignals: attentionCorrespondence.length };
+  if (!settings.enabled) {
+    await dbQuery(
+      `insert into workflow_automations (tenant_id, enabled, last_run_at, last_run_summary)
+       values ($1,$2,now(),$3::jsonb)
+       on conflict (tenant_id) do update set last_run_at=now(), last_run_summary=$3::jsonb`,
+      [tenantId, settings.enabled, JSON.stringify({ ...summary, skipped: "Automation disabled" })],
+    );
+    return { ...summary, skipped: "Automation disabled" };
+  }
+  await withTransaction(async (client) => {
+    if (settings.createFollowUpTasks) {
+      for (const signal of dormant.slice(0, 50)) {
+        const deal = await findDealForSignal(client, tenantId, signal);
+        if (!deal || ["Won", "Lost"].includes(deal.stage)) continue;
+        const created = await insertWorkflowTaskIfMissing(client, tenantId, deal, {
+          title: `Follow up with ${signal.name || signal.email} after ${signal.months || 3} months without email`,
+          type: "Email",
+          due: isoDateInDays(settings.dormantDueDays),
+          priority: "Medium",
+        });
+        if (created) summary.tasksCreated += 1;
+      }
+      for (const signal of attentionCorrespondence.slice(0, 50)) {
+        const deal = await findDealForSignal(client, tenantId, signal);
+        if (!deal || ["Won", "Lost"].includes(deal.stage)) continue;
+        const created = await insertWorkflowTaskIfMissing(client, tenantId, deal, {
+          title: `Respond to risk email from ${signal.name || signal.email}`,
+          type: "Email",
+          due: isoDateInDays(settings.attentionDueDays),
+          priority: "High",
+        });
+        if (created) summary.tasksCreated += 1;
+      }
+    }
+    if (settings.tagRiskAccounts) {
+      const accounts = [...new Set(attentionCorrespondence.map((signal) => signal.account).filter(Boolean))];
+      for (const account of accounts) summary.accountsTagged += await addRiskTagToAccountDeals(client, tenantId, account, settings.riskTag);
+    }
+    await client.query(
+      `insert into workflow_automations (tenant_id, enabled, create_follow_up_tasks, tag_risk_accounts, risk_tag, dormant_due_days, attention_due_days, last_run_at, last_run_summary)
+       values ($1,$2,$3,$4,$5,$6,$7,now(),$8::jsonb)
+       on conflict (tenant_id) do update set
+         last_run_at=now(),
+         last_run_summary=$8::jsonb,
+         updated_at=workflow_automations.updated_at`,
+      [tenantId, settings.enabled, settings.createFollowUpTasks, settings.tagRiskAccounts, settings.riskTag, settings.dormantDueDays, settings.attentionDueDays, JSON.stringify(summary)],
+    );
+  });
+  return summary;
+}
+
 async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
   const integrationResult = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [tenantId]);
   const integration = integrationResult.rows[0];
@@ -1616,11 +2470,9 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
   const staleMonths = Math.max(1, Number(integration.stale_months || 3));
   const gmailLookbackDays = Math.max(1, Math.min(365, Number(integration.gmail_lookback_days || GMAIL_NEW_CONTACT_LOOKBACK_DAYS)));
   const [dealsResult, blacklistResult, inboundList] = await Promise.all([
-    dbQuery(`select distinct lower(email) email, contact, account from deals where tenant_id=$1 and email is not null and email<>''`, [tenantId]),
+    dbQuery(`select distinct on (lower(email)) id, lower(email) email, contact, account from deals where tenant_id=$1 and email is not null and email<>'' order by lower(email), updated_at desc`, [tenantId]),
     dbQuery(`select lower(email::text) email from gmail_contact_blacklist where tenant_id=$1`, [tenantId]),
-    integration.detect_new_contacts
-      ? listGmailMessages(accessToken, { q: `${gmailNewContactScope(integration.labels)} newer_than:${gmailLookbackDays}d -in:sent` }, GMAIL_NEW_CONTACT_METADATA_LIMIT)
-      : { messages: [] },
+    listGmailMessages(accessToken, { q: `${gmailNewContactScope(integration.labels)} newer_than:${gmailLookbackDays}d -in:sent` }, GMAIL_NEW_CONTACT_METADATA_LIMIT),
   ]);
   const knownEmails = new Set(dealsResult.rows.map((row) => row.email));
   const blacklistedEmails = new Set(blacklistResult.rows.map((row) => row.email));
@@ -1635,17 +2487,26 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
   });
   const unknownMetadata = [];
   const seenNew = new Set();
-  for (const message of inboundMetadata) {
-    const parsed = parseEmailAddress(headerValue(message, "From"));
-    if (!parsed || isAutomatedSenderEmail(parsed.email) || knownEmails.has(parsed.email) || blacklistedEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
-    seenNew.add(parsed.email);
-    unknownMetadata.push({ ...message, parsed });
+  if (integration.detect_new_contacts) {
+    for (const message of inboundMetadata) {
+      const parsed = parseEmailAddress(headerValue(message, "From"));
+      if (!parsed || isAutomatedSenderEmail(parsed.email) || knownEmails.has(parsed.email) || blacklistedEmails.has(parsed.email) || seenNew.has(parsed.email)) continue;
+      seenNew.add(parsed.email);
+      unknownMetadata.push({ ...message, parsed });
+    }
   }
   updateGmailScanProgress(scanId, { status: "enriching", totalMessages: inboundCandidates.length, scannedMessages, candidatesFound: unknownMetadata.length });
-  const fullInboundMessages = await mapLimit(inboundMetadata.slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT), 6, async (message) => ({
-    parsed: parseEmailAddress(headerValue(message, "From")),
-    full: await gmailApi(accessToken, `messages/${message.id}`, { format: "full" }),
-  }));
+  const fullInboundMessages = (await mapLimit(inboundMetadata.slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT), 6, async (message) => {
+    try {
+      return {
+        parsed: parseEmailAddress(headerValue(message, "From")),
+        full: await gmailApi(accessToken, `messages/${message.id}`, { format: "full" }),
+      };
+    } catch (error) {
+      console.log(`Skipping Gmail full message ${message.id} for tenant ${tenantId}: ${error.message}`);
+      return null;
+    }
+  })).filter(Boolean);
   const fullByMessageId = new Map(fullInboundMessages.map((message) => [message.full.id, message]));
   const inboundMessages = unknownMetadata
     .slice(0, GMAIL_NEW_CONTACT_FULL_LIMIT)
@@ -1674,11 +2535,39 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
       };
     })
     .filter(Boolean);
+  const gmailAccountThreads = fullInboundMessages
+    .map((message) => {
+      if (!message.parsed || isAutomatedSenderEmail(message.parsed.email)) return null;
+      const deal = dealByEmail.get(message.parsed.email);
+      if (!deal) return null;
+      const text = extractGmailMessageText(message.full).slice(0, 1800);
+      return {
+        deal,
+        email: message.parsed.email,
+        name: deal.contact || message.parsed.name || message.parsed.email.split("@")[0],
+        subject: headerValue(message.full, "Subject") || message.full.snippet || "Gmail conversation",
+        body: text || message.full.snippet || "Imported from Gmail scan.",
+        messageId: message.full.id,
+        threadId: message.full.threadId || message.full.id,
+        internalDate: Number(message.full.internalDate || 0),
+      };
+    })
+    .filter(Boolean);
+  const latestGmailAccountThreads = [...gmailAccountThreads.reduce((threads, item) => {
+    const existing = threads.get(item.threadId);
+    if (!existing || item.internalDate >= existing.internalDate) threads.set(item.threadId, item);
+    return threads;
+  }, new Map()).values()];
 
   const dormantChecks = integration.detect_dormant_contacts
     ? await mapLimit(dealsResult.rows.slice(0, 50), 6, async (row) => {
-      const sent = await gmailApi(accessToken, "messages", { q: `in:sent to:${row.email} newer_than:${staleMonths}m`, maxResults: 1 });
-      return sent.messages?.length ? null : { email: row.email, name: row.contact || row.email.split("@")[0], account: row.account || "", months: staleMonths, source: `No sent Gmail in ${staleMonths} months` };
+      try {
+        const sent = await gmailApi(accessToken, "messages", { q: `in:sent to:${row.email} newer_than:${staleMonths}m`, maxResults: 1 });
+        return sent.messages?.length ? null : { email: row.email, name: row.contact || row.email.split("@")[0], account: row.account || "", months: staleMonths, source: `No sent Gmail in ${staleMonths} months` };
+      } catch (error) {
+        console.log(`Skipping Gmail dormant check for ${row.email} in tenant ${tenantId}: ${error.message}`);
+        return null;
+      }
     })
     : [];
   const dormant = dormantChecks.filter(Boolean);
@@ -1688,28 +2577,79 @@ async function scanGmailForTenant(tenantId, { scanId = "" } = {}) {
     for (const item of newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT)) {
       await client.query(
         `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, phone, source, message_id, last_seen_at)
-         values ($1,'new_contact',$2,$3,$4,$5,$6,$7,now())`,
+         values ($1,'new_contact',$2,$3,$4,$5,$6,$7,now())
+         on conflict (tenant_id, signal_type, email) do update set
+           name=excluded.name,
+           account=excluded.account,
+           phone=excluded.phone,
+           source=excluded.source,
+           message_id=excluded.message_id,
+           last_seen_at=excluded.last_seen_at,
+           created_at=now()`,
         [tenantId, item.email, item.name, item.account || "", item.phone || "", gmailContactSignalSource(item), item.messageId],
       );
     }
     for (const item of dormant.slice(0, 50)) {
       await client.query(
         `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, source, months, last_seen_at)
-         values ($1,'dormant_contact',$2,$3,$4,$5,$6,now())`,
+         values ($1,'dormant_contact',$2,$3,$4,$5,$6,now())
+         on conflict (tenant_id, signal_type, email) do update set
+           name=excluded.name,
+           account=excluded.account,
+           source=excluded.source,
+           months=excluded.months,
+           last_seen_at=excluded.last_seen_at,
+           created_at=now()`,
         [tenantId, item.email, item.name, item.account, item.source, item.months],
       );
     }
     for (const item of attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT)) {
       await client.query(
         `insert into gmail_contact_signals (tenant_id, signal_type, email, name, account, source, message_id, last_seen_at)
-         values ($1,'attention_correspondence',$2,$3,$4,$5,$6,now())`,
+         values ($1,'attention_correspondence',$2,$3,$4,$5,$6,now())
+         on conflict (tenant_id, signal_type, email) do update set
+           name=excluded.name,
+           account=excluded.account,
+           source=excluded.source,
+           message_id=excluded.message_id,
+           last_seen_at=excluded.last_seen_at,
+           created_at=now()`,
         [tenantId, item.email, item.name, item.account, item.source, item.messageId],
+      );
+    }
+    for (const item of latestGmailAccountThreads.slice(0, 75)) {
+      await client.query(
+        `with updated as (
+           update communications
+              set deal_id=$2,
+                  subject=$3,
+                  body=$4,
+                  owner=$5,
+                  tracked=$6,
+                  tracking_status=$7,
+                  replied_at=now(),
+                  occurred_at=to_timestamp($9 / 1000.0)
+            where tenant_id=$1 and gmail_thread_id=$8
+            returning id
+         )
+         insert into communications
+           (tenant_id, deal_id, type, direction, subject, body, owner, tracked, tracking_status, replied_at, gmail_thread_id, source, occurred_at)
+         select $1,$2,'Email','inbound',$3,$4,$5,$6,$7,now(),$8,'gmail',to_timestamp($9 / 1000.0)
+          where not exists (select 1 from updated)`,
+        [tenantId, item.deal.id, item.subject, item.body, item.name, `Gmail thread · ${item.threadId}`, "Imported from Gmail", item.threadId, item.internalDate || Date.now()],
       );
     }
     await client.query(`update gmail_integrations set last_scan_at=now(), status='Last scan completed', updated_at=now() where tenant_id=$1`, [tenantId]);
   });
-  const result = { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT), scannedMessages: inboundMetadata.length + dormantChecks.length };
-  finishGmailScanProgress(scanId, { scannedMessages: inboundMetadata.length, totalMessages: inboundCandidates.length, candidatesFound: newContacts.length, attentionFound: attentionCorrespondence.length });
+  let automationSummary = null;
+  try {
+    automationSummary = await applyWorkflowAutomationToGmailSignals(tenantId, { dormant: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT) });
+  } catch (error) {
+    console.log(`Gmail scan completed but workflow automation failed for tenant ${tenantId}: ${error.message}`);
+    automationSummary = { tasksCreated: 0, accountsTagged: 0, error: error.message };
+  }
+  const result = { newContacts: newContacts.slice(0, GMAIL_NEW_CONTACT_SIGNAL_LIMIT), dormantContacts: dormant.slice(0, 50), attentionCorrespondence: attentionCorrespondence.slice(0, GMAIL_ATTENTION_SIGNAL_LIMIT), automationSummary, scannedMessages: inboundMetadata.length + dormantChecks.length };
+  finishGmailScanProgress(scanId, { scannedMessages: inboundMetadata.length, totalMessages: inboundCandidates.length, candidatesFound: newContacts.length, attentionFound: attentionCorrespondence.length, automationSummary });
   return result;
 }
 
@@ -1728,15 +2668,167 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "POST" && pathname === "/api/audit") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const auth = requireAuth(req, res);
+      if (!auth) return;
+      const body = await readBody(req);
+      const tenantId = auth.role === "platform_admin"
+        ? String(body.tenantId || auth.tenantId || "").trim()
+        : auth.tenantId;
+      if (!tenantId) return json(res, 400, { error: "Tenant is required for audit logging." });
+      if (auth.role !== "platform_admin" && tenantId !== auth.tenantId) return json(res, 403, { error: "Tenant access denied." });
+      const tenant = await dbQuery(`select id, name from tenants where id::text=$1 or slug=$1`, [tenantId]);
+      if (!tenant.rows.length) return json(res, 404, { error: "Tenant not found." });
+      const details = typeof body.details === "object" && body.details ? body.details : {};
+      if (Buffer.byteLength(JSON.stringify(details), "utf8") > 50_000) return json(res, 413, { error: "Audit details are too large." });
+      const sanitizedDetails = sanitizeAuditDetails(details);
+      const result = await dbQuery(
+        `insert into audit_logs (tenant_id, user_id, user_email, user_role, event_type, operation, target, details)
+         values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+         returning *`,
+        [
+          tenant.rows[0].id,
+          auth.userId || null,
+          auth.email || "",
+          auth.role || "",
+          String(body.eventType || "ui_event").slice(0, 80),
+          String(body.operation || "unknown").slice(0, 160),
+          String(body.target || "").slice(0, 220),
+          JSON.stringify(sanitizedDetails),
+        ],
+      );
+      return json(res, 201, { auditLog: auditLogFromRow({ ...result.rows[0], tenant_name: tenant.rows[0].name }) });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to write audit log.", detail: error.message });
+    }
+  }
+
+  if (req.method === "GET" && pathname === "/api/auth/google/start") {
+    if (!googleSsoConfigured()) return json(res, 503, { error: "Google SSO is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET." });
+    const mode = requestUrl.searchParams.get("mode") === "register" ? "register" : "login";
+    const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    url.searchParams.set("client_id", googleClientId);
+    url.searchParams.set("redirect_uri", GOOGLE_SSO_REDIRECT_URI);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", "openid email profile");
+    url.searchParams.set("prompt", "select_account");
+    url.searchParams.set("state", signGoogleAuthState(mode));
+    res.writeHead(302, { location: url.toString() });
+    return res.end();
+  }
+
+  if (req.method === "GET" && pathname === "/api/auth/google/callback") {
+    const redirect = new URL("/crm/", publicBaseUrl);
+    try {
+      if (!pool) throw new Error("DATABASE_URL is not configured.");
+      if (!googleSsoConfigured()) throw new Error("Google SSO is not configured.");
+      const state = verifyGoogleAuthState(requestUrl.searchParams.get("state"));
+      if (!state) throw new Error("Google sign-in state expired. Please try again.");
+      const code = requestUrl.searchParams.get("code");
+      if (!code) throw new Error(requestUrl.searchParams.get("error") || "Google authorization did not return a code.");
+      const token = await exchangeGoogleAuthCode(code);
+      const profile = await verifyGoogleIdentity(token.id_token);
+      let user = await findUserByGoogleIdentity(profile);
+      let tenant = null;
+      if (!user && state.mode !== "register") throw new Error(`No Zeptrix CRM account exists for ${profile.email}. Use Register with Google first.`);
+      if (!user) {
+        const created = await createGoogleRegistration(profile);
+        user = created.user;
+        tenant = created.tenant;
+      } else if (!user.google_subject) {
+        await dbQuery(`update users set google_subject=$2 where id=$1`, [user.id, profile.subject]);
+        user.google_subject = profile.subject;
+      }
+      const challenge = authChallengeForUser(user);
+      redirect.searchParams.set("googleCode", storeGoogleAuthResult({ ...challenge, tenant }));
+    } catch (error) {
+      redirect.searchParams.set("authError", error.message);
+    }
+    res.writeHead(302, { location: redirect.toString() });
+    return res.end();
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/google/exchange") {
+    try {
+      const { code } = await readBody(req);
+      const payload = consumeGoogleAuthResult(code);
+      if (!payload) return json(res, 401, { error: "Google sign-in session expired. Please try again." });
+      return json(res, 200, payload);
+    } catch (error) {
+      return json(res, 500, { error: "Unable to complete Google sign-in.", detail: error.message });
+    }
+  }
+
   if (req.method === "POST" && pathname === "/api/auth/login") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
       const { email, password } = await readBody(req);
       const user = await authenticateUser(email, password);
       if (!user) return json(res, 401, { error: "Invalid email or password." });
-      return json(res, 200, { user, token: signAuthToken(user) });
+      return json(res, 200, authChallengeForUser(user));
     } catch (error) {
       return json(res, 500, { error: "Unable to log in.", detail: error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/forgot-password") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { email } = await readBody(req);
+      const user = await userByEmail(email);
+      if (user) {
+        const temporaryPassword = generateTemporaryPassword();
+        await dbQuery(
+          `update users set password_hash=$2, password_change_required=true where id=$1`,
+          [user.id, hashPassword(temporaryPassword)],
+        );
+        const content = passwordResetEmailContent({ to: user.email, tenantName: user.tenant_name, temporaryPassword });
+        const mail = await sendTransactionalEmail({ to: user.email, ...content });
+        if (mail.status !== "sent") console.log(`Password reset email for ${user.email} was not sent: ${mail.detail}`);
+      }
+      return json(res, 200, { ok: true, message: "If an account exists for that email, password reset instructions were sent." });
+    } catch (error) {
+      console.log(`Password reset request failed: ${error.message}`);
+      return json(res, 200, { ok: true, message: "If an account exists for that email, password reset instructions were sent." });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/mfa/recovery-request") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { email } = await readBody(req);
+      const user = await userByEmail(email);
+      if (user) {
+        const recoveryUrl = new URL(appBaseUrl);
+        recoveryUrl.searchParams.set("mfaRecovery", signMfaRecoveryToken(user));
+        const content = mfaRecoveryEmailContent({ to: user.email, tenantName: user.tenant_name, recoveryUrl: recoveryUrl.toString() });
+        const mail = await sendTransactionalEmail({ to: user.email, ...content });
+        if (mail.status !== "sent") console.log(`MFA recovery email for ${user.email} was not sent: ${mail.detail}`);
+      }
+      return json(res, 200, { ok: true, message: "If an account exists for that email, authenticator recovery instructions were sent." });
+    } catch (error) {
+      console.log(`MFA recovery request failed: ${error.message}`);
+      return json(res, 200, { ok: true, message: "If an account exists for that email, authenticator recovery instructions were sent." });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/mfa/recovery-confirm") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { token } = await readBody(req);
+      const recovery = verifyMfaRecoveryToken(token);
+      if (!recovery) return json(res, 401, { error: "Authenticator recovery link expired. Please request a new link." });
+      const user = await userById(recovery.userId);
+      if (!user || String(user.email).toLowerCase() !== String(recovery.email).toLowerCase()) return json(res, 401, { error: "Authenticator recovery link is no longer valid." });
+      await dbQuery(
+        `update users set mfa_secret_enc=null, mfa_confirmed=false, mfa_enabled=true where id=$1`,
+        [user.id],
+      );
+      return json(res, 200, { ok: true, requiresLogin: true, message: "Authenticator reset. Sign in with your password to configure a new authenticator." });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to configure authenticator recovery.", detail: error.message });
     }
   }
 
@@ -1786,9 +2878,63 @@ async function handleApi(req, res) {
         role: created.userRow.role,
         mustChangePassword: false,
       };
-      return json(res, 201, { user, token: signAuthToken(user), tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []) });
+      await notifyRegistration({
+        tenantName: created.tenantRow.name,
+        userName: created.userRow.name,
+        userEmail: created.userRow.email,
+        method: "Email/password",
+      });
+      return json(res, 201, { ...authChallengeForUser({ ...created.userRow, tenant_name: created.tenantRow.name }), tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []) });
     } catch (error) {
       return json(res, 500, { error: "Unable to register workspace.", detail: error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/mfa/setup") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { preAuthToken } = await readBody(req);
+      const preAuth = verifyPreAuthToken(preAuthToken);
+      if (!preAuth) return json(res, 401, { error: "MFA setup session expired. Please sign in again." });
+      const user = await userById(preAuth.userId);
+      if (!user) return json(res, 404, { error: "User not found." });
+      let secret = user.mfa_secret_enc ? decryptToken(user.mfa_secret_enc) : "";
+      if (!secret || user.mfa_confirmed) {
+        secret = generateTotpSecret();
+        await dbQuery(`update users set mfa_secret_enc=$2, mfa_confirmed=false, mfa_enabled=true where id=$1`, [user.id, encryptToken(secret)]);
+      }
+      const otpauth = authenticatorUri({ secret, email: user.email });
+      return json(res, 200, {
+        secret,
+        otpauth,
+        qrUrl: await QRCode.toDataURL(otpauth, { errorCorrectionLevel: "M", margin: 1, width: 220 }),
+      });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to prepare MFA setup.", detail: error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/mfa/verify") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const { preAuthToken, code } = await readBody(req);
+      const preAuth = verifyPreAuthToken(preAuthToken);
+      if (!preAuth) return json(res, 401, { error: "MFA session expired. Please sign in again." });
+      const challengeKey = mfaChallengeKey(preAuthToken);
+      if (consumedMfaChallenges.has(challengeKey)) return json(res, 401, { error: "MFA session already used. Please sign in again." });
+      if (registerMfaAttempt(preAuthToken) > 5) return json(res, 429, { error: "Too many MFA attempts. Please sign in again." });
+      const user = await userById(preAuth.userId);
+      if (!user) return json(res, 404, { error: "User not found." });
+      const secret = user.mfa_secret_enc ? decryptToken(user.mfa_secret_enc) : "";
+      if (!secret || !verifyTotpCode(secret, code)) return json(res, 401, { error: "Invalid authenticator code." });
+      await dbQuery(`update users set mfa_confirmed=true, mfa_enabled=true, last_login_at=now() where id=$1`, [user.id]);
+      consumedMfaChallenges.add(challengeKey);
+      mfaAttemptsByChallenge.delete(challengeKey);
+      setTimeout(() => consumedMfaChallenges.delete(challengeKey), 10 * 60 * 1000).unref?.();
+      const authUser = userAuthPayload({ ...user, mfa_confirmed: true, mfa_enabled: true });
+      return json(res, 200, { user: authUser, token: signAuthToken(authUser) });
+    } catch (error) {
+      return json(res, 500, { error: "Unable to verify MFA.", detail: error.message });
     }
   }
 
@@ -1810,7 +2956,8 @@ async function handleApi(req, res) {
   if (req.method === "POST" && pathname === "/api/tenants") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!requirePlatformAdmin(req, res)) return;
+      const auth = requirePlatformAdmin(req, res);
+      if (!auth) return;
       const payload = normalizeTenantPayload(await readBody(req));
       const validationError = validateTenant(payload);
       if (validationError) return json(res, 400, { error: validationError });
@@ -1848,6 +2995,7 @@ async function handleApi(req, res) {
         to: payload.ownerEmail,
         temporaryPassword,
       });
+      await recordServerAudit({ auth, tenantId: created.tenantRow.id, operation: "create-tenant", target: `tenant:${created.tenantRow.id}`, details: { fields: payload } });
 
       return json(res, 201, {
         tenant: tenantFromRow(created.tenantRow, [created.userRow], [], [], []),
@@ -1864,7 +3012,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const deal = await upsertDealForTenant(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const deal = await upsertDealForTenant(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "create-deal", target: `deal:${deal.id}`, details: { fields: payload } });
       return json(res, 201, { deal });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save contact or deal.", detail: error.statusCode ? undefined : error.message });
@@ -1879,8 +3029,10 @@ async function handleApi(req, res) {
       const dealId = decodeURIComponent(parts.at(-1));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const deal = await upsertDealForTenant(resolved.tenantId, await readBody(req), dealId);
+      const payload = await readBody(req);
+      const deal = await upsertDealForTenant(resolved.tenantId, payload, dealId);
       if (!deal) return json(res, 404, { error: "Deal not found." });
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-deal", target: `deal:${deal.id}`, details: { fields: payload } });
       return json(res, 200, { deal });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to update contact or deal.", detail: error.statusCode ? undefined : error.message });
@@ -1897,6 +3049,7 @@ async function handleApi(req, res) {
       if (!resolved) return;
       const result = await dbQuery(`delete from deals where tenant_id=$1 and id=$2 returning id`, [resolved.tenantId, dealId]);
       if (!result.rows.length) return json(res, 404, { error: "Deal not found." });
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "delete-deal", target: `deal:${result.rows[0].id}` });
       return json(res, 200, { ok: true, id: result.rows[0].id });
     } catch (error) {
       return json(res, 500, { error: "Unable to delete contact or deal.", detail: error.message });
@@ -1911,6 +3064,7 @@ async function handleApi(req, res) {
       if (!resolved) return;
       const body = await readBody(req);
       const tags = await createContactTagForTenant(resolved.tenantId, body.name || body.tag);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "create-tag", target: `tag:${String(body.name || body.tag || "").slice(0, 80)}`, details: { fields: body } });
       return json(res, 201, { tags });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save tag.", detail: error.statusCode ? undefined : error.message });
@@ -1923,7 +3077,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const template = await upsertMailTemplateForTenant(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const template = await upsertMailTemplateForTenant(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "create-mail-template", target: `template:${template.id}`, details: { fields: payload } });
       return json(res, 201, { template });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save mail template.", detail: error.statusCode ? undefined : error.message });
@@ -1938,8 +3094,10 @@ async function handleApi(req, res) {
       const templateId = decodeURIComponent(parts.at(-1));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const template = await upsertMailTemplateForTenant(resolved.tenantId, await readBody(req), templateId);
+      const payload = await readBody(req);
+      const template = await upsertMailTemplateForTenant(resolved.tenantId, payload, templateId);
       if (!template) return json(res, 404, { error: "Mail template not found." });
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-mail-template", target: `template:${template.id}`, details: { fields: payload } });
       return json(res, 200, { template });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to update mail template.", detail: error.statusCode ? undefined : error.message });
@@ -1956,6 +3114,7 @@ async function handleApi(req, res) {
       if (!resolved) return;
       const result = await dbQuery(`delete from mail_templates where tenant_id=$1 and id=$2 returning id`, [resolved.tenantId, templateId]);
       if (!result.rows.length) return json(res, 404, { error: "Mail template not found." });
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "delete-mail-template", target: `template:${result.rows[0].id}` });
       return json(res, 200, { ok: true, id: result.rows[0].id });
     } catch (error) {
       return json(res, 500, { error: "Unable to delete mail template.", detail: error.message });
@@ -1965,13 +3124,15 @@ async function handleApi(req, res) {
   if (req.method === "PUT" && /^\/api\/tenants\/[^/]+$/.test(pathname)) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!requirePlatformAdmin(req, res)) return;
+      const auth = requirePlatformAdmin(req, res);
+      if (!auth) return;
       const id = decodeURIComponent(pathname.split("/").pop());
       const payload = normalizeTenantPayload(await readBody(req));
       const validationError = validateTenant(payload);
       if (validationError) return json(res, 400, { error: validationError });
       const result = await updateTenant(id, payload);
       if (!result) return json(res, 404, { error: "Tenant not found." });
+      await recordServerAudit({ auth, tenantId: result.tenant.id, operation: "update-tenant", target: `tenant:${result.tenant.id}`, details: { fields: payload } });
       return json(res, 200, { tenant: tenantFromRow(result.tenant, result.user ? [result.user] : [], [], [], []) });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to update tenant.", detail: error.statusCode ? undefined : error.message });
@@ -1981,7 +3142,8 @@ async function handleApi(req, res) {
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/reset-password")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!requirePlatformAdmin(req, res)) return;
+      const auth = requirePlatformAdmin(req, res);
+      if (!auth) return;
       const id = decodeURIComponent(pathname.split("/").at(-2));
       const userResult = await dbQuery(
         `select u.id user_id, u.email, t.id tenant_id, t.name tenant_name
@@ -2006,6 +3168,7 @@ async function handleApi(req, res) {
         to: user.email,
         temporaryPassword,
       });
+      await recordServerAudit({ auth, tenantId: user.tenant_id, operation: "reset-tenant-password", target: `tenant:${user.tenant_id}` });
       return json(res, 200, { ok: true, inviteEmail });
     } catch (error) {
       return json(res, 500, { error: "Unable to reset password.", detail: error.message });
@@ -2015,10 +3178,12 @@ async function handleApi(req, res) {
   if (req.method === "DELETE" && /^\/api\/tenants\/[^/]+$/.test(pathname)) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!requirePlatformAdmin(req, res)) return;
+      const auth = requirePlatformAdmin(req, res);
+      if (!auth) return;
       const id = decodeURIComponent(pathname.split("/").pop());
-      const result = await dbQuery(`delete from tenants where id::text=$1 or slug=$1 returning slug`, [id]);
+      const result = await dbQuery(`delete from tenants where id::text=$1 or slug=$1 returning id, slug`, [id]);
       if (!result.rows.length) return json(res, 404, { error: "Tenant not found." });
+      await recordServerAudit({ auth, tenantId: null, operation: "delete-tenant", target: `tenant:${result.rows[0].slug}`, details: { editedTenantId: result.rows[0].id, editedTenantName: result.rows[0].slug } });
       return json(res, 200, { ok: true, slug: result.rows[0].slug });
     } catch (error) {
       return json(res, 500, { error: "Unable to delete tenant.", detail: error.message });
@@ -2031,7 +3196,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const gmailIntegration = await upsertGmailSettings(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const gmailIntegration = await upsertGmailSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-gmail-settings", target: "gmail-settings", details: { fields: payload } });
       return json(res, 200, { gmailIntegration });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save Gmail settings.", detail: error.statusCode ? undefined : error.message });
@@ -2044,10 +3211,57 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const gmailIntegration = await upsertConfigurationSettings(resolved.tenantId, await readBody(req));
-      return json(res, 200, { gmailIntegration });
+      const payload = await readBody(req);
+      const settings = await upsertConfigurationSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-configuration", target: "configuration", details: { fields: payload } });
+      return json(res, 200, { gmailIntegration: settings.gmailIntegration, tenantSettings: { mfaRequired: !!settings.tenant.mfa_required } });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save configuration.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const payload = await readBody(req);
+      const linkedinIntegration = await upsertLinkedinSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-linkedin-settings", target: "linkedin-settings", details: { fields: payload } });
+      return json(res, 200, { linkedinIntegration });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save LinkedIn settings.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin/scan")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const payload = await readBody(req);
+      const scan = await runLinkedinPuppeteerScan(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "scan-linkedin", target: "linkedin-settings", details: { fields: { limit: payload.limit || 10, profileId: payload.profileId || "", conversationId: payload.conversationId || "" } } });
+      return json(res, 200, scan);
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: "Unable to scan LinkedIn.", detail: error.message });
+    }
+  }
+
+  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/workflow-automation")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const payload = await readBody(req);
+      const workflowAutomation = await upsertWorkflowAutomationSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-workflow-automation", target: "workflow-automation", details: { fields: payload } });
+      return json(res, 200, { workflowAutomation });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save workflow automation.", detail: error.statusCode ? undefined : error.message });
     }
   }
 
@@ -2057,7 +3271,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-2));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const outgoingEmail = await upsertOutgoingEmailSettings(resolved.tenantId, await readBody(req));
+      const payload = await readBody(req);
+      const outgoingEmail = await upsertOutgoingEmailSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-outgoing-email", target: "outgoing-email", details: { fields: payload } });
       return json(res, 200, { outgoingEmail });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save outgoing email settings.", detail: error.statusCode ? undefined : error.message });
@@ -2070,7 +3286,9 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const result = await sendCrmEmailForTenant(resolved.tenantId, resolved.auth, await readBody(req));
+      const payload = await readBody(req);
+      const result = await sendCrmEmailForTenant(resolved.tenantId, resolved.auth, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "send-email", target: `deal:${payload.dealId || ""}`, details: { fields: payload } });
       return json(res, 200, result);
     } catch (error) {
       return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to send email.", detail: error.statusCode ? undefined : error.message });
@@ -2105,10 +3323,11 @@ async function handleApi(req, res) {
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/gmail/connect")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      if (!googleClientSecret) return json(res, 400, { error: "GOOGLE_CLIENT_SECRET is not configured." });
+      if (!googleClientId || !googleClientSecret) return json(res, 400, { error: "Google connection is not configured on the server." });
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
+      const body = await readBody(req);
       const integrationResult = await dbQuery(
         `select g.*, t.id resolved_tenant_id
          from tenants t left join gmail_integrations g on g.tenant_id=t.id
@@ -2117,15 +3336,14 @@ async function handleApi(req, res) {
       );
       const integration = integrationResult.rows[0];
       if (!integration) return json(res, 404, { error: "Tenant not found." });
-      if (!integration.account_email) return json(res, 400, { error: "Save Gmail account before connecting." });
-      if (!integration.client_id || !integration.redirect_uri) return json(res, 400, { error: "Save Gmail client ID and redirect URI before connecting." });
       return json(res, 200, {
         authUrl: gmailAuthUrl({
           tenantId: integration.resolved_tenant_id,
           userId: resolved.auth.userId,
-          clientId: integration.client_id,
-          redirectUri: integration.redirect_uri,
-          accountEmail: integration.account_email,
+          clientId: googleClientId,
+          redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback`,
+          accountEmail: integration.account_email || "",
+          returnOrigin: body.returnOrigin || req.headers.origin || req.headers.referer,
         }),
       });
     } catch (error) {
@@ -2136,29 +3354,30 @@ async function handleApi(req, res) {
   if (req.method === "GET" && pathname === "/api/gmail/oauth/callback") {
     try {
       if (!pool) throw new Error("DATABASE_URL is not configured.");
-      if (!googleClientSecret) throw new Error("GOOGLE_CLIENT_SECRET is not configured.");
+      if (!googleClientId || !googleClientSecret) throw new Error("Google connection is not configured on the server.");
       const state = verifySignedPayload(requestUrl.searchParams.get("state"));
       const code = requestUrl.searchParams.get("code");
       if (!state.tenantId || !code) throw new Error("Gmail OAuth response is missing state or code.");
       const integrationResult = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [state.tenantId]);
       const integration = integrationResult.rows[0];
       if (!integration) throw new Error("Gmail integration settings were not found.");
-      const token = await exchangeGmailCode({ code, clientId: integration.client_id, redirectUri: integration.redirect_uri });
+      const token = await exchangeGmailCode({ code, clientId: googleClientId, redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback` });
       const profile = await gmailApi(token.access_token, "profile");
-      if (!integration.account_email || profile.emailAddress?.toLowerCase() !== String(integration.account_email).toLowerCase()) {
-        throw new Error(`Connected Gmail account ${profile.emailAddress || "unknown"} does not match ${integration.account_email || "the configured Gmail account"}.`);
-      }
+      const connectedEmail = String(profile.emailAddress || "").trim();
+      if (!connectedEmail) throw new Error("Google did not return the connected Gmail account.");
+      const connectedDomain = connectedEmail.includes("@") ? connectedEmail.split("@").pop().toLowerCase() : (integration.workspace_domain || "gmail.com");
       await dbQuery(
         `update gmail_integrations
-         set enabled=true, status='Connected', access_token_enc=$2, refresh_token_enc=coalesce($3, refresh_token_enc), token_expiry=$4, updated_at=now()
+         set enabled=true, status='Connected', access_token_enc=$2, refresh_token_enc=coalesce($3, refresh_token_enc), token_expiry=$4, account_email=$5, workspace_domain=$6, client_id=$7, redirect_uri=$8, updated_at=now()
          where tenant_id=$1`,
-        [state.tenantId, encryptToken(token.access_token), token.refresh_token ? encryptToken(token.refresh_token) : null, new Date(Date.now() + Number(token.expires_in || 3600) * 1000)],
+        [state.tenantId, encryptToken(token.access_token), token.refresh_token ? encryptToken(token.refresh_token) : null, new Date(Date.now() + Number(token.expires_in || 3600) * 1000), connectedEmail, connectedDomain, googleClientId, `${publicBaseUrl}/api/gmail/oauth/callback`],
       );
-      res.writeHead(302, { location: "/crm/?gmail=connected" });
+      res.writeHead(302, { location: `${safeGmailReturnOrigin(state.returnOrigin)}/crm/?gmail=connected` });
       res.end();
       return;
     } catch (error) {
-      res.writeHead(302, { location: `/crm/?gmail=error&detail=${encodeURIComponent(error.message)}` });
+      const state = verifySignedPayload(requestUrl.searchParams.get("state")) || {};
+      res.writeHead(302, { location: `${safeGmailReturnOrigin(state.returnOrigin)}/crm/?gmail=error&detail=${encodeURIComponent(error.message)}` });
       res.end();
       return;
     }
@@ -2172,8 +3391,25 @@ async function handleApi(req, res) {
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
       const result = await scanGmailForTenant(resolved.tenantId, { scanId });
-      const integration = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [resolved.tenantId]);
-      return json(res, 200, { ...result, gmailIntegration: gmailIntegrationFromRow(integration.rows[0], await readGmailSignals(resolved.tenantId)) });
+      try {
+        const integration = await dbQuery(`select * from gmail_integrations where tenant_id=$1`, [resolved.tenantId]);
+        return json(res, 200, { ...result, gmailIntegration: gmailIntegrationFromRow(integration.rows[0], await readGmailSignals(resolved.tenantId)) });
+      } catch (error) {
+        console.log(`Gmail scan completed but response hydration failed for tenant ${resolved.tenantId}: ${error.message}`);
+        return json(res, 200, {
+          ...result,
+          warning: `Gmail scan completed, but refreshed signals could not be loaded: ${error.message}`,
+          gmailIntegration: {
+            enabled: true,
+            status: "Last scan completed. Refresh to load the latest Gmail signals.",
+            signals: [
+              ...result.newContacts.map((item) => ({ ...item, type: "new_contact" })),
+              ...result.dormantContacts.map((item) => ({ ...item, type: "dormant_contact" })),
+              ...result.attentionCorrespondence.map((item) => ({ ...item, type: "attention_correspondence" })),
+            ],
+          },
+        });
+      }
     } catch (error) {
       finishGmailScanProgress(scanId, { status: "failed", error: error.message });
       return json(res, 502, { error: "Unable to scan Gmail.", detail: error.message });
@@ -2258,20 +3494,37 @@ module.exports = {
   extractGmailMessageText,
   gmailAuthUrl,
   gmailLabelQuery,
+  authChallengeForUser,
+  authenticatorUri,
   inviteEmailContent,
   isAutomatedSenderEmail,
+  mfaRecoveryEmailContent,
   normalizeDealPayload,
   normalizeGmailSettings,
+  normalizeLinkedinSettings,
   normalizeOutgoingEmailSettings,
   normalizeOutgoingMailPayload,
   normalizeRegistrationPayload,
   normalizeTenantPayload,
+  normalizeWorkflowAutomationSettings,
   parseEmailAddress,
+  passwordResetEmailContent,
+  registrationNotificationContent,
   signAuthToken,
+  signGoogleAuthState,
+  signMfaRecoveryToken,
+  signPreAuthToken,
+  storeGoogleAuthResult,
   staticFilePathForUrlPath,
   smtpInviteMessage,
+  totpCode,
   slugify,
   updateTenantWithClient,
   validateTenant,
+  verifyGoogleAuthState,
+  consumeGoogleAuthResult,
+  verifyMfaRecoveryToken,
+  verifyPreAuthToken,
   verifySignedPayload,
+  verifyTotpCode,
 };
