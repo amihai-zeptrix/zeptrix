@@ -237,6 +237,7 @@ let ui = {
   selectedReportTemplate: "",
   helpTopic: "",
   pendingTag: null,
+  connectivityOpen: true,
   settingsTab: "gmail",
   gmailDiscoveryPage: 1,
   gmailNotice: "",
@@ -1161,7 +1162,7 @@ function renderSidebar() {
       ${sideLink("activities", "✓", "Activities", openTasks().length)}
       ${sideLink("inbox", "✉", "Inbox", tenant.communications.length)}
       ${sideLink("reports", "◴", "Reports")}
-      ${sideLink("settings", "⚙", "Settings")}
+      ${connectivityNav()}
       <div class="side-spacer"></div>
       <button class="side-link" data-action="logout"><span class="icon">⇤</span> Sign out</button>
       <div class="profile">${avatar(currentUser().name)}<div><strong>${escapeHtml(currentUser().name)}</strong><small>${escapeHtml(currentUser().role)}</small></div></div>
@@ -1170,6 +1171,15 @@ function renderSidebar() {
 
 function sideLink(section, icon, label, count = "") {
   return `<button class="side-link ${ui.section === section ? "active" : ""}" data-section="${section}"><span class="icon">${icon}</span>${label}${count !== "" ? `<span class="count">${count}</span>` : ""}</button>`;
+}
+
+function connectivityNav() {
+  const open = ui.connectivityOpen || ui.section === "settings";
+  const item = (tab, label) => `<button class="side-link side-sublink ${ui.section === "settings" && ui.settingsTab === tab ? "active" : ""}" data-section="settings" data-settings-tab="${tab}">${label}</button>`;
+  return `<div class="side-group">
+    <button class="side-link ${ui.section === "settings" ? "active" : ""}" data-section="settings" data-action="toggle-connectivity"><span class="icon">⚙</span>Connectivity<span class="count chevron">${open ? "▾" : "▸"}</span></button>
+    ${open ? `<div class="side-submenu">${item("gmail", "Gmail")}${item("linkedin", "Linked-in")}${item("zoom", "Zoom")}${item("wechat", "WeChat")}${item("configuration", "Settings")}</div>` : ""}
+  </div>`;
 }
 
 function renderTopbar() {
@@ -2515,7 +2525,7 @@ function renderSettings() {
 
 function renderSettingsPage() {
   if (ui.settingsTab === "mail") ui.settingsTab = "gmail";
-  const connectivityActive = ["gmail", "linkedin"].includes(ui.settingsTab);
+  const connectivityActive = ["gmail", "linkedin", "zoom", "wechat"].includes(ui.settingsTab);
   return `
     ${renderPageHeader("Settings", "Configure CRM integrations and workspace behavior.")}
     <nav class="settings-tabs">
@@ -2526,14 +2536,24 @@ function renderSettingsPage() {
       <button class="${ui.settingsTab === "configuration" ? "active" : ""}" data-settings-tab="configuration">Configuration</button>
     </nav>
     ${connectivityActive ? renderConnectivitySubmenu() : ""}
-    ${ui.settingsTab === "gmail" ? renderGmailConnectivitySettings() : ui.settingsTab === "linkedin" ? renderLinkedinIntegrationSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : ui.settingsTab === "automation" ? renderWorkflowAutomationSettingsPanel() : renderConfigurationSettingsPanel()}`;
+    ${ui.settingsTab === "gmail" ? renderGmailConnectivitySettings() : ui.settingsTab === "linkedin" ? renderLinkedinIntegrationSettings() : ui.settingsTab === "zoom" ? renderZoomIntegrationSettings() : ui.settingsTab === "wechat" ? renderWeChatIntegrationSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : ui.settingsTab === "automation" ? renderWorkflowAutomationSettingsPanel() : renderConfigurationSettingsPanel()}`;
 }
 
 function renderConnectivitySubmenu() {
   return `<nav class="settings-subtabs" aria-label="Connectivity integrations">
     <button class="${ui.settingsTab === "gmail" ? "active" : ""}" data-settings-tab="gmail">Gmail</button>
     <button class="${ui.settingsTab === "linkedin" ? "active" : ""}" data-settings-tab="linkedin">LinkedIn</button>
+    <button class="${ui.settingsTab === "zoom" ? "active" : ""}" data-settings-tab="zoom">Zoom</button>
+    <button class="${ui.settingsTab === "wechat" ? "active" : ""}" data-settings-tab="wechat">WeChat</button>
   </nav>`;
+}
+
+function renderZoomIntegrationSettings() {
+  return `<section class="settings-card integration-placeholder-card"><div class="panel-head"><div><h3>Zoom integration</h3><p class="subcopy">Coming soon: meeting intelligence for calls, transcripts, participants, and follow-up tasks.</p></div><span class="status-pill stage-lead">Coming soon</span></div><div class="signal-list"><div class="signal-row"><span class="activity-symbol">⌕</span><span class="list-primary">Meeting capture<small>Connect Zoom to detect account meetings and create CRM activity history.</small></span></div><div class="signal-row"><span class="activity-symbol">✦</span><span class="list-primary">Transcript signals<small>Surface risks, objections, next steps, and promised follow-ups from calls.</small></span></div></div></section>`;
+}
+
+function renderWeChatIntegrationSettings() {
+  return `<section class="settings-card integration-placeholder-card"><div class="panel-head"><div><h3>WeChat integration</h3><p class="subcopy">Coming soon: relationship tracking for WeChat conversations and customer updates.</p></div><span class="status-pill stage-lead">Coming soon</span></div><div class="signal-list"><div class="signal-row"><span class="activity-symbol">☰</span><span class="list-primary">Conversation capture<small>Bring approved WeChat customer conversations into account history.</small></span></div><div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Attention detection<small>Flag unresolved questions, negative wording, and stalled customer threads.</small></span></div></div></section>`;
 }
 
 function renderTemplatesSettingsPanel() {
@@ -2652,7 +2672,7 @@ function renderLinkedinIntegrationSettings() {
           <label class="check-row"><input type="checkbox" name="syncCompanyUpdates" ${linkedin.syncCompanyUpdates ? "checked" : ""} /><span>Track account company updates</span><small>Reserve company-page context for the next LinkedIn data collector.</small></label>
         </div>
         <p class="subcopy">The diagnostic scan stores only counts and conversation metadata. Server setup requires <strong>LINKEDIN_PUPPETEER_ENABLED=1</strong>, a Chrome executable, and <strong>LINKEDIN_CHROME_PROFILE</strong> already signed in to LinkedIn.</p>
-        <div class="form-actions"><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
+        <div class="form-actions integration-actions"><button type="button" class="button" data-action="open-linkedin-company" ${linkedin.companyPageUrl ? "" : "disabled"}>Open LinkedIn page</button><button type="button" class="button" data-action="open-linkedin-inbox">Open LinkedIn inbox</button><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
@@ -2948,6 +2968,13 @@ document.addEventListener("click", async (event) => {
 
   if (actionElement) {
     const { action, group, id, dealId: taskDealId } = actionElement.dataset;
+    if (action === "toggle-connectivity") {
+      ui.connectivityOpen = !ui.connectivityOpen;
+      ui.section = "settings";
+      if (!["gmail", "linkedin", "zoom", "wechat", "configuration"].includes(ui.settingsTab)) ui.settingsTab = "gmail";
+      render();
+      return;
+    }
     if (action === "google-sso") startGoogleAuth(actionElement.dataset.mode || "login");
     if (action === "focus-home-correspondence-account") {
       focusHomeCorrespondenceAccount(actionElement.dataset.account || "", actionElement.dataset.threadId || "");
@@ -3148,6 +3175,16 @@ document.addEventListener("click", async (event) => {
         showToast(error.message);
       }
       render();
+      return;
+    }
+    if (action === "open-linkedin-company") {
+      const url = linkedinIntegration(currentTenant()).companyPageUrl;
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      else showToast("Add a LinkedIn company or profile URL first");
+      return;
+    }
+    if (action === "open-linkedin-inbox") {
+      window.open("https://www.linkedin.com/messaging/", "_blank", "noopener,noreferrer");
       return;
     }
     if (action === "connect-gmail") {

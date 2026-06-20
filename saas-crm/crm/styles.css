@@ -262,6 +262,23 @@ h3 { font-size: 14px; }
 }
 .side-link:hover, .side-link.active { color: #fff; background: rgba(102,151,238,.2); }
 .side-link .icon { width: 16px; text-align: center; }
+.side-group { margin: 1px 0; }
+.side-submenu {
+  display: grid;
+  gap: 1px;
+  margin: 2px 10px 8px 34px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255,255,255,.12);
+}
+.side-sublink {
+  margin: 0;
+  padding: 7px 9px;
+  font-size: 13px;
+}
+.side-link .chevron {
+  font-size: 13px;
+  color: #d6deeb;
+}
 .count { margin-left: auto; color: #91a0b3; font-size: 11px; }
 .side-spacer { flex: 1; }
 .profile {
