@@ -2686,8 +2686,8 @@ function renderLinkedinIntegrationSettings() {
           <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Use LinkedIn conversation/profile context from the Puppeteer scan when available.</small></label>
         </div>
         <p class="subcopy">The scan stores only counts and conversation metadata. It needs a LinkedIn session that has already been authorized outside the CRM password flow.</p>
-        ${ui.linkedinLogin ? `<div class="admin-notice"><strong>Temporary LinkedIn login is running.</strong><br />1. Run: <code>${escapeHtml(ui.linkedinLogin.tunnelCommand)}</code><br />2. Open: <code>${escapeHtml(ui.linkedinLogin.localDebugUrl)}</code><br />3. Complete LinkedIn login, then click <strong>I finished login</strong>.<br />This session expires in ${escapeHtml(ui.linkedinLogin.expiresInMinutes)} minutes.</div>` : ""}
-        <div class="form-actions integration-actions"><button type="button" class="button" data-action="authorize-linkedin-session" ${authorizeDisabled}>Start LinkedIn login</button><button type="button" class="button" data-action="verify-linkedin-session" ${authorizeDisabled}>I finished login</button><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
+        ${ui.linkedinLogin ? `<div class="admin-notice"><strong>Temporary LinkedIn login is running.</strong><br />1. Run this tunnel in Terminal: <code>${escapeHtml(ui.linkedinLogin.tunnelCommand)}</code><br />2. After the tunnel is running, click <strong>Open login tab</strong>.<br />3. Complete LinkedIn login, then click <strong>I finished login</strong>.<br />Local login URL: <code>${escapeHtml(ui.linkedinLogin.localDebugUrl)}</code><br />This session expires in ${escapeHtml(ui.linkedinLogin.expiresInMinutes)} minutes.</div>` : ""}
+        <div class="form-actions integration-actions"><button type="button" class="button" data-action="authorize-linkedin-session" ${authorizeDisabled}>Start LinkedIn login</button><button type="button" class="button" data-action="open-linkedin-login-tab" ${ui.linkedinLogin?.localDebugUrl ? "" : "disabled"}>Open login tab</button><button type="button" class="button" data-action="verify-linkedin-session" ${authorizeDisabled}>I finished login</button><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
@@ -3199,13 +3199,20 @@ document.addEventListener("click", async (event) => {
         const result = await authorizeLinkedinSessionViaApi(tenant.id);
         setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
         ui.linkedinLogin = result.login || null;
-        if (result.login?.localDebugUrl) window.open(result.login.localDebugUrl, "_blank", "noopener,noreferrer");
         showToast("Temporary LinkedIn login started. Follow the instructions in the LinkedIn panel.");
       } catch (error) {
         setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
         showToast(error.message);
       }
       render();
+      return;
+    }
+    if (action === "open-linkedin-login-tab") {
+      if (ui.linkedinLogin?.localDebugUrl) {
+        window.open(ui.linkedinLogin.localDebugUrl, "_blank", "noopener,noreferrer");
+      } else {
+        showToast("Start LinkedIn login first.");
+      }
       return;
     }
     if (action === "verify-linkedin-session") {

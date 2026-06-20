@@ -25,10 +25,12 @@ const publicBaseUrl = process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL?.r
 const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_SSO_CLIENT_ID || "";
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
 const linkedinPuppeteerEnabled = ["1", "true", "yes"].includes(String(process.env.LINKEDIN_PUPPETEER_ENABLED || "").toLowerCase());
-const linkedinChromePath = process.env.LINKEDIN_CHROME_PATH || process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const linkedinChromePath = process.env.LINKEDIN_CHROME_PATH || process.env.CHROME_PATH || "/usr/bin/google-chrome";
 const linkedinChromeProfile = process.env.LINKEDIN_CHROME_PROFILE || "";
 const linkedinChromeProfileRoot = process.env.LINKEDIN_CHROME_PROFILE_ROOT || path.join(root, ".linkedin-profiles");
 const linkedinDebugPortBase = Number(process.env.LINKEDIN_DEBUG_PORT_BASE || 9300);
+const linkedinSshUser = process.env.LINKEDIN_SSH_USER || "ec2-user";
+const linkedinSshHost = process.env.LINKEDIN_SSH_HOST || "";
 const linkedinScansInProgress = new Set();
 const linkedinLoginSessions = new Map();
 const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
@@ -1808,7 +1810,7 @@ async function authorizeLinkedinSession(tenantId) {
   return linkedinIntegrationFromRow(result.rows[0]);
 }
 
-async function startLinkedinLoginSession(tenantId) {
+async function startLinkedinLoginSession(tenantId, requestHost = "") {
   const linkedinIntegration = await authorizeLinkedinSession(tenantId);
   const profilePath = linkedinTenantProfilePath(tenantId);
   const unavailable = linkedinPuppeteerUnavailableReason(profilePath);
@@ -1881,7 +1883,8 @@ async function startLinkedinLoginSession(tenantId) {
     linkedinIntegration,
     login: {
       localDebugUrl: `http://127.0.0.1:${debugPort}`,
-      tunnelCommand: `ssh -L ${debugPort}:127.0.0.1:${debugPort} ec2-user@<crm-server>`,
+      tunnelCommand: `ssh -L ${debugPort}:127.0.0.1:${debugPort} ${linkedinSshUser}@${linkedinSshHost || requestHost || "<crm-server>"}`,
+      tunnelReady: false,
       expiresInMinutes: 20,
     },
   };
@@ -3422,7 +3425,7 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      const session = await startLinkedinLoginSession(resolved.tenantId);
+      const session = await startLinkedinLoginSession(resolved.tenantId, req.headers.host || "");
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "authorize-linkedin-session", target: "linkedin-settings", details: { fields: { sessionStatus: "setup_required" } } });
       return json(res, 200, { ...session, instructions: "Open the temporary debug URL through the SSH tunnel, complete LinkedIn login, then click I finished login. No LinkedIn password, token, or cookie is stored by CRM." });
     } catch (error) {

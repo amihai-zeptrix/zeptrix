@@ -1306,9 +1306,13 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /Session status/);
   assert.match(renderLinkedinSource, /data-action="authorize-linkedin-session"/);
   assert.match(renderLinkedinSource, /Start LinkedIn login/);
+  assert.match(renderLinkedinSource, /data-action="open-linkedin-login-tab"/);
+  assert.match(renderLinkedinSource, /Open login tab/);
   assert.match(renderLinkedinSource, /data-action="verify-linkedin-session"/);
   assert.match(renderLinkedinSource, /I finished login/);
   assert.match(renderLinkedinSource, /Temporary LinkedIn login is running/);
+  assert.match(renderLinkedinSource, /Run this tunnel in Terminal/);
+  assert.match(renderLinkedinSource, /Local login URL/);
   assert.match(renderLinkedinSource, /ui\.linkedinLogin\.tunnelCommand/);
   assert.match(renderLinkedinSource, /const canRunLinkedinScan = canUseBackend/);
   assert.match(renderLinkedinSource, /const canAuthorizeLinkedin = canUseBackend/);
@@ -1461,7 +1465,9 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(clickHandlerSource, /action === "scan-linkedin"/);
   assert.match(clickHandlerSource, /action === "authorize-linkedin-session"/);
   assert.match(clickHandlerSource, /Temporary LinkedIn login started/);
-  assert.match(clickHandlerSource, /window\.open\(result\.login\.localDebugUrl/);
+  assert.doesNotMatch(clickHandlerSource, /window\.open\(result\.login\.localDebugUrl/);
+  assert.match(clickHandlerSource, /action === "open-linkedin-login-tab"/);
+  assert.match(clickHandlerSource, /window\.open\(ui\.linkedinLogin\.localDebugUrl/);
   assert.match(clickHandlerSource, /action === "verify-linkedin-session"/);
   assert.match(clickHandlerSource, /LinkedIn session authorized/);
   assert.doesNotMatch(app, /profilePath:/);
