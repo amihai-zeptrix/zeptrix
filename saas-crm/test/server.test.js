@@ -1225,8 +1225,11 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(sidebarSource, /connectivityNav\(\)/);
   assert.match(app, /function connectivityNav/);
   assert.match(app, /data-action="toggle-connectivity"/);
+  assert.match(app, /aria-expanded="\$\{open \? "true" : "false"\}"/);
+  assert.match(app, /const open = ui\.connectivityOpen/);
   assert.match(app, /Connectivity/);
-  assert.match(app, /Linked-in/);
+  assert.match(app, /LinkedIn/);
+  assert.doesNotMatch(app, /Linked-in/);
   assert.match(app, /Zoom/);
   assert.match(app, /WeChat/);
   assert.doesNotMatch(sidebarSource, /sideLink\("templates", "✎", "Email templates"/);
@@ -1421,7 +1424,10 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(clickHandlerSource, /action === "connect-gmail"/);
   assert.match(clickHandlerSource, /action === "scan-linkedin"/);
   assert.match(clickHandlerSource, /action === "toggle-connectivity"/);
+  assert.match(clickHandlerSource, /ui\.connectivityOpen = ui\.section === "settings" \? !ui\.connectivityOpen : true/);
+  assert.match(clickHandlerSource, /ui\.settingsTab = "gmail"/);
   assert.match(clickHandlerSource, /action === "open-linkedin-company"/);
+  assert.match(clickHandlerSource, /linkedinFormValues\(form\)\.companyPageUrl/);
   assert.match(clickHandlerSource, /action === "open-linkedin-inbox"/);
   assert.match(clickHandlerSource, /scanLinkedinViaApi\(tenant\.id, \{ limit: 10 \}\)/);
   assert.match(clickHandlerSource, /action === "scan-gmail"/);

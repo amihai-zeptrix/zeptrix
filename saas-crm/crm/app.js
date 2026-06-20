@@ -1174,11 +1174,11 @@ function sideLink(section, icon, label, count = "") {
 }
 
 function connectivityNav() {
-  const open = ui.connectivityOpen || ui.section === "settings";
+  const open = ui.connectivityOpen;
   const item = (tab, label) => `<button class="side-link side-sublink ${ui.section === "settings" && ui.settingsTab === tab ? "active" : ""}" data-section="settings" data-settings-tab="${tab}">${label}</button>`;
   return `<div class="side-group">
-    <button class="side-link ${ui.section === "settings" ? "active" : ""}" data-section="settings" data-action="toggle-connectivity"><span class="icon">⚙</span>Connectivity<span class="count chevron">${open ? "▾" : "▸"}</span></button>
-    ${open ? `<div class="side-submenu">${item("gmail", "Gmail")}${item("linkedin", "Linked-in")}${item("zoom", "Zoom")}${item("wechat", "WeChat")}${item("configuration", "Settings")}</div>` : ""}
+    <button class="side-link ${ui.section === "settings" ? "active" : ""}" data-action="toggle-connectivity" aria-expanded="${open ? "true" : "false"}"><span class="icon">⚙</span>Connectivity<span class="count chevron">${open ? "▾" : "▸"}</span></button>
+    ${open ? `<div class="side-submenu">${item("gmail", "Gmail")}${item("linkedin", "LinkedIn")}${item("zoom", "Zoom")}${item("wechat", "WeChat")}${item("configuration", "Settings")}</div>` : ""}
   </div>`;
 }
 
@@ -2969,9 +2969,9 @@ document.addEventListener("click", async (event) => {
   if (actionElement) {
     const { action, group, id, dealId: taskDealId } = actionElement.dataset;
     if (action === "toggle-connectivity") {
-      ui.connectivityOpen = !ui.connectivityOpen;
+      ui.connectivityOpen = ui.section === "settings" ? !ui.connectivityOpen : true;
       ui.section = "settings";
-      if (!["gmail", "linkedin", "zoom", "wechat", "configuration"].includes(ui.settingsTab)) ui.settingsTab = "gmail";
+      ui.settingsTab = "gmail";
       render();
       return;
     }
@@ -3178,7 +3178,8 @@ document.addEventListener("click", async (event) => {
       return;
     }
     if (action === "open-linkedin-company") {
-      const url = linkedinIntegration(currentTenant()).companyPageUrl;
+      const form = actionElement.closest("form");
+      const url = (form ? linkedinFormValues(form).companyPageUrl : "") || linkedinIntegration(currentTenant()).companyPageUrl;
       if (url) window.open(url, "_blank", "noopener,noreferrer");
       else showToast("Add a LinkedIn company or profile URL first");
       return;
