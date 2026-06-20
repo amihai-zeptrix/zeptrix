@@ -2555,7 +2555,7 @@ function renderMailIntegrationsSettings() {
             <div class="form-actions gmail-primary-actions"><button type="button" class="button primary" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button></div>
             <p class="admin-notice">${gmail.accountEmail ? `Connected mailbox: <strong>${escapeHtml(gmail.accountEmail)}</strong>` : "Click Connect Gmail and choose the Gmail account in Google. No mailbox password or OAuth client setup is required."}</p>
             <div class="form-grid">
-              ${formField("Labels to read", "labels", gmail.labels)}
+              ${formField("Gmail folders to scan", "labels", gmail.labels)}
               ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
             </div>
             <div class="check-list compact">
