@@ -3,6 +3,7 @@ const SESSION_KEY = "zeptrix-saas-session-v1";
 const WHATS_NEW_KEY = "zeptrix-crm-whats-new-v1";
 const WHATS_NEW_VERSION = "crm-build-order-2026-06-19";
 const GMAIL_DISCOVERY_PAGE_SIZE = 10;
+const ADMIN_LIST_PAGE_SIZE = 8;
 const DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS = 30;
 const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
@@ -203,6 +204,8 @@ let ui = {
   editingTenant: null,
   adminNotice: "",
   adminTab: "tenants",
+  adminSearch: "",
+  adminPages: { tenants: 1, invites: 1, audit: 1 },
   newGroup: "active",
   inlineDealGroup: null,
   inlineContactOpen: false,
@@ -529,7 +532,7 @@ const AUDIT_VALUE_ALLOWLIST = new Set([
 const AUDIT_CLICK_SKIP_ACTIONS = new Set([
   "back-login", "cancel-contact-edit", "cancel-inline-add", "cancel-reply", "clear-account-focus", "clear-contact-search", "close", "close-whats-new",
   "filter-activities", "gmail-discovery-page", "google-sso", "jump-home-risk-thread", "jump-risk-thread", "logout", "open-activities",
-  "open-help", "open-import", "open-inbox", "open-settings", "open-whats-new", "reset-campaign-draft", "show-forgot-password", "show-mfa-recovery", "show-register",
+  "open-help", "open-import", "open-inbox", "open-settings", "open-whats-new", "admin-page", "reset-campaign-draft", "show-forgot-password", "show-mfa-recovery", "show-register",
 ]);
 
 function redactAuditValue(name, value) {
@@ -1200,29 +1203,84 @@ function renderAdmin() {
 }
 
 function renderAdminTenants() {
+  const rows = filterAdminRows(data.tenants, tenantSearchText);
+  const page = adminPageFor("tenants", rows.length);
+  const visibleRows = paginateAdminRows(rows, page);
   return `
-    <div class="section-toolbar"><strong>${data.tenants.length} tenants</strong><span class="toolbar-spacer"></span><button class="button primary" data-action="add-tenant">＋ New tenant</button></div>
+    <div class="section-toolbar"><strong>${rows.length} of ${data.tenants.length} tenants</strong>${renderAdminSearch("Search tenants, login email, billing, plan...")}<span class="toolbar-spacer"></span><button class="button primary" data-action="add-tenant">＋ New tenant</button></div>
     ${ui.adminNotice ? `<p class="admin-notice">${escapeHtml(ui.adminNotice)}</p>` : ""}
     <section class="list-card">
-      ${data.tenants.map(renderTenantRow).join("")}
-    </section>`;
+      ${visibleRows.map(renderTenantRow).join("") || `<p class="empty-state">${ui.adminSearch ? "No tenants match the current search." : "No tenants yet."}</p>`}
+    </section>
+    ${renderAdminPagination("tenants", rows.length, page)}`;
 }
 
 function renderAdminInviteEmails() {
+  const mails = data.inviteEmails || [];
+  const rows = filterAdminRows(mails, inviteSearchText);
+  const page = adminPageFor("invites", rows.length);
+  const visibleRows = paginateAdminRows(rows, page);
   return `
-    <div class="section-toolbar"><strong>Sent invite emails</strong><span class="toolbar-spacer"></span></div>
+    <div class="section-toolbar"><strong>${rows.length} of ${mails.length} sent invite emails</strong>${renderAdminSearch("Search invite email, tenant, status...")}<span class="toolbar-spacer"></span></div>
     <section class="list-card">
-      ${(data.inviteEmails || []).slice(0, 8).map((mail) => `<div class="invite-row"><span class="activity-symbol">✉</span><span class="list-primary">${escapeHtml(mail.to)}<small>${escapeHtml(mail.tenantName)} · ${inviteSummary(mail)}</small></span><span class="muted">${formatTimestamp(mail.sentAt)}</span></div>`).join("") || `<p class="empty-state">No invite emails sent yet.</p>`}
-    </section>`;
+      ${visibleRows.map((mail) => `<div class="invite-row"><span class="activity-symbol">✉</span><span class="list-primary">${escapeHtml(mail.to)}<small>${escapeHtml(mail.tenantName)} · ${inviteSummary(mail)}</small></span><span class="muted">${formatTimestamp(mail.sentAt)}</span></div>`).join("") || `<p class="empty-state">${ui.adminSearch ? "No invite emails match the current search." : "No invite emails sent yet."}</p>`}
+    </section>
+    ${renderAdminPagination("invites", rows.length, page)}`;
 }
 
 function renderAdminAuditLog() {
   const rows = data.auditLogs || [];
+  const filteredRows = filterAdminRows(rows, auditSearchText);
+  const page = adminPageFor("audit", filteredRows.length);
+  const visibleRows = paginateAdminRows(filteredRows, page);
   return `
-    <div class="section-toolbar"><strong>${rows.length} audit records</strong><span class="toolbar-spacer"></span></div>
+    <div class="section-toolbar"><strong>${filteredRows.length} of ${rows.length} audit records</strong>${renderAdminSearch("Search operation, tenant, user, target...")}<span class="toolbar-spacer"></span></div>
     <section class="list-card audit-log-card">
-      ${rows.map(renderAuditLogRow).join("") || `<p class="empty-state">No audit records yet.</p>`}
-    </section>`;
+      ${visibleRows.map(renderAuditLogRow).join("") || `<p class="empty-state">${ui.adminSearch ? "No audit records match the current search." : "No audit records yet."}</p>`}
+    </section>
+    ${renderAdminPagination("audit", filteredRows.length, page)}`;
+}
+
+function renderAdminSearch(placeholder) {
+  return `<label class="table-search admin-list-search"><span>⌕</span><input data-admin-search value="${escapeHtml(ui.adminSearch)}" placeholder="${escapeHtml(placeholder)}" /></label>`;
+}
+
+function filterAdminRows(rows, textFn) {
+  const query = ui.adminSearch.trim().toLowerCase();
+  if (!query) return rows;
+  return rows.filter((item) => textFn(item).toLowerCase().includes(query));
+}
+
+function adminPageFor(tab, total) {
+  const totalPages = Math.max(1, Math.ceil(total / ADMIN_LIST_PAGE_SIZE));
+  const page = Math.min(Math.max(1, Number(ui.adminPages?.[tab] || 1)), totalPages);
+  ui.adminPages = { ...(ui.adminPages || {}), [tab]: page };
+  return page;
+}
+
+function paginateAdminRows(rows, page) {
+  const start = (page - 1) * ADMIN_LIST_PAGE_SIZE;
+  return rows.slice(start, start + ADMIN_LIST_PAGE_SIZE);
+}
+
+function renderAdminPagination(tab, total, page) {
+  if (total <= ADMIN_LIST_PAGE_SIZE) return "";
+  const totalPages = Math.max(1, Math.ceil(total / ADMIN_LIST_PAGE_SIZE));
+  const start = (page - 1) * ADMIN_LIST_PAGE_SIZE + 1;
+  const end = Math.min(total, page * ADMIN_LIST_PAGE_SIZE);
+  return `<div class="signal-pagination admin-pagination"><span>Showing ${start}-${end} of ${total}</span><button class="button small" data-action="admin-page" data-tab="${escapeHtml(tab)}" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>Previous</button><button class="button small" data-action="admin-page" data-tab="${escapeHtml(tab)}" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>Next</button></div>`;
+}
+
+function tenantSearchText(tenant) {
+  return [tenant.name, tenant.slug, tenant.plan, tenant.status, tenant.region, tenant.seats, tenant.billingEmail, tenantAdminEmail(tenant)].join(" ");
+}
+
+function inviteSearchText(mail) {
+  return [mail.to, mail.tenantName, mail.status, mail.detail, inviteSummary(mail), mail.sentAt].join(" ");
+}
+
+function auditSearchText(item) {
+  return [item.operation, item.tenantName, item.details?.editedTenantName, item.userEmail, item.userRole, item.eventType, item.target, auditFieldSummary(item.details?.fields), item.createdAt].join(" ");
 }
 
 function auditFieldSummary(fields = {}) {
@@ -3030,6 +3088,12 @@ document.addEventListener("click", async (event) => {
       render();
       return;
     }
+    if (action === "admin-page") {
+      const tab = actionElement.dataset.tab || ui.adminTab;
+      ui.adminPages = { ...(ui.adminPages || {}), [tab]: Math.max(1, Number(actionElement.dataset.page || 1)) };
+      render();
+      return;
+    }
     if (action === "add-gmail-contact") {
       const tenant = currentTenant();
       const discovery = gmailContactDiscoveries(tenant).find((item) => item.email === actionElement.dataset.email);
@@ -3193,6 +3257,14 @@ document.addEventListener("input", (event) => {
     ui.selectedContactEmail = "";
     render();
     restoreSearchFocus("[data-contact-search]", cursor);
+    return;
+  }
+  if (event.target.matches("[data-admin-search]")) {
+    ui.adminSearch = event.target.value;
+    ui.adminPages = { ...(ui.adminPages || {}), [ui.adminTab]: 1 };
+    const cursor = event.target.selectionStart;
+    render();
+    restoreSearchFocus("[data-admin-search]", cursor);
     return;
   }
   if (event.target.matches("[data-campaign-field]")) {

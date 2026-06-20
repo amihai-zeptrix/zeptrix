@@ -294,6 +294,7 @@ h3 { font-size: 14px; }
 }
 .global-search { width: 370px; padding: 9px 12px; }
 .table-search { width: 250px; padding: 7px 10px; background: #fff; }
+.admin-list-search { width: min(420px, 100%); margin-left: 12px; }
 .global-search input, .table-search input { width: 100%; border: 0; outline: 0; background: transparent; }
 .top-spacer, .toolbar-spacer { flex: 1; }
 .top-user { display: flex; align-items: center; gap: 8px; padding-left: 12px; border-left: 1px solid var(--line); font-weight: 700; }
