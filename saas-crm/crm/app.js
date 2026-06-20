@@ -847,7 +847,7 @@ async function sendEmailViaApi(tenantId, values) {
 }
 
 async function connectGmailViaApi(tenantId) {
-  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail/connect`, { method: "POST" });
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/gmail/connect`, { method: "POST", body: JSON.stringify({ returnOrigin: window.location.origin }) });
 }
 
 async function scanGmailViaApi(tenantId, scanId = "") {

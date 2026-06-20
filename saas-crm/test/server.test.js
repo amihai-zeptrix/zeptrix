@@ -445,6 +445,7 @@ test("Gmail OAuth URL uses readonly scope and tenant state", () => {
     clientId: " 630303201111-\n etgcku1f78j31regvoc0lm2qdq6gqr5e.app\ns.googleusercontent.com ",
     redirectUri: "https://www.zeptrix.io/api/gmail/oauth/callback",
     accountEmail: "user@gmail.com",
+    returnOrigin: "https://zeptrix.io",
   }));
 
   assert.equal(authUrl.hostname, "accounts.google.com");
@@ -456,6 +457,7 @@ test("Gmail OAuth URL uses readonly scope and tenant state", () => {
   const state = verifySignedPayload(authUrl.searchParams.get("state"));
   assert.equal(state.tenantId, "tenant-123");
   assert.equal(state.userId, "user-123");
+  assert.equal(state.returnOrigin, "https://zeptrix.io");
 
   const chooserUrl = new URL(gmailAuthUrl({
     tenantId: "tenant-123",
@@ -1215,6 +1217,7 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(app, /saveGmailSettingsViaApi/);
   assert.match(app, /saveWorkflowAutomationViaApi/);
   assert.match(app, /connectGmailViaApi/);
+  assert.match(app, /returnOrigin: window\.location\.origin/);
   assert.match(app, /scanGmailViaApi/);
   assert.match(serverSource(), /GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30/);
   assert.match(app, /DEFAULT_GMAIL_DISCOVERY_LOOKBACK_DAYS = 30/);
@@ -1254,6 +1257,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.doesNotMatch(app, /Google Cloud Console/);
   assert.match(serverSource(), /clientId: normalizeOAuthClientId\(payload\.clientId \|\| googleClientId\)/);
   assert.match(serverSource(), /clientId: googleClientId/);
+  assert.match(serverSource(), /function safeGmailReturnOrigin/);
+  assert.match(serverSource(), /returnOrigin: body\.returnOrigin \|\| req\.headers\.origin \|\| req\.headers\.referer/);
+  assert.match(serverSource(), /safeGmailReturnOrigin\(state\.returnOrigin\).*\/crm\/\?gmail=connected/);
   assert.doesNotMatch(serverSource(), /does not match \$\{integration\.account_email/);
   assert.match(serverSource(), /Google did not return the connected Gmail account/);
   assert.match(serverSource(), /account_email=\$5, workspace_domain=\$6/);

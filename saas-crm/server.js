@@ -1451,8 +1451,24 @@ async function resolveAuthorizedTenant(req, res, idOrSlug) {
   return { auth, tenantId };
 }
 
-function signGmailState({ tenantId, userId }) {
-  return signPayload({ tenantId, userId, exp: Date.now() + 10 * 60 * 1000 });
+function safeGmailReturnOrigin(value) {
+  const fallback = new URL(publicBaseUrl).origin;
+  try {
+    const origin = new URL(String(value || fallback)).origin;
+    const allowed = new Set([
+      fallback,
+      "https://www.zeptrix.io",
+      "https://zeptrix.io",
+    ]);
+    if (allowed.has(origin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return origin;
+  } catch {
+    return fallback;
+  }
+  return fallback;
+}
+
+function signGmailState({ tenantId, userId, returnOrigin }) {
+  return signPayload({ tenantId, userId, returnOrigin: safeGmailReturnOrigin(returnOrigin), exp: Date.now() + 10 * 60 * 1000 });
 }
 
 function signGoogleAuthState(mode = "login") {
@@ -1745,7 +1761,7 @@ async function sendCrmEmailForTenant(tenantId, auth, payload) {
   return { communication: communicationFromRow(saved.rows[0]), messageId: response.messageId || null };
 }
 
-function gmailAuthUrl({ tenantId, userId, clientId, redirectUri, accountEmail }) {
+function gmailAuthUrl({ tenantId, userId, clientId, redirectUri, accountEmail, returnOrigin }) {
   const normalizedClientId = normalizeOAuthClientId(clientId || googleClientId);
   if (!isValidGoogleOAuthClientId(normalizedClientId)) {
     throw new Error("Google OAuth client ID is not configured correctly.");
@@ -1757,7 +1773,7 @@ function gmailAuthUrl({ tenantId, userId, clientId, redirectUri, accountEmail })
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
   url.searchParams.set("scope", "https://www.googleapis.com/auth/gmail.readonly");
-  url.searchParams.set("state", signGmailState({ tenantId, userId }));
+  url.searchParams.set("state", signGmailState({ tenantId, userId, returnOrigin }));
   if (accountEmail) url.searchParams.set("login_hint", accountEmail);
   return url.toString();
 }
@@ -3080,6 +3096,7 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
+      const body = await readBody(req);
       const integrationResult = await dbQuery(
         `select g.*, t.id resolved_tenant_id
          from tenants t left join gmail_integrations g on g.tenant_id=t.id
@@ -3095,6 +3112,7 @@ async function handleApi(req, res) {
           clientId: googleClientId,
           redirectUri: `${publicBaseUrl}/api/gmail/oauth/callback`,
           accountEmail: integration.account_email || "",
+          returnOrigin: body.returnOrigin || req.headers.origin || req.headers.referer,
         }),
       });
     } catch (error) {
@@ -3123,11 +3141,12 @@ async function handleApi(req, res) {
          where tenant_id=$1`,
         [state.tenantId, encryptToken(token.access_token), token.refresh_token ? encryptToken(token.refresh_token) : null, new Date(Date.now() + Number(token.expires_in || 3600) * 1000), connectedEmail, connectedDomain],
       );
-      res.writeHead(302, { location: "/crm/?gmail=connected" });
+      res.writeHead(302, { location: `${safeGmailReturnOrigin(state.returnOrigin)}/crm/?gmail=connected` });
       res.end();
       return;
     } catch (error) {
-      res.writeHead(302, { location: `/crm/?gmail=error&detail=${encodeURIComponent(error.message)}` });
+      const state = verifySignedPayload(requestUrl.searchParams.get("state")) || {};
+      res.writeHead(302, { location: `${safeGmailReturnOrigin(state.returnOrigin)}/crm/?gmail=error&detail=${encodeURIComponent(error.message)}` });
       res.end();
       return;
     }
