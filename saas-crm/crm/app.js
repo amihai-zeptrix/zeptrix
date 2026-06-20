@@ -2634,11 +2634,14 @@ function renderLinkedinIntegrationSettings() {
   const tenant = currentTenant();
   const linkedin = linkedinIntegration(tenant);
   const canUseBackend = !!session?.apiToken && session.role !== "demo_user";
+  const canRunLinkedinScan = canUseBackend && isPlatformAdmin();
   const disabled = canUseBackend ? "" : "disabled";
+  const scanDisabled = canRunLinkedinScan ? "" : "disabled";
   return `<section class="settings-layout linkedin-layout">
     <article class="settings-card linkedin-card">
-      <div class="panel-head"><div><h3>LinkedIn integration</h3><p class="subcopy">Use a server-side Puppeteer runner with a logged-in Chrome profile to read LinkedIn relationship signals.</p></div><span class="status-pill ${linkedin.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
+      <div class="panel-head"><div><h3>LinkedIn integration</h3><p class="subcopy">Configure LinkedIn account context. The Puppeteer runner is a platform-admin diagnostic until each tenant has its own LinkedIn authorization.</p></div><span class="status-pill ${linkedin.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
       ${canUseBackend ? "" : `<p class="admin-notice">LinkedIn settings require signing in to a workspace at /crm.</p>`}
+      ${canRunLinkedinScan ? "" : `<p class="admin-notice">LinkedIn scans use a shared server Chrome profile, so only platform admins can run them for now.</p>`}
       <form class="settings-form" data-linkedin-settings-form>
         <div class="form-grid">
           ${formField("LinkedIn company page", "companyPageUrl", linkedin.companyPageUrl, "url", false, "full")}
@@ -2648,8 +2651,8 @@ function renderLinkedinIntegrationSettings() {
           <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Use LinkedIn conversation/profile context from the Puppeteer scan when available.</small></label>
           <label class="check-row"><input type="checkbox" name="syncCompanyUpdates" ${linkedin.syncCompanyUpdates ? "checked" : ""} /><span>Track account company updates</span><small>Reserve company-page context for the next LinkedIn data collector.</small></label>
         </div>
-        <p class="subcopy">The scan uses the standalone Puppeteer spike. Server setup requires <strong>LINKEDIN_PUPPETEER_ENABLED=1</strong>, a Chrome executable, and <strong>LINKEDIN_CHROME_PROFILE</strong> already signed in to LinkedIn.</p>
-        <div class="form-actions"><button type="button" class="button" data-action="scan-linkedin" ${disabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
+        <p class="subcopy">The diagnostic scan stores only counts and conversation metadata. Server setup requires <strong>LINKEDIN_PUPPETEER_ENABLED=1</strong>, a Chrome executable, and <strong>LINKEDIN_CHROME_PROFILE</strong> already signed in to LinkedIn.</p>
+        <div class="form-actions"><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
@@ -2659,7 +2662,7 @@ function renderLinkedinIntegrationSettings() {
         ${summaryCard("▣", "#d8f4e8", "#18764e", "Account activity", linkedin.syncCompanyUpdates ? "On" : "Off", "company posts and updates")}
       </div>
       <div class="signal-list">
-        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Read LinkedIn conversations<small>${escapeHtml(linkedin.lastScanResult?.conversations ? `${linkedin.lastScanResult.conversations.length} conversations from last scan` : "Runs the spike against LinkedIn messaging endpoints.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Read LinkedIn conversations<small>${escapeHtml(linkedin.lastScanResult?.conversationCount ? `${linkedin.lastScanResult.conversationCount} conversations from last scan` : "Runs the spike against LinkedIn messaging endpoints.")}</small></span></div>
         <div class="signal-row"><span class="activity-symbol">↗</span><span class="list-primary">Add relationship context<small>Use conversation activity to identify accounts and contacts worth follow-up.</small></span></div>
         <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Scan status<small>${escapeHtml(linkedin.lastScanAt ? `Last scan ${formatTimestamp(linkedin.lastScanAt)}` : "Not scanned yet")}</small></span></div>
       </div>

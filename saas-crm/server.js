@@ -27,6 +27,7 @@ const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
 const linkedinPuppeteerEnabled = ["1", "true", "yes"].includes(String(process.env.LINKEDIN_PUPPETEER_ENABLED || "").toLowerCase());
 const linkedinChromePath = process.env.LINKEDIN_CHROME_PATH || process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const linkedinChromeProfile = process.env.LINKEDIN_CHROME_PROFILE || "";
+const linkedinScansInProgress = new Set();
 const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
 const authTokenSecret = process.env.CRM_AUTH_SECRET || tokenSecret;
 const GOOGLE_SSO_REDIRECT_URI = `${publicBaseUrl}/api/auth/google/callback`;
@@ -1808,6 +1809,24 @@ function linkedinPuppeteerUnavailableReason() {
   return "";
 }
 
+function summarizeLinkedinPuppeteerResult(result) {
+  const conversations = Array.isArray(result?.conversations) ? result.conversations : [];
+  const messages = Array.isArray(result?.messages) ? result.messages : [];
+  return {
+    ok: !!result?.ok,
+    status: result?.status || null,
+    scannedAt: new Date().toISOString(),
+    conversationCount: conversations.length,
+    messageCount: messages.length,
+    conversations: conversations.slice(0, 50).map((conversation) => ({
+      id: conversation.id || conversation.conversationId || "",
+      participantCount: Array.isArray(conversation.participants) ? conversation.participants.length : 0,
+      unreadCount: Number(conversation.unreadCount || 0),
+      updatedAt: conversation.updatedAt || conversation.lastActivityAt || "",
+    })),
+  };
+}
+
 async function runLinkedinPuppeteerScan(tenantId, payload = {}) {
   const integrationResult = await dbQuery(`select * from linkedin_integrations where tenant_id=$1`, [tenantId]);
   const integration = integrationResult.rows[0];
@@ -1823,6 +1842,11 @@ async function runLinkedinPuppeteerScan(tenantId, payload = {}) {
     error.statusCode = 503;
     throw error;
   }
+  if (linkedinScansInProgress.has(tenantId)) {
+    const error = new Error("LinkedIn scan is already running for this tenant.");
+    error.statusCode = 409;
+    throw error;
+  }
 
   const limit = Math.max(1, Math.min(50, Number(payload.limit || 10)));
   const scriptPath = path.join(root, "scripts", "linkedin-puppeteer-spike.js");
@@ -1830,25 +1854,31 @@ async function runLinkedinPuppeteerScan(tenantId, payload = {}) {
   if (payload.profileId) args.push("--profile-id", String(payload.profileId));
   if (payload.conversationId) args.push("--conversation-id", String(payload.conversationId));
 
-  const result = await execFileJson(process.execPath, args, {
-    cwd: root,
-    env: {
-      ...process.env,
-      CHROME_PATH: linkedinChromePath,
-      LINKEDIN_CHROME_PROFILE: linkedinChromeProfile,
-      HEADLESS: "1",
-    },
-  });
-  const count = result.messages?.length ?? result.conversations?.length ?? 0;
-  const status = result.ok ? `LinkedIn Puppeteer scan completed (${count} items)` : `LinkedIn Puppeteer scan failed with status ${result.status}`;
-  const saved = await dbQuery(
-    `update linkedin_integrations
-     set enabled=$2, status=$3, last_scan_at=now(), last_scan_result=$4::jsonb, updated_at=now()
-     where tenant_id=$1
-     returning *`,
-    [tenantId, !!result.ok, status, JSON.stringify(result)],
-  );
-  return { linkedinIntegration: linkedinIntegrationFromRow(saved.rows[0]), result };
+  linkedinScansInProgress.add(tenantId);
+  try {
+    const result = await execFileJson(process.execPath, args, {
+      cwd: root,
+      env: {
+        ...process.env,
+        CHROME_PATH: linkedinChromePath,
+        LINKEDIN_CHROME_PROFILE: linkedinChromeProfile,
+        HEADLESS: "1",
+      },
+    });
+    const summary = summarizeLinkedinPuppeteerResult(result);
+    const count = summary.messageCount || summary.conversationCount;
+    const status = result.ok ? `LinkedIn Puppeteer scan completed (${count} items)` : `LinkedIn Puppeteer scan failed with status ${result.status}`;
+    const saved = await dbQuery(
+      `update linkedin_integrations
+       set enabled=$2, status=$3, last_scan_at=now(), last_scan_result=$4::jsonb, updated_at=now()
+       where tenant_id=$1
+       returning *`,
+      [tenantId, !!result.ok, status, JSON.stringify(summary)],
+    );
+    return { linkedinIntegration: linkedinIntegrationFromRow(saved.rows[0]), result: summary };
+  } finally {
+    linkedinScansInProgress.delete(tenantId);
+  }
 }
 
 async function upsertWorkflowAutomationSettings(tenantId, payload) {
@@ -3241,6 +3271,7 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
+      if (resolved.auth.role !== "platform_admin") return json(res, 403, { error: "Platform admin access required for LinkedIn Puppeteer scans." });
       const payload = await readBody(req);
       const scan = await runLinkedinPuppeteerScan(resolved.tenantId, payload);
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "scan-linkedin", target: "linkedin-settings", details: { fields: { limit: payload.limit || 10, profileId: payload.profileId || "", conversationId: payload.conversationId || "" } } });
