@@ -34,6 +34,8 @@ The deployed static bundle must include:
 - `/your-new-crm/styles.css`
 - `/your-new-crm/app.js`
 - `/your-new-crm/favicon.svg`
+- `/privacy.html` for `https://zeptrix.io/privacy`
+- `/terms.html` for `https://zeptrix.io/terms`
 - shared Zeptrix files such as `/styles.css`, `/app.js`, `/assets/`, `/sitemap.xml`, and `/robots.txt`
 
 Do not deploy only the root Zeptrix files unless `/mbh/` is intentionally excluded and nginx is changed accordingly.
@@ -74,6 +76,53 @@ location = /wordpress-to-modern-websites/ {
 }
 ```
 
+The SaaS CRM is not served from the static Nginx web root. Public CRM routes are proxied to Elastic Beanstalk:
+
+```nginx
+location = /crm {
+    return 301 /crm/;
+}
+
+location ^~ /crm/ {
+    proxy_pass http://zeptrix-crm-saas-dev.us-east-1.elasticbeanstalk.com;
+}
+
+location ^~ /api/ {
+    proxy_pass http://zeptrix-crm-saas-dev.us-east-1.elasticbeanstalk.com;
+}
+```
+
+Do not add static `/crm` redirects in Nginx. `/crm`, `/crm/settings`, `/crm/ron`, and `/crm/demo/ron` must all continue to resolve through the EB app.
+
+## SaaS CRM Deployment
+
+The deployable CRM app lives under `saas-crm/` in this repo. The source mirror currently lives in `../your-new-crm/`; sync source into `saas-crm/` before building an EB application version.
+
+Required EB application environment settings include:
+
+- `DATABASE_URL`
+- `DATABASE_SSL=false`
+- `CRM_TOKEN_SECRET`
+- `GOOGLE_CLIENT_SECRET`
+- email settings such as `EMAIL_PROVIDER`, `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, or SES settings
+
+Use a multi-line shell assignment when updating EB secrets. Inline assignments like `GOOGLE_CLIENT_SECRET=... aws ... Value="$GOOGLE_CLIENT_SECRET"` can expand to an empty value before the variable is set.
+
+The current Gmail OAuth flow stores the OAuth Client ID per tenant in CRM Settings and stores the OAuth Client Secret in EB as `GOOGLE_CLIENT_SECRET`.
+
+Google Cloud configuration that worked:
+
+- Application type: Web application
+- Authorized JavaScript origin: `https://www.zeptrix.io`
+- Authorized redirect URI: `https://www.zeptrix.io/api/gmail/oauth/callback`
+- Privacy policy URL: `https://www.zeptrix.io/privacy`
+- Terms of service URL: `https://www.zeptrix.io/terms`
+- OAuth Client ID: `63030320111-etgcku1f78j31regvoc0lm2qdq6gqr5e.apps.googleusercontent.com`
+
+If Google shows `Error 401: invalid_client` before the consent screen, verify the tenant's saved OAuth Client ID byte-for-byte against Google Cloud. A structurally valid ID can still be wrong.
+
+If Google consent succeeds but CRM stays `Not connected`, check EB/Nginx access logs for `/api/gmail/oauth/callback`. The error `The provided client secret is invalid.` means `GOOGLE_CLIENT_SECRET` does not match the saved tenant Client ID.
+
 ## Verification Before and After Deploy
 
 Run local deploy invariant tests before commit:
@@ -107,6 +156,8 @@ The test verifies:
 - `/mbh/script.js` is reachable as JavaScript.
 - `/your-new-crm/` serves the customizable sales pipeline.
 - `/your-new-crm/styles.css` and `/your-new-crm/app.js` are reachable.
+- `/privacy` serves the privacy policy.
+- `/terms` serves the terms of service.
 
 If this test fails, do not consider the deploy complete.
 
