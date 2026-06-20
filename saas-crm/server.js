@@ -31,6 +31,7 @@ const linkedinChromeProfileRoot = process.env.LINKEDIN_CHROME_PROFILE_ROOT || pa
 const linkedinDebugPortBase = Number(process.env.LINKEDIN_DEBUG_PORT_BASE || 9300);
 const linkedinSshUser = process.env.LINKEDIN_SSH_USER || "ec2-user";
 const linkedinSshHost = process.env.LINKEDIN_SSH_HOST || "";
+const linkedinSshKeyPath = process.env.LINKEDIN_SSH_KEY_PATH || "";
 const linkedinScansInProgress = new Set();
 const linkedinLoginSessions = new Map();
 const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
@@ -1883,7 +1884,7 @@ async function startLinkedinLoginSession(tenantId, requestHost = "") {
     linkedinIntegration,
     login: {
       localDebugUrl: `http://127.0.0.1:${debugPort}`,
-      tunnelCommand: `ssh -L ${debugPort}:127.0.0.1:${debugPort} ${linkedinSshUser}@${linkedinSshHost || requestHost || "<crm-server>"}`,
+      tunnelCommand: `ssh${linkedinSshKeyPath ? ` -i ${linkedinSshKeyPath}` : ""} -L ${debugPort}:127.0.0.1:${debugPort} ${linkedinSshUser}@${linkedinSshHost || requestHost || "<crm-server>"}`,
       tunnelReady: false,
       expiresInMinutes: 20,
     },

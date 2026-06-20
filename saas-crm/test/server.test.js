@@ -1328,6 +1328,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.doesNotMatch(renderLinkedinSource, /LINKEDIN_CHROME_PROFILE/);
   assert.match(renderLinkedinSource, /stores only counts and conversation metadata/);
   assert.match(renderLinkedinSource, /linkedin\.lastScanResult\?\.conversationCount/);
+  assert.match(server, /LINKEDIN_SSH_KEY_PATH/);
+  assert.match(server, /ssh\$\{linkedinSshKeyPath \? ` -i \$\{linkedinSshKeyPath\}` : ""\} -L/);
   assert.match(renderMailSettingsSource, /settings-stack/);
   assert.match(renderMailSettingsSource, /follow-up-card/);
   assert.match(renderMailSettingsSource, /gmailAttentionCorrespondence\(tenant\)/);
