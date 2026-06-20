@@ -1222,7 +1222,16 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   const server = serverSource();
   const summarizeLinkedinSource = server.slice(server.indexOf("function summarizeLinkedinPuppeteerResult"), server.indexOf("async function runLinkedinPuppeteerScan"));
 
-  assert.match(sidebarSource, /sideLink\("settings", "⚙", "Settings"\)/);
+  assert.match(sidebarSource, /connectivityNav\(\)/);
+  assert.match(app, /function connectivityNav/);
+  assert.match(app, /data-action="toggle-connectivity"/);
+  assert.match(app, /aria-expanded="\$\{open \? "true" : "false"\}"/);
+  assert.match(app, /const open = ui\.connectivityOpen/);
+  assert.match(app, /Connectivity/);
+  assert.match(app, /LinkedIn/);
+  assert.doesNotMatch(app, /Linked-in/);
+  assert.match(app, /Zoom/);
+  assert.match(app, /WeChat/);
   assert.doesNotMatch(sidebarSource, /sideLink\("templates", "✎", "Email templates"/);
   assert.match(topbarSource, /isPlatformAdmin\(\) \? "Search tenants, deals, contacts\.\.\." : "Search deals, accounts, contacts\.\.\."/);
   assert.doesNotMatch(sidebarSource, /data-action="open-settings"><span class="icon">⚙<\/span> Settings/);
@@ -1231,7 +1240,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderSectionSource, /renderTemplatesSettingsPanel\(\)/);
   assert.match(renderSettingsPageSource, /Connectivity/);
   assert.match(renderSettingsPageSource, /data-settings-tab="gmail"/);
-  assert.match(renderSettingsPageSource, /const connectivityActive = \["gmail", "linkedin"\]\.includes\(ui\.settingsTab\)/);
+  assert.match(renderSettingsPageSource, /const connectivityActive = \["gmail", "linkedin", "zoom", "wechat"\]\.includes\(ui\.settingsTab\)/);
   assert.match(renderSettingsPageSource, /renderConnectivitySubmenu/);
   assert.match(renderSettingsPageSource, /Outgoing email/);
   assert.match(renderSettingsPageSource, /data-settings-tab="outgoing"/);
@@ -1247,7 +1256,14 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.doesNotMatch(renderSettingsPageSource, /data-settings-tab="workspace"/);
   assert.match(renderConnectivitySubmenuSource, /data-settings-tab="gmail">Gmail/);
   assert.match(renderConnectivitySubmenuSource, /data-settings-tab="linkedin">LinkedIn/);
+  assert.match(renderConnectivitySubmenuSource, /data-settings-tab="zoom">Zoom/);
+  assert.match(renderConnectivitySubmenuSource, /data-settings-tab="wechat">WeChat/);
+  assert.match(renderConnectivitySubmenuSource, /Coming soon/);
+  assert.match(renderConnectivitySubmenuSource, /renderZoomIntegrationSettings/);
+  assert.match(renderConnectivitySubmenuSource, /renderWeChatIntegrationSettings/);
   assert.match(styles, /\.settings-subtabs/);
+  assert.match(styles, /\.side-submenu/);
+  assert.match(styles, /\.side-sublink/);
   assert.match(renderConfigurationSource, /data-configuration-form/);
   assert.match(renderConfigurationSource, /gmail\.inboxLookbackDays/);
   assert.match(renderConfigurationSource, /gmailLookbackDays/);
@@ -1296,6 +1312,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /data-action="scan-linkedin" \$\{scanDisabled\}/);
   assert.match(renderLinkedinSource, /LinkedIn company page/);
   assert.match(renderLinkedinSource, /LinkedIn admin email/);
+  assert.match(renderLinkedinSource, /data-action="open-linkedin-company"/);
+  assert.match(renderLinkedinSource, /data-action="open-linkedin-inbox"/);
   assert.match(renderLinkedinSource, /data-action="scan-linkedin"/);
   assert.match(renderLinkedinSource, /LINKEDIN_PUPPETEER_ENABLED=1/);
   assert.match(renderLinkedinSource, /LINKEDIN_CHROME_PROFILE/);
@@ -1405,6 +1423,12 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(clickHandlerSource, /data-settings-tab/);
   assert.match(clickHandlerSource, /action === "connect-gmail"/);
   assert.match(clickHandlerSource, /action === "scan-linkedin"/);
+  assert.match(clickHandlerSource, /action === "toggle-connectivity"/);
+  assert.match(clickHandlerSource, /ui\.connectivityOpen = ui\.section === "settings" \? !ui\.connectivityOpen : true/);
+  assert.match(clickHandlerSource, /ui\.settingsTab = "gmail"/);
+  assert.match(clickHandlerSource, /action === "open-linkedin-company"/);
+  assert.match(clickHandlerSource, /linkedinFormValues\(form\)\.companyPageUrl/);
+  assert.match(clickHandlerSource, /action === "open-linkedin-inbox"/);
   assert.match(clickHandlerSource, /scanLinkedinViaApi\(tenant\.id, \{ limit: 10 \}\)/);
   assert.match(clickHandlerSource, /action === "scan-gmail"/);
   assert.match(clickHandlerSource, /action === "skip-gmail-contact"/);
