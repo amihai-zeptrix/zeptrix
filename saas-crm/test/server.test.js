@@ -1186,6 +1186,9 @@ test("CRM settings include Gmail mail integration controls", () => {
   assert.match(renderMailSettingsSource, /canUseGmailBackend/);
   assert.match(renderMailSettingsSource, /Gmail connection requires signing in to a workspace at \/crm\./);
   assert.match(renderMailSettingsSource, /data-action="connect-gmail" \$\{actionDisabled\}/);
+  assert.match(renderMailSettingsSource, /gmail-primary-actions/);
+  assert.ok(renderMailSettingsSource.indexOf('data-action="connect-gmail"') < renderMailSettingsSource.indexOf('formField("Labels to read"'));
+  assert.ok(renderMailSettingsSource.indexOf('data-action="scan-gmail"') < renderMailSettingsSource.indexOf('formField("No-mail threshold in months"'));
   assert.doesNotMatch(renderMailSettingsSource, /OAuth client ID/);
   assert.doesNotMatch(renderMailSettingsSource, /Authorized redirect URI/);
   assert.match(renderMailSettingsSource, /No mailbox password or OAuth client setup is required/);

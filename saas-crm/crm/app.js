@@ -2548,17 +2548,17 @@ function renderMailIntegrationsSettings() {
           <div class="panel-head"><div><h3>Gmail integration</h3><p class="subcopy">Connect Gmail with one Google authorization step to enrich contacts and engagement signals.</p></div><span class="status-pill ${gmail.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(gmail.status)}</span></div>
           ${ui.gmailNotice ? `<p class="admin-notice gmail-notice ${ui.gmailNotice.toLowerCase().includes("failed") ? "error" : ""}">${escapeHtml(ui.gmailNotice)}</p>` : ""}
           <form class="settings-form" data-gmail-settings-form>
+            <div class="form-actions gmail-primary-actions"><button type="button" class="button primary" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button><span class="toolbar-spacer"></span><button class="button" ${actionDisabled}>Save Gmail settings</button></div>
+            <p class="admin-notice">${gmail.accountEmail ? `Connected mailbox: <strong>${escapeHtml(gmail.accountEmail)}</strong>` : "Click Connect Gmail and choose the Gmail account in Google. No mailbox password or OAuth client setup is required."}</p>
             <div class="form-grid">
               ${formField("Labels to read", "labels", gmail.labels)}
               ${formField("No-mail threshold in months", "staleMonths", gmail.staleMonths, "number", true)}
             </div>
-            <p class="admin-notice">${gmail.accountEmail ? `Connected mailbox: <strong>${escapeHtml(gmail.accountEmail)}</strong>` : "Click Connect Gmail and choose the Gmail account in Google. No mailbox password or OAuth client setup is required."}</p>
             <div class="check-list compact">
               <label class="check-row"><input type="checkbox" name="detectNewContacts" ${gmail.detectNewContacts ? "checked" : ""} /><span>Identify new contacts from Gmail</span><small>Scans the last ${gmailLookbackDays} days of non-sent Gmail and suggests people who do not exist in CRM.</small></label>
               <label class="check-row"><input type="checkbox" name="detectDormantContacts" ${gmail.detectDormantContacts ? "checked" : ""} /><span>Find contacts with no sent mail</span><small>Default threshold is 3 months and can be changed above.</small></label>
             </div>
             ${canUseGmailBackend ? "" : `<p class="admin-notice">Gmail connection requires signing in to a workspace at /crm.</p>`}
-            <div class="form-actions"><button type="button" class="button" data-action="connect-gmail" ${actionDisabled}>Connect Gmail</button><button type="button" class="button" data-action="scan-gmail" ${actionDisabled}>Scan now</button><span class="toolbar-spacer"></span><button class="button primary" ${actionDisabled}>Save Gmail settings</button></div>
             <p class="subcopy">Uses server-side OAuth with <strong>gmail.readonly</strong>; refresh tokens are encrypted on the server and the browser never stores the Google client secret.</p>
             <p class="subcopy">New-contact discovery scans the last <strong>${gmailLookbackDays} days</strong> of non-sent Gmail and filters out contacts already in CRM.</p>
           </form>
