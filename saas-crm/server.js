@@ -3386,7 +3386,6 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      if (resolved.auth.role !== "platform_admin") return json(res, 403, { error: "Platform admin access required for LinkedIn session setup." });
       const session = await startLinkedinLoginSession(resolved.tenantId);
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "authorize-linkedin-session", target: "linkedin-settings", details: { fields: { sessionStatus: "setup_required" } } });
       return json(res, 200, { ...session, instructions: "Open the temporary debug URL through the SSH tunnel, complete LinkedIn login, then click I finished login. No LinkedIn password, token, or cookie is stored by CRM." });
@@ -3401,7 +3400,6 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      if (resolved.auth.role !== "platform_admin") return json(res, 403, { error: "Platform admin access required for LinkedIn session setup." });
       const linkedinIntegration = await verifyLinkedinLoginSession(resolved.tenantId);
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "verify-linkedin-session", target: "linkedin-settings", details: { fields: { sessionStatus: "authorized" } } });
       return json(res, 200, { linkedinIntegration });
@@ -3416,7 +3414,6 @@ async function handleApi(req, res) {
       const tenantId = decodeURIComponent(pathname.split("/").at(-3));
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
-      if (resolved.auth.role !== "platform_admin") return json(res, 403, { error: "Platform admin access required for LinkedIn Puppeteer scans." });
       const payload = await readBody(req);
       const scan = await runLinkedinPuppeteerScan(resolved.tenantId, payload);
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "scan-linkedin", target: "linkedin-settings", details: { fields: { limit: payload.limit || 10, profileId: payload.profileId || "", conversationId: payload.conversationId || "" } } });

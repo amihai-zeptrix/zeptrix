@@ -2667,8 +2667,8 @@ function renderLinkedinIntegrationSettings() {
   const tenant = currentTenant();
   const linkedin = linkedinIntegration(tenant);
   const canUseBackend = !!session?.apiToken && session.role !== "demo_user";
-  const canRunLinkedinScan = canUseBackend && isPlatformAdmin();
-  const canAuthorizeLinkedin = canUseBackend && isPlatformAdmin();
+  const canRunLinkedinScan = canUseBackend;
+  const canAuthorizeLinkedin = canUseBackend;
   const disabled = canUseBackend ? "" : "disabled";
   const scanDisabled = canRunLinkedinScan ? "" : "disabled";
   const authorizeDisabled = canAuthorizeLinkedin ? "" : "disabled";

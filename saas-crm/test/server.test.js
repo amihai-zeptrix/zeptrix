@@ -1310,7 +1310,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /I finished login/);
   assert.match(renderLinkedinSource, /Temporary LinkedIn login is running/);
   assert.match(renderLinkedinSource, /ui\.linkedinLogin\.tunnelCommand/);
-  assert.match(renderLinkedinSource, /const canRunLinkedinScan = canUseBackend && isPlatformAdmin\(\)/);
+  assert.match(renderLinkedinSource, /const canRunLinkedinScan = canUseBackend/);
+  assert.match(renderLinkedinSource, /const canAuthorizeLinkedin = canUseBackend/);
   assert.match(renderLinkedinSource, /data-action="scan-linkedin" \$\{scanDisabled\}/);
   assert.doesNotMatch(renderLinkedinSource, /LinkedIn company page/);
   assert.match(renderLinkedinSource, /LinkedIn account email/);
@@ -1387,7 +1388,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /LinkedIn scan is already running for this tenant/);
   assert.match(server, /scripts", "linkedin-puppeteer-spike\.js"/);
   assert.match(server, /pathname\.endsWith\("\/linkedin\/scan"\)/);
-  assert.match(server, /Platform admin access required for LinkedIn Puppeteer scans/);
+  assert.doesNotMatch(server, /Platform admin access required for LinkedIn (?:Puppeteer scans|session setup)/);
   assert.match(server, /function normalizeLinkedinSettings/);
   assert.match(server, /operation: "update-linkedin-settings"/);
   assert.match(server, /operation: "scan-linkedin"/);
