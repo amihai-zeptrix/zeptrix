@@ -533,6 +533,8 @@ async function apiRequest(path, options = {}) {
   if (!response.ok) {
     const message = body.error === "Unable to scan Gmail." && body.detail
       ? body.detail
+      : body.error === "Unable to scan LinkedIn." && body.detail
+      ? body.detail
       : response.status === 401 && body.error === "Authentication required."
       ? "Please sign in again to continue."
       : body.error || body.detail || "Request failed.";
@@ -851,6 +853,10 @@ async function saveGmailSettingsViaApi(tenantId, values) {
 
 async function saveLinkedinSettingsViaApi(tenantId, values) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+async function scanLinkedinViaApi(tenantId, values = {}) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/scan`, { method: "POST", body: JSON.stringify(values) });
 }
 
 async function saveConfigurationViaApi(tenantId, values) {
@@ -2631,7 +2637,7 @@ function renderLinkedinIntegrationSettings() {
   const disabled = canUseBackend ? "" : "disabled";
   return `<section class="settings-layout linkedin-layout">
     <article class="settings-card linkedin-card">
-      <div class="panel-head"><div><h3>LinkedIn integration</h3><p class="subcopy">Prepare LinkedIn enrichment for contacts, account context, and company activity.</p></div><span class="status-pill ${linkedin.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
+      <div class="panel-head"><div><h3>LinkedIn integration</h3><p class="subcopy">Use a server-side Puppeteer runner with a logged-in Chrome profile to read LinkedIn relationship signals.</p></div><span class="status-pill ${linkedin.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
       ${canUseBackend ? "" : `<p class="admin-notice">LinkedIn settings require signing in to a workspace at /crm.</p>`}
       <form class="settings-form" data-linkedin-settings-form>
         <div class="form-grid">
@@ -2639,11 +2645,11 @@ function renderLinkedinIntegrationSettings() {
           ${formField("LinkedIn admin email", "accountEmail", linkedin.accountEmail, "email")}
         </div>
         <div class="check-list compact">
-          <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Match known contacts to titles, companies, and public profile context when API access is enabled.</small></label>
-          <label class="check-row"><input type="checkbox" name="syncCompanyUpdates" ${linkedin.syncCompanyUpdates ? "checked" : ""} /><span>Track account company updates</span><small>Surface public company activity as account context after LinkedIn authorization is connected.</small></label>
+          <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Use LinkedIn conversation/profile context from the Puppeteer scan when available.</small></label>
+          <label class="check-row"><input type="checkbox" name="syncCompanyUpdates" ${linkedin.syncCompanyUpdates ? "checked" : ""} /><span>Track account company updates</span><small>Reserve company-page context for the next LinkedIn data collector.</small></label>
         </div>
-        <p class="subcopy">This stores the LinkedIn integration settings now. Live LinkedIn sync will require LinkedIn OAuth/API approval before it can import profile or company data.</p>
-        <div class="form-actions"><button type="button" class="button" data-action="connect-linkedin" ${disabled}>Connect LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
+        <p class="subcopy">The scan uses the standalone Puppeteer spike. Server setup requires <strong>LINKEDIN_PUPPETEER_ENABLED=1</strong>, a Chrome executable, and <strong>LINKEDIN_CHROME_PROFILE</strong> already signed in to LinkedIn.</p>
+        <div class="form-actions"><button type="button" class="button" data-action="scan-linkedin" ${disabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
@@ -2653,9 +2659,9 @@ function renderLinkedinIntegrationSettings() {
         ${summaryCard("▣", "#d8f4e8", "#18764e", "Account activity", linkedin.syncCompanyUpdates ? "On" : "Off", "company posts and updates")}
       </div>
       <div class="signal-list">
-        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Match contact profiles<small>Use email/domain plus account name to enrich contacts when authorized.</small></span></div>
-        <div class="signal-row"><span class="activity-symbol">↗</span><span class="list-primary">Add account context<small>Show company activity in the account timeline when LinkedIn sync is available.</small></span></div>
-        <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Find relationship changes<small>Flag title/company changes that may affect renewals and campaigns.</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Read LinkedIn conversations<small>${escapeHtml(linkedin.lastScanResult?.conversations ? `${linkedin.lastScanResult.conversations.length} conversations from last scan` : "Runs the spike against LinkedIn messaging endpoints.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">↗</span><span class="list-primary">Add relationship context<small>Use conversation activity to identify accounts and contacts worth follow-up.</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Scan status<small>${escapeHtml(linkedin.lastScanAt ? `Last scan ${formatTimestamp(linkedin.lastScanAt)}` : "Not scanned yet")}</small></span></div>
       </div>
     </article>
   </section>`;
@@ -3122,8 +3128,24 @@ document.addEventListener("click", async (event) => {
       render();
       return;
     }
-    if (action === "connect-linkedin") {
-      showToast("LinkedIn OAuth/API approval is not connected yet. Save the settings here, then connect LinkedIn authorization when the API app is approved.");
+    if (action === "scan-linkedin") {
+      const tenant = currentTenant();
+      const form = actionElement.closest("form");
+      try {
+        setTenant({ ...tenant, linkedinIntegration: { ...linkedinIntegration(tenant), status: "Preparing LinkedIn Puppeteer scan..." } });
+        render();
+        const saved = await saveLinkedinSettingsViaApi(tenant.id, linkedinFormValues(form));
+        setTenant({ ...currentTenant(), linkedinIntegration: { ...saved.linkedinIntegration, status: "Scanning LinkedIn with Puppeteer..." } });
+        render();
+        const result = await scanLinkedinViaApi(tenant.id, { limit: 10 });
+        setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
+        showToast(result.result?.ok ? "LinkedIn scan completed" : "LinkedIn scan returned no data");
+      } catch (error) {
+        setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
+        showToast(error.message);
+      }
+      render();
+      return;
     }
     if (action === "connect-gmail") {
       const tenant = currentTenant();

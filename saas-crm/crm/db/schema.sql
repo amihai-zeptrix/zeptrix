@@ -139,6 +139,8 @@ create table linkedin_integrations (
   sync_company_updates boolean not null default false,
   enabled boolean not null default false,
   status text not null default 'Not connected',
+  last_scan_at timestamptz,
+  last_scan_result jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
