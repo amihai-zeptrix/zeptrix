@@ -1962,28 +1962,6 @@ h3 { font-size: 14px; }
   border-color: var(--blue);
   color: var(--blue);
 }
-.settings-subtabs {
-  display: flex;
-  gap: 8px;
-  margin: -4px 0 14px;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8fafc;
-}
-.settings-subtabs button {
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 8px 12px;
-  color: var(--muted);
-  background: transparent;
-  font-weight: 900;
-}
-.settings-subtabs button.active {
-  border-color: #bcd4ff;
-  color: var(--blue);
-  background: #eef5ff;
-}
 .admin-tabs {
   margin-top: 16px;
 }

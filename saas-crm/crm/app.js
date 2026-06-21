@@ -166,12 +166,16 @@ const defaultGmailIntegration = {
 const defaultLinkedinIntegration = {
   enabled: false,
   status: "Not connected",
+  provider: "unipile",
+  providerAccountId: "",
+  providerStatus: "",
   companyPageUrl: "",
   accountEmail: "",
   syncContacts: true,
   syncCompanyUpdates: false,
   sessionStatus: "not_configured",
   authorizedAt: "",
+  lastSyncAt: "",
   lastScanAt: "",
   lastScanResult: {},
   updatedAt: "",
@@ -281,6 +285,18 @@ function handleGmailCallbackQuery() {
     ui.section = "settings";
     ui.settingsTab = "gmail";
     ui.gmailNotice = `Gmail connection failed: ${params.get("detail") || "Unknown error."}`;
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+  if (params.get("linkedin") === "connected") {
+    ui.section = "settings";
+    ui.settingsTab = "linkedin";
+    showToast("LinkedIn connected. Click Sync messages to import conversations.");
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+  if (params.get("linkedin") === "failed") {
+    ui.section = "settings";
+    ui.settingsTab = "linkedin";
+    showToast("LinkedIn authorization failed.");
     window.history.replaceState({}, "", window.location.pathname);
   }
 }
@@ -869,6 +885,14 @@ async function saveLinkedinSettingsViaApi(tenantId, values) {
 
 async function scanLinkedinViaApi(tenantId, values = {}) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/scan`, { method: "POST", body: JSON.stringify(values) });
+}
+
+async function connectLinkedinViaApi(tenantId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/connect`, { method: "POST", body: JSON.stringify({}) });
+}
+
+async function syncLinkedinViaApi(tenantId, values = {}) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/sync`, { method: "POST", body: JSON.stringify(values) });
 }
 
 async function authorizeLinkedinSessionViaApi(tenantId) {
@@ -2554,17 +2578,7 @@ function renderSettingsPage() {
       <button class="${ui.settingsTab === "automation" ? "active" : ""}" data-settings-tab="automation">Workflow automation</button>
       <button class="${ui.settingsTab === "configuration" ? "active" : ""}" data-settings-tab="configuration">Configuration</button>
     </nav>
-    ${connectivityActive ? renderConnectivitySubmenu() : ""}
     ${ui.settingsTab === "gmail" ? renderGmailConnectivitySettings() : ui.settingsTab === "linkedin" ? renderLinkedinIntegrationSettings() : ui.settingsTab === "zoom" ? renderZoomIntegrationSettings() : ui.settingsTab === "wechat" ? renderWeChatIntegrationSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : ui.settingsTab === "automation" ? renderWorkflowAutomationSettingsPanel() : renderConfigurationSettingsPanel()}`;
-}
-
-function renderConnectivitySubmenu() {
-  return `<nav class="settings-subtabs" aria-label="Connectivity integrations">
-    <button class="${ui.settingsTab === "gmail" ? "active" : ""}" data-settings-tab="gmail">Gmail</button>
-    <button class="${ui.settingsTab === "linkedin" ? "active" : ""}" data-settings-tab="linkedin">LinkedIn</button>
-    <button class="${ui.settingsTab === "zoom" ? "active" : ""}" data-settings-tab="zoom">Zoom</button>
-    <button class="${ui.settingsTab === "wechat" ? "active" : ""}" data-settings-tab="wechat">WeChat</button>
-  </nav>`;
 }
 
 function renderZoomIntegrationSettings() {
@@ -2673,39 +2687,37 @@ function renderLinkedinIntegrationSettings() {
   const tenant = currentTenant();
   const linkedin = linkedinIntegration(tenant);
   const canUseBackend = !!session?.apiToken && session.role !== "demo_user";
-  const canRunLinkedinScan = canUseBackend;
-  const canAuthorizeLinkedin = canUseBackend;
   const disabled = canUseBackend ? "" : "disabled";
-  const scanDisabled = canRunLinkedinScan ? "" : "disabled";
-  const authorizeDisabled = canAuthorizeLinkedin ? "" : "disabled";
+  const connected = Boolean(linkedin.providerAccountId || linkedin.enabled);
+  const syncDisabled = canUseBackend && connected ? "" : "disabled";
   return `<section class="settings-layout linkedin-layout">
     <article class="settings-card linkedin-card">
-      <div class="panel-head"><div><h3>LinkedIn</h3><p class="subcopy">Scan LinkedIn relationship signals through an authorized connection. Zeptrix does not ask for or store a LinkedIn password.</p></div><span class="status-pill ${linkedin.enabled ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
+      <div class="panel-head"><div><h3>LinkedIn</h3><p class="subcopy">Connect LinkedIn through a hosted provider flow, then sync conversations into CRM account history.</p></div><span class="status-pill ${connected ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
       ${canUseBackend ? "" : `<p class="admin-notice">LinkedIn settings require signing in to a workspace at /crm.</p>`}
-      ${canRunLinkedinScan ? "" : `<p class="admin-notice">LinkedIn scan requires an authorized server-side LinkedIn connection. No LinkedIn password is stored in the CRM.</p>`}
       <form class="settings-form" data-linkedin-settings-form>
         <div class="form-grid">
           ${formField("LinkedIn account email", "accountEmail", linkedin.accountEmail, "email", false, "full")}
         </div>
-        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Session status<small>${escapeHtml(linkedin.sessionStatus === "authorized" ? `Authorized${linkedin.authorizedAt ? ` · ${formatTimestamp(linkedin.authorizedAt)}` : ""}` : linkedin.sessionStatus === "setup_required" ? "Profile ready - complete LinkedIn login on the server" : "Not configured")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Connection status<small>${escapeHtml(connected ? `Connected through ${linkedin.provider || "provider"}${linkedin.lastSyncAt ? ` · last sync ${formatTimestamp(linkedin.lastSyncAt)}` : ""}` : "Not connected")}</small></span></div>
         <div class="check-list compact">
-          <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Use LinkedIn conversation/profile context from the Puppeteer scan when available.</small></label>
+          <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Attach synced LinkedIn conversation context to matching contacts and accounts.</small></label>
         </div>
-        <p class="subcopy">The scan stores only counts and conversation metadata. It needs a LinkedIn session that has already been authorized outside the CRM password flow.</p>
-        ${ui.linkedinLogin ? `<div class="admin-notice"><strong>Temporary LinkedIn login is running.</strong><br />1. Run this tunnel in Terminal: <code>${escapeHtml(ui.linkedinLogin.tunnelCommand)}</code><br />2. After the tunnel is running, click <strong>Open login tab</strong>. It opens the LinkedIn browser target, not the blank Chrome debug root.<br />3. Complete LinkedIn login, then click <strong>I finished login</strong>.<br />Login inspector URL: <code>${escapeHtml(ui.linkedinLogin.localDebugUrl)}</code><br />Target list fallback: <code>${escapeHtml(ui.linkedinLogin.targetListUrl || "")}</code><br />If the SSH tunnel says <strong>Connection refused</strong>, the temporary browser is not running anymore. Click <strong>Start LinkedIn login</strong> again, then rerun the tunnel.<br />This session expires in ${escapeHtml(ui.linkedinLogin.expiresInMinutes)} minutes.</div>` : `<div class="admin-notice"><strong>LinkedIn login session is not running.</strong><br />Click <strong>Start LinkedIn login</strong> first. After the tunnel command appears, run it and then click <strong>Open login tab</strong>.</div>`}
-        <div class="form-actions integration-actions"><button type="button" class="button" data-action="authorize-linkedin-session" ${authorizeDisabled}>Start LinkedIn login</button><button type="button" class="button" data-action="open-linkedin-login-tab" ${authorizeDisabled}>Open login tab</button><button type="button" class="button" data-action="verify-linkedin-session" ${authorizeDisabled}>I finished login</button><button type="button" class="button" data-action="scan-linkedin" ${scanDisabled}>Scan LinkedIn</button><span class="toolbar-spacer"></span><button class="button primary" ${disabled}>Save LinkedIn settings</button></div>
+        <p class="subcopy">Zeptrix never asks for or stores a LinkedIn password. The provider stores the authorized account and sends CRM only a stable account id plus message events.</p>
+        <div class="admin-notice"><strong>No LinkedIn password is stored in the CRM.</strong><br />Click <strong>Connect LinkedIn</strong> to open the hosted authorization flow. After approval, return here and click <strong>Sync messages</strong>.</div>
+        <div class="form-actions integration-actions"><button type="button" class="button primary" data-action="connect-linkedin" ${disabled}>Connect LinkedIn</button><button type="button" class="button" data-action="sync-linkedin" ${syncDisabled}>Sync messages</button><span class="toolbar-spacer"></span><button class="button" ${disabled}>Save LinkedIn settings</button></div>
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
       <h3>What LinkedIn will add</h3>
       <div class="integration-metrics">
         ${summaryCard("♙", "var(--blue-soft)", "var(--blue)", "Contact enrichment", linkedin.syncContacts ? "On" : "Off", "titles and public profile context")}
-        ${summaryCard("▣", "#d8f4e8", "#18764e", "Account activity", linkedin.syncCompanyUpdates ? "On" : "Off", "company posts and updates")}
+        ${summaryCard("▣", "#d8f4e8", "#18764e", "Messages imported", Number(linkedin.lastScanResult?.importedCount || 0), `${Number(linkedin.lastScanResult?.unmatchedCount || 0)} need matching`)}
       </div>
       <div class="signal-list">
-        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Read LinkedIn conversations<small>${escapeHtml(linkedin.lastScanResult?.conversationCount ? `${linkedin.lastScanResult.conversationCount} conversations from last scan` : "Runs the spike against LinkedIn messaging endpoints.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Read LinkedIn conversations<small>${escapeHtml(linkedin.lastScanResult?.messageCount ? `${linkedin.lastScanResult.messageCount} messages from last sync` : "Uses the provider messaging API and webhooks.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">?</span><span class="list-primary">Messages needing account match<small>${escapeHtml(linkedin.lastScanResult?.unmatchedCount ? `${linkedin.lastScanResult.unmatchedCount} LinkedIn messages were imported to Inbox and need account matching.` : "Matched messages are attached to account history; unmatched messages remain visible in Inbox.")}</small></span></div>
         <div class="signal-row"><span class="activity-symbol">↗</span><span class="list-primary">Add relationship context<small>Use conversation activity to identify accounts and contacts worth follow-up.</small></span></div>
-        <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Scan status<small>${escapeHtml(linkedin.lastScanAt ? `Last scan ${formatTimestamp(linkedin.lastScanAt)}` : "Not scanned yet")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Sync status<small>${escapeHtml(linkedin.lastSyncAt ? `Last sync ${formatTimestamp(linkedin.lastSyncAt)}` : "Not synced yet")}</small></span></div>
       </div>
     </article>
   </section>`;
@@ -3177,65 +3189,34 @@ document.addEventListener("click", async (event) => {
       render();
       return;
     }
-    if (action === "scan-linkedin") {
+    if (action === "connect-linkedin") {
       const tenant = currentTenant();
       const form = actionElement.closest("form");
       try {
-        setTenant({ ...tenant, linkedinIntegration: { ...linkedinIntegration(tenant), status: "Preparing LinkedIn Puppeteer scan..." } });
-        render();
         const saved = await saveLinkedinSettingsViaApi(tenant.id, linkedinFormValues(form));
-        setTenant({ ...currentTenant(), linkedinIntegration: { ...saved.linkedinIntegration, status: "Scanning LinkedIn with Puppeteer..." } });
+        setTenant({ ...currentTenant(), linkedinIntegration: { ...saved.linkedinIntegration, status: "Preparing LinkedIn authorization..." } });
         render();
-        const result = await scanLinkedinViaApi(tenant.id, { limit: 10 });
+        const result = await connectLinkedinViaApi(tenant.id);
         setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
-        showToast(result.result?.ok ? "LinkedIn scan completed" : "LinkedIn scan returned no data");
+        showToast("Redirecting to LinkedIn authorization");
+        window.location.href = result.authUrl;
       } catch (error) {
         setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
         showToast(error.message);
+        render();
       }
-      render();
       return;
     }
-    if (action === "authorize-linkedin-session") {
+    if (action === "sync-linkedin" || action === "scan-linkedin") {
       const tenant = currentTenant();
+      const form = actionElement.closest("form");
       try {
-        const saved = await saveLinkedinSettingsViaApi(tenant.id, linkedinFormValues(actionElement.closest("form")));
-        setTenant({ ...currentTenant(), linkedinIntegration: { ...saved.linkedinIntegration, status: "Preparing LinkedIn session..." } });
+        setTenant({ ...tenant, linkedinIntegration: { ...linkedinIntegration(tenant), status: "Syncing LinkedIn messages..." } });
         render();
-        const result = await authorizeLinkedinSessionViaApi(tenant.id);
+        if (form) await saveLinkedinSettingsViaApi(tenant.id, linkedinFormValues(form));
+        const result = await syncLinkedinViaApi(tenant.id, { limit: 50 });
         setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
-        ui.linkedinLogin = result.login || null;
-        showToast("Temporary LinkedIn login started. Follow the instructions in the LinkedIn panel.");
-      } catch (error) {
-        setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
-        showToast(error.message);
-      }
-      render();
-      return;
-    }
-    if (action === "open-linkedin-login-tab") {
-      if (ui.linkedinLogin?.localDebugUrl) {
-        if (/\/json\/list$/i.test(ui.linkedinLogin.localDebugUrl)) {
-          showToast("LinkedIn page target is still loading. Wait a few seconds, then click Start LinkedIn login again.");
-          return;
-        }
-        window.open(ui.linkedinLogin.localDebugUrl, "_blank", "noopener,noreferrer");
-      } else {
-        showToast("Click Start LinkedIn login first. No temporary LinkedIn browser is running yet.");
-        setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: "Start LinkedIn login first. No temporary LinkedIn browser is running yet." } });
-        render();
-      }
-      return;
-    }
-    if (action === "verify-linkedin-session") {
-      const tenant = currentTenant();
-      try {
-        setTenant({ ...tenant, linkedinIntegration: { ...linkedinIntegration(tenant), status: "Verifying LinkedIn login..." } });
-        render();
-        const result = await verifyLinkedinSessionViaApi(tenant.id);
-        setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
-        ui.linkedinLogin = null;
-        showToast("LinkedIn session authorized");
+        showToast(result.result?.ok ? `LinkedIn sync completed (${Number(result.result.importedCount || 0)} new, ${Number(result.result.updatedCount || 0)} updated, ${Number(result.result.unmatchedCount || 0)} need matching)` : "LinkedIn sync returned no data");
       } catch (error) {
         setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
         showToast(error.message);

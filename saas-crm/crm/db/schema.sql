@@ -106,6 +106,8 @@ create table communications (
   opened_at timestamptz,
   replied_at timestamptz,
   gmail_thread_id text,
+  provider_message_id text,
+  provider_thread_id text,
   source text not null default 'crm',
   occurred_at timestamptz not null default now()
 );
@@ -139,9 +141,13 @@ create table linkedin_integrations (
   sync_company_updates boolean not null default false,
   enabled boolean not null default false,
   status text not null default 'Not connected',
+  provider text not null default 'unipile',
+  provider_account_id text,
+  provider_status text,
   session_status text not null default 'not_configured',
   profile_path text,
   authorized_at timestamptz,
+  last_sync_at timestamptz,
   last_scan_at timestamptz,
   last_scan_result jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
@@ -209,6 +215,7 @@ create index deals_tenant_owner_idx on deals(tenant_id, owner_id);
 create index activities_tenant_due_idx on activities(tenant_id, due_date, completed);
 create index communications_tenant_deal_idx on communications(tenant_id, deal_id, occurred_at desc);
 create index communications_tenant_thread_idx on communications(tenant_id, gmail_thread_id);
+create unique index communications_tenant_source_provider_message_idx on communications(tenant_id, source, provider_message_id) where provider_message_id is not null;
 create index invite_emails_tenant_created_idx on invite_emails(tenant_id, created_at desc);
 create index audit_logs_created_idx on audit_logs(created_at desc);
 create index audit_logs_tenant_created_idx on audit_logs(tenant_id, created_at desc);

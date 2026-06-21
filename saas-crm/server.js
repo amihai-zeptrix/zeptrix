@@ -24,6 +24,9 @@ const appBaseUrl = process.env.APP_BASE_URL || `http://localhost:${port}/crm/`;
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL?.replace(/\/crm\/?$/, "") || `http://localhost:${port}`;
 const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_SSO_CLIENT_ID || "";
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+const unipileDsn = (process.env.UNIPILE_DSN || "").replace(/\/$/, "");
+const unipileApiKey = process.env.UNIPILE_API_KEY || "";
+const unipileWebhookSecret = process.env.UNIPILE_WEBHOOK_SECRET || "";
 const linkedinPuppeteerEnabled = ["1", "true", "yes"].includes(String(process.env.LINKEDIN_PUPPETEER_ENABLED || "").toLowerCase());
 const linkedinChromePath = process.env.LINKEDIN_CHROME_PATH || process.env.CHROME_PATH || "/usr/bin/google-chrome";
 const linkedinChromeProfile = process.env.LINKEDIN_CHROME_PROFILE || "";
@@ -668,6 +671,8 @@ async function initDatabase() {
       opened_at timestamptz,
       replied_at timestamptz,
       gmail_thread_id text,
+      provider_message_id text,
+      provider_thread_id text,
       source text not null default 'crm',
       occurred_at timestamptz not null default now()
     )`);
@@ -766,9 +771,13 @@ async function initDatabase() {
       sync_company_updates boolean not null default false,
       enabled boolean not null default false,
       status text not null default 'Not connected',
+      provider text not null default 'unipile',
+      provider_account_id text,
+      provider_status text,
       session_status text not null default 'not_configured',
       profile_path text,
       authorized_at timestamptz,
+      last_sync_at timestamptz,
       last_scan_at timestamptz,
       last_scan_result jsonb not null default '{}'::jsonb,
       created_at timestamptz not null default now(),
@@ -808,6 +817,8 @@ async function initDatabase() {
   await dbQuery(`alter table communications add column if not exists opened_at timestamptz`);
   await dbQuery(`alter table communications add column if not exists replied_at timestamptz`);
   await dbQuery(`alter table communications add column if not exists gmail_thread_id text`);
+  await dbQuery(`alter table communications add column if not exists provider_message_id text`);
+  await dbQuery(`alter table communications add column if not exists provider_thread_id text`);
   await dbQuery(`alter table communications add column if not exists source text not null default 'crm'`);
   await dbQuery(`alter table gmail_integrations add column if not exists gmail_lookback_days integer not null default 30 check (gmail_lookback_days > 0 and gmail_lookback_days <= 365)`);
   await dbQuery(`alter table linkedin_integrations add column if not exists company_page_url text`);
@@ -816,9 +827,13 @@ async function initDatabase() {
   await dbQuery(`alter table linkedin_integrations add column if not exists sync_company_updates boolean not null default false`);
   await dbQuery(`alter table linkedin_integrations add column if not exists enabled boolean not null default false`);
   await dbQuery(`alter table linkedin_integrations add column if not exists status text not null default 'Not connected'`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists provider text not null default 'unipile'`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists provider_account_id text`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists provider_status text`);
   await dbQuery(`alter table linkedin_integrations add column if not exists session_status text not null default 'not_configured'`);
   await dbQuery(`alter table linkedin_integrations add column if not exists profile_path text`);
   await dbQuery(`alter table linkedin_integrations add column if not exists authorized_at timestamptz`);
+  await dbQuery(`alter table linkedin_integrations add column if not exists last_sync_at timestamptz`);
   await dbQuery(`alter table linkedin_integrations add column if not exists last_scan_at timestamptz`);
   await dbQuery(`alter table linkedin_integrations add column if not exists last_scan_result jsonb not null default '{}'::jsonb`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
@@ -830,6 +845,7 @@ async function initDatabase() {
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
   await dbQuery(`create index if not exists linkedin_integrations_updated_idx on linkedin_integrations(updated_at desc)`);
   await dbQuery(`create index if not exists communications_tenant_thread_idx on communications(tenant_id, gmail_thread_id)`);
+  await dbQuery(`create unique index if not exists communications_tenant_source_provider_message_idx on communications(tenant_id, source, provider_message_id) where provider_message_id is not null`);
   await dbQuery(`create index if not exists workflow_automations_updated_idx on workflow_automations(updated_at desc)`);
   await dbQuery(`create index if not exists audit_logs_created_idx on audit_logs(created_at desc)`);
   await dbQuery(`create index if not exists audit_logs_tenant_created_idx on audit_logs(tenant_id, created_at desc)`);
@@ -1266,6 +1282,8 @@ function communicationFromRow(item) {
     openedAt: item.opened_at ? item.opened_at.toISOString() : "",
     repliedAt: item.replied_at ? item.replied_at.toISOString() : "",
     gmailThreadId: item.gmail_thread_id || "",
+    providerMessageId: item.provider_message_id || "",
+    providerThreadId: item.provider_thread_id || "",
     source: item.source || "crm",
   };
 }
@@ -1331,12 +1349,16 @@ function linkedinIntegrationFromRow(row) {
   return {
     enabled: !!row?.enabled,
     status: row?.status || "Not connected",
+    provider: row?.provider || "unipile",
+    providerAccountId: row?.provider_account_id || "",
+    providerStatus: row?.provider_status || "",
     companyPageUrl: row?.company_page_url || "",
     accountEmail: row?.account_email || "",
     syncContacts: row?.sync_contacts ?? true,
     syncCompanyUpdates: row?.sync_company_updates ?? false,
     sessionStatus: row?.session_status || "not_configured",
     authorizedAt: row?.authorized_at ? row.authorized_at.toISOString() : "",
+    lastSyncAt: row?.last_sync_at ? row.last_sync_at.toISOString() : "",
     lastScanAt: row?.last_scan_at ? row.last_scan_at.toISOString() : "",
     lastScanResult: row?.last_scan_result || {},
     updatedAt: row?.updated_at ? row.updated_at.toISOString() : "",
@@ -1767,19 +1789,256 @@ async function upsertLinkedinSettings(tenantId, payload) {
   const settings = normalizeLinkedinSettings(payload);
   const result = await dbQuery(
     `insert into linkedin_integrations
-       (tenant_id, company_page_url, account_email, sync_contacts, sync_company_updates, enabled, status, updated_at)
-     values ($1,$2,$3,$4,$5,false,'Settings saved - LinkedIn OAuth is not connected yet',now())
+       (tenant_id, company_page_url, account_email, sync_contacts, sync_company_updates, provider, enabled, status, updated_at)
+     values ($1,$2,$3,$4,$5,'unipile',false,'Settings saved - connect LinkedIn to start syncing',now())
      on conflict (tenant_id) do update set
        company_page_url=excluded.company_page_url,
        account_email=excluded.account_email,
        sync_contacts=excluded.sync_contacts,
        sync_company_updates=excluded.sync_company_updates,
-       status='Settings saved - LinkedIn OAuth is not connected yet',
+       provider='unipile',
+       status=case when linkedin_integrations.provider_account_id is null then 'Settings saved - connect LinkedIn to start syncing' else linkedin_integrations.status end,
        updated_at=now()
      returning *`,
     [tenantId, settings.companyPageUrl, settings.accountEmail, settings.syncContacts, settings.syncCompanyUpdates],
   );
   return linkedinIntegrationFromRow(result.rows[0]);
+}
+
+function unipileConfigured() {
+  return Boolean(unipileDsn && unipileApiKey);
+}
+
+function requireUnipileWebhookSecret(req) {
+  if (!unipileWebhookSecret) {
+    const error = new Error("LinkedIn webhook secret is not configured.");
+    error.statusCode = 503;
+    throw error;
+  }
+  const provided = String(req.headers["x-zeptrix-webhook-secret"] || req.headers["x-unipile-webhook-secret"] || "");
+  const expected = String(unipileWebhookSecret);
+  if (
+    !provided
+    || Buffer.byteLength(provided) !== Buffer.byteLength(expected)
+    || !crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
+  ) {
+    const error = new Error("Invalid LinkedIn webhook secret.");
+    error.statusCode = 401;
+    throw error;
+  }
+}
+
+async function unipileApi(pathname, options = {}) {
+  if (!unipileConfigured()) {
+    const error = new Error("LinkedIn provider is not configured. Set UNIPILE_DSN and UNIPILE_API_KEY.");
+    error.statusCode = 503;
+    throw error;
+  }
+  const response = await fetch(`${unipileDsn}${pathname}`, {
+    ...options,
+    headers: {
+      "X-API-KEY": unipileApiKey,
+      accept: "application/json",
+      ...(options.body ? { "content-type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  let body = {};
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { raw: text };
+    }
+  }
+  if (!response.ok) {
+    const error = new Error(body.message || body.error || body.detail || `Unipile request failed with HTTP ${response.status}.`);
+    error.statusCode = response.status >= 400 && response.status < 500 ? response.status : 502;
+    error.detail = body;
+    throw error;
+  }
+  return body;
+}
+
+function linkedinHostedAuthName(tenantId, userId = "") {
+  return signPayload({ purpose: "linkedin-hosted-auth", tenantId, userId: userId || "", exp: Date.now() + 2 * 60 * 60 * 1000 });
+}
+
+function verifyLinkedinHostedAuthName(name = "") {
+  const payload = verifySignedPayload(name);
+  if (payload?.purpose !== "linkedin-hosted-auth" || !payload.tenantId) {
+    const error = new Error("Invalid LinkedIn hosted-auth callback.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return payload;
+}
+
+async function createLinkedinHostedAuthLink(tenantId, auth) {
+  const existing = await dbQuery(`select * from linkedin_integrations where tenant_id=$1`, [tenantId]);
+  const integration = existing.rows[0];
+  const reconnect = Boolean(integration?.provider_account_id);
+  const expiresOn = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const successUrl = `${publicBaseUrl}/crm/?linkedin=connected`;
+  const failureUrl = `${publicBaseUrl}/crm/?linkedin=failed`;
+  const notifyUrl = `${publicBaseUrl}/api/linkedin/unipile/callback`;
+  const payload = {
+    type: reconnect ? "reconnect" : "create",
+    providers: ["LINKEDIN"],
+    api_url: unipileDsn,
+    expiresOn,
+    success_redirect_url: successUrl,
+    failure_redirect_url: failureUrl,
+    notify_url: notifyUrl,
+    name: linkedinHostedAuthName(tenantId, auth?.id || auth?.userId || ""),
+    ...(reconnect ? { reconnect_account: integration.provider_account_id } : {}),
+  };
+  const body = await unipileApi("/api/v1/hosted/accounts/link", { method: "POST", body: JSON.stringify(payload) });
+  const authUrl = body.url || body.hosted_url || body.auth_url || body.link;
+  if (!authUrl) {
+    const error = new Error("LinkedIn provider did not return a hosted authorization URL.");
+    error.statusCode = 502;
+    throw error;
+  }
+  const result = await dbQuery(
+    `insert into linkedin_integrations
+       (tenant_id, provider, enabled, status, provider_status, updated_at)
+     values ($1,'unipile',false,'Redirecting to LinkedIn authorization','PENDING',now())
+     on conflict (tenant_id) do update set
+       provider='unipile',
+       status='Redirecting to LinkedIn authorization',
+       provider_status='PENDING',
+       updated_at=now()
+     returning *`,
+    [tenantId],
+  );
+  return { authUrl, linkedinIntegration: linkedinIntegrationFromRow(result.rows[0]) };
+}
+
+async function saveLinkedinProviderAccount({ tenantId, accountId, status = "CONNECTED" }) {
+  if (!accountId) return null;
+  const result = await dbQuery(
+    `insert into linkedin_integrations
+       (tenant_id, provider, provider_account_id, provider_status, enabled, session_status, status, authorized_at, updated_at)
+     values ($1,'unipile',$2,$3,true,'authorized','LinkedIn connected',now(),now())
+     on conflict (tenant_id) do update set
+       provider='unipile',
+       provider_account_id=excluded.provider_account_id,
+       provider_status=excluded.provider_status,
+       enabled=true,
+       session_status='authorized',
+       status='LinkedIn connected',
+       authorized_at=now(),
+       updated_at=now()
+     returning *`,
+    [tenantId, accountId, status],
+  );
+  return linkedinIntegrationFromRow(result.rows[0]);
+}
+
+function unipileListFromResponse(body) {
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body.items)) return body.items;
+  if (Array.isArray(body.messages)) return body.messages;
+  if (Array.isArray(body.data)) return body.data;
+  if (Array.isArray(body.chats)) return body.chats;
+  return [];
+}
+
+function normalizeUnipileMessage(message = {}) {
+  const text = String(message.text || message.body || message.message || message.content || message?.message?.text || "").trim();
+  const id = String(message.id || message.message_id || message.provider_id || message?.message?.id || "");
+  const threadId = String(message.chat_id || message.chatId || message.conversation_id || message.thread_id || message?.message?.chat_id || "");
+  const sender = message.sender || message.from || message.author || {};
+  const senderName = String(sender.name || sender.display_name || message.sender_name || message.from_name || message.sender_id || "LinkedIn contact");
+  const isOutbound = message.is_sender === true || message.sender_is_self === true || sender.is_self === true || String(message.direction || "").toLowerCase() === "outbound";
+  const timestamp = message.timestamp || message.date || message.created_at || message.createdAt || message.sent_at || message?.message?.timestamp;
+  return {
+    id,
+    threadId,
+    text,
+    senderName,
+    direction: isOutbound ? "outbound" : "inbound",
+    occurredAt: timestamp ? new Date(timestamp) : new Date(),
+  };
+}
+
+function findDealForLinkedinMessage(deals, message) {
+  const haystack = `${message.senderName} ${message.text}`.toLowerCase();
+  return deals.find((deal) => {
+    const candidates = [deal.email, deal.contact, deal.account].filter(Boolean).map((value) => String(value).toLowerCase());
+    return candidates.some((value) => value && haystack.includes(value));
+  }) || null;
+}
+
+async function saveLinkedinMessages(tenantId, messages = []) {
+  let inserted = 0;
+  let updated = 0;
+  let unmatched = 0;
+  const dealsResult = await dbQuery(`select * from deals where tenant_id=$1 order by updated_at desc limit 250`, [tenantId]);
+  for (const raw of messages) {
+    const message = normalizeUnipileMessage(raw);
+    if (!message.id || !message.text) continue;
+    const deal = findDealForLinkedinMessage(dealsResult.rows, message);
+    if (!deal) unmatched += 1;
+    const saved = await dbQuery(
+      `with inserted as (
+         insert into communications
+           (tenant_id, deal_id, type, direction, subject, body, owner, tracked, tracking_status, source, provider_message_id, provider_thread_id, occurred_at)
+         values ($1,$2,'Email',$3,$4,$5,$6,$7,$8,'linkedin',$9,$10,$11)
+         on conflict (tenant_id, source, provider_message_id) where provider_message_id is not null do nothing
+         returning id, true as inserted
+       ),
+       updated as (
+         update communications
+            set deal_id=coalesce($2, deal_id),
+                direction=$3,
+                subject=$4,
+                body=$5,
+                owner=$6,
+                tracked=$7,
+                tracking_status=$8,
+                provider_thread_id=$10,
+                occurred_at=$11
+          where tenant_id=$1
+            and source='linkedin'
+            and provider_message_id=$9
+            and not exists (select 1 from inserted)
+          returning id, false as inserted
+       )
+       select * from inserted
+       union all
+       select * from updated`,
+      [tenantId, deal?.id || null, message.direction, "LinkedIn message", message.text, message.senderName, `LinkedIn thread · ${message.threadId || "unknown"}`, deal ? "Imported from LinkedIn" : "LinkedIn import needs account match", message.id, message.threadId || null, message.occurredAt],
+    );
+    if (saved.rows[0]?.inserted) inserted += 1;
+    else if (saved.rows[0]) updated += 1;
+  }
+  return { inserted, updated, unmatched };
+}
+
+async function syncLinkedinMessages(tenantId, payload = {}) {
+  const integrationResult = await dbQuery(`select * from linkedin_integrations where tenant_id=$1`, [tenantId]);
+  const integration = integrationResult.rows[0];
+  if (!integration?.provider_account_id) {
+    const error = new Error("Connect LinkedIn before syncing messages.");
+    error.statusCode = 409;
+    throw error;
+  }
+  const limit = Math.max(1, Math.min(100, Number(payload.limit || 50)));
+  const body = await unipileApi(`/api/v1/messages?account_id=${encodeURIComponent(integration.provider_account_id)}&limit=${limit}`);
+  const messages = unipileListFromResponse(body);
+  const counts = await saveLinkedinMessages(tenantId, messages);
+  const summary = { ok: true, scannedAt: new Date().toISOString(), messageCount: messages.length, importedCount: counts.inserted, updatedCount: counts.updated, unmatchedCount: counts.unmatched };
+  const saved = await dbQuery(
+    `update linkedin_integrations
+     set enabled=true, session_status='authorized', status=$2, last_sync_at=now(), last_scan_at=now(), last_scan_result=$3::jsonb, updated_at=now()
+     where tenant_id=$1
+     returning *`,
+    [tenantId, `LinkedIn sync completed (${counts.inserted} new, ${counts.updated} updated, ${counts.unmatched} need matching)`, JSON.stringify(summary)],
+  );
+  return { linkedinIntegration: linkedinIntegrationFromRow(saved.rows[0]), result: summary };
 }
 
 function linkedinTenantProfilePath(tenantId) {
@@ -2864,6 +3123,45 @@ async function handleApi(req, res) {
   const requestUrl = new URL(req.url, `http://localhost:${port}`);
   const pathname = requestUrl.pathname;
 
+  if (req.method === "POST" && pathname === "/api/linkedin/unipile/callback") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      requireUnipileWebhookSecret(req);
+      const payload = await readBody(req);
+      const accountId = payload.account_id || payload.accountId || payload.account?.id;
+      const tenantId = verifyLinkedinHostedAuthName(payload.name).tenantId;
+      if (!tenantId || !accountId) return json(res, 400, { error: "LinkedIn callback is missing tenant or account id." });
+      const linkedinIntegration = await saveLinkedinProviderAccount({ tenantId, accountId, status: payload.status || "CONNECTED" });
+      return json(res, 200, { ok: true, linkedinIntegration });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.message || "Unable to process LinkedIn callback." });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/linkedin/unipile/messages") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      requireUnipileWebhookSecret(req);
+      const payload = await readBody(req);
+      const accountId = payload.account_id || payload.accountId || payload.account?.id || payload.message?.account_id;
+      if (!accountId) return json(res, 400, { error: "LinkedIn message webhook is missing account id." });
+      const integrationResult = await dbQuery(`select * from linkedin_integrations where provider='unipile' and provider_account_id=$1`, [accountId]);
+      const integration = integrationResult.rows[0];
+      if (!integration) return json(res, 202, { ok: true, ignored: true });
+      const messages = Array.isArray(payload.messages) ? payload.messages : [payload.message || payload];
+      const counts = await saveLinkedinMessages(integration.tenant_id, messages);
+      await dbQuery(
+        `update linkedin_integrations
+         set enabled=true, status=$2, provider_status='CONNECTED', last_sync_at=now(), updated_at=now()
+         where tenant_id=$1`,
+        [integration.tenant_id, `LinkedIn webhook processed ${counts.inserted} new and ${counts.updated} updated message${counts.inserted + counts.updated === 1 ? "" : "s"}`],
+      );
+      return json(res, 200, { ok: true, ...counts });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.message || "Unable to process LinkedIn message webhook." });
+    }
+  }
+
   if (req.method === "GET" && pathname === "/api/state") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -3442,6 +3740,35 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin/connect")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const result = await createLinkedinHostedAuthLink(resolved.tenantId, resolved.auth);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "connect-linkedin", target: "linkedin-settings", details: { fields: { provider: "unipile" } } });
+      return json(res, 200, result);
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to connect LinkedIn.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin/sync")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const payload = await readBody(req);
+      const sync = await syncLinkedinMessages(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "sync-linkedin", target: "linkedin-settings", details: { fields: { provider: "unipile", limit: payload.limit || 50 } } });
+      return json(res, 200, sync);
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to sync LinkedIn.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin/authorize-session")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -3477,7 +3804,7 @@ async function handleApi(req, res) {
       const resolved = await resolveAuthorizedTenant(req, res, tenantId);
       if (!resolved) return;
       const payload = await readBody(req);
-      const scan = await runLinkedinPuppeteerScan(resolved.tenantId, payload);
+      const scan = await syncLinkedinMessages(resolved.tenantId, payload);
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "scan-linkedin", target: "linkedin-settings", details: { fields: { limit: payload.limit || 10, profileId: payload.profileId || "", conversationId: payload.conversationId || "" } } });
       return json(res, 200, scan);
     } catch (error) {
