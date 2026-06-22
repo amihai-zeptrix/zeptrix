@@ -1313,7 +1313,9 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /Messages needing account match/);
   assert.match(renderLinkedinSource, /Scan completed/);
   assert.match(renderLinkedinSource, /Automated updates ignored/);
-  assert.match(renderLinkedinSource, /LinkedIn messages found/);
+  assert.match(renderLinkedinSource, /LinkedIn scan results/);
+  assert.match(renderLinkedinSource, /Contacts and messages found in LinkedIn/);
+  assert.match(renderLinkedinSource, /0 new messages still gives visible feedback/);
   assert.match(renderLinkedinSource, /data-linkedin-message-id/);
   assert.match(renderLinkedinSource, /data-open-communication/);
   assert.match(renderLinkedinSource, /linkedinScannedMessages\(tenant\)/);
@@ -1360,6 +1362,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(app, /function linkedinIntegration/);
   assert.match(app, /function linkedinScannedMessages/);
   assert.match(app, /item\.source === "linkedin"/);
+  assert.match(app, /lastScanResult\?\.communicationIds/);
   assert.match(app, /Needs account match/);
   assert.match(app, /settingsTab: "gmail"/);
   assert.match(app, /settingsTab === "mail" \? "gmail" : settingsTab/);
@@ -1399,6 +1402,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /updatedCount: counts\.updated/);
   assert.match(server, /unmatchedCount: counts\.unmatched/);
   assert.match(server, /ignoredCount: counts\.ignored/);
+  assert.match(server, /communicationIds: counts\.communicationIds\.slice\(0, 50\)/);
+  assert.match(server, /communicationIds\.push\(saved\.rows\[0\]\.id\)/);
   assert.match(server, /function shouldIgnoreLinkedinMessage/);
   assert.match(server, /message\.attendeeType === "ORGANIZATION"/);
   assert.match(server, /watch on demand/);

@@ -719,7 +719,7 @@ async function finalizeLinkedinConnection() {
     const result = await reconcileLinkedinViaApi(tenant.id);
     ui.linkedinReturnPending = false;
     setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
-    showToast("LinkedIn connected. You can sync messages now.");
+    showToast("LinkedIn connected. You can scan messages now.");
   } catch (error) {
     setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
     showToast(error.message);
@@ -2740,10 +2740,15 @@ function renderLinkedinIntegrationSettings() {
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
-      <h3>What LinkedIn will add</h3>
+      <h3>LinkedIn scan results</h3>
       <div class="integration-metrics">
         ${summaryCard("♙", "var(--blue-soft)", "var(--blue)", "Contact enrichment", linkedin.syncContacts ? "On" : "Off", "titles and public profile context")}
         ${summaryCard("▣", "#d8f4e8", "#18764e", "Messages imported", Number(linkedin.lastScanResult?.importedCount || 0), `${Number(linkedin.lastScanResult?.unmatchedCount || 0)} need matching · ${Number(linkedin.lastScanResult?.ignoredCount || 0)} ignored`)}
+      </div>
+      <div class="signal-list">
+        <h4>Contacts and messages found in LinkedIn</h4>
+        <p class="signal-scope">Latest scan results from LinkedIn. Updated rows are shown here too, so a scan with 0 new messages still gives visible feedback.</p>
+        ${linkedInMessages.map((item) => `<div class="signal-row" data-linkedin-message-id="${escapeHtml(item.id)}"><span class="activity-symbol">in</span><button class="activity-main" data-open-communication="${escapeHtml(item.id)}"><span class="list-primary">${escapeHtml(item.person)}<small>${escapeHtml([item.subject, item.account, item.status].filter(Boolean).join(" · "))}</small></span></button><span class="row-actions"><button class="button small" data-open-communication="${escapeHtml(item.id)}">Open</button></span></div>`).join("") || `<p class="empty-state compact">${linkedin.lastScanAt ? "No reviewable LinkedIn messages were found in the latest scan." : "Scan LinkedIn to show imported contacts and messages here."}</p>`}
       </div>
       <div class="signal-list">
         <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Read LinkedIn conversations<small>${escapeHtml(linkedin.lastScanResult?.messageCount ? `${linkedin.lastScanResult.messageCount} messages from last scan` : "Uses the provider messaging API and webhooks.")}</small></span></div>
@@ -2751,11 +2756,6 @@ function renderLinkedinIntegrationSettings() {
         <div class="signal-row"><span class="activity-symbol">×</span><span class="list-primary">Automated updates ignored<small>${escapeHtml(linkedin.lastScanResult?.ignoredCount ? `${linkedin.lastScanResult.ignoredCount} organization or marketing messages were skipped.` : "Organization broadcasts and automated updates are skipped.")}</small></span></div>
         <div class="signal-row"><span class="activity-symbol">↗</span><span class="list-primary">Add relationship context<small>Use conversation activity to identify accounts and contacts worth follow-up.</small></span></div>
         <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Scan status<small>${escapeHtml(linkedin.lastSyncAt ? `Last scan ${formatTimestamp(linkedin.lastSyncAt)}` : "Not scanned yet")}</small></span></div>
-      </div>
-      <div class="signal-list">
-        <h4>LinkedIn messages found</h4>
-        <p class="signal-scope">Latest scan results from LinkedIn. Unmatched rows are saved in Inbox so they can be reviewed and matched to accounts.</p>
-        ${linkedInMessages.map((item) => `<div class="signal-row" data-linkedin-message-id="${escapeHtml(item.id)}"><span class="activity-symbol">in</span><button class="activity-main" data-open-communication="${escapeHtml(item.id)}"><span class="list-primary">${escapeHtml(item.person)}<small>${escapeHtml([item.subject, item.account, item.status].filter(Boolean).join(" · "))}</small></span></button><span class="row-actions"><button class="button small" data-open-communication="${escapeHtml(item.id)}">Open</button></span></div>`).join("") || `<p class="empty-state compact">${linkedin.lastScanAt ? "No reviewable LinkedIn messages were found in the latest scan." : "Scan LinkedIn to show imported messages here."}</p>`}
       </div>
     </article>
   </section>`;
@@ -2900,9 +2900,15 @@ function gmailContactDiscoveries(tenant = currentTenant()) {
 }
 
 function linkedinScannedMessages(tenant = currentTenant()) {
-  return [...(tenant.communications || [])]
-    .filter((item) => item.source === "linkedin")
-    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
+  const linkedin = linkedinIntegration(tenant);
+  const lastScanIds = new Set((linkedin.lastScanResult?.communicationIds || []).map((id) => String(id)));
+  const messages = [...(tenant.communications || [])]
+    .filter((item) => item.source === "linkedin" || lastScanIds.has(String(item.id)));
+  const prioritized = messages.sort((a, b) => {
+    const scanPriority = Number(lastScanIds.has(String(b.id))) - Number(lastScanIds.has(String(a.id)));
+    return scanPriority || String(b.date || "").localeCompare(String(a.date || ""));
+  });
+  return prioritized
     .slice(0, 10)
     .map((item) => {
       const deal = tenant.deals.find((candidate) => String(candidate.id) === String(item.dealId));

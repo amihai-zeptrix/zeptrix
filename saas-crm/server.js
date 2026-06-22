@@ -2064,6 +2064,7 @@ async function saveLinkedinMessages(tenantId, messages = []) {
   let updated = 0;
   let unmatched = 0;
   let ignored = 0;
+  const communicationIds = [];
   const dealsResult = await dbQuery(`select * from deals where tenant_id=$1 order by updated_at desc limit 250`, [tenantId]);
   for (const raw of messages) {
     const message = normalizeUnipileMessage(raw);
@@ -2104,10 +2105,11 @@ async function saveLinkedinMessages(tenantId, messages = []) {
        select * from updated`,
       [tenantId, deal?.id || null, message.direction, message.subject || "LinkedIn message", message.text, message.senderName, `LinkedIn thread · ${message.threadId || "unknown"}`, deal ? "Imported from LinkedIn" : "LinkedIn import needs account match", message.id, message.threadId || null, message.occurredAt],
     );
+    if (saved.rows[0]?.id) communicationIds.push(saved.rows[0].id);
     if (saved.rows[0]?.inserted) inserted += 1;
     else if (saved.rows[0]) updated += 1;
   }
-  return { inserted, updated, unmatched, ignored };
+  return { inserted, updated, unmatched, ignored, communicationIds };
 }
 
 async function syncLinkedinMessages(tenantId, payload = {}) {
@@ -2122,7 +2124,7 @@ async function syncLinkedinMessages(tenantId, payload = {}) {
   const body = await unipileApi(`/api/v1/messages?account_id=${encodeURIComponent(integration.provider_account_id)}&limit=${limit}`);
   const messages = unipileListFromResponse(body);
   const counts = await saveLinkedinMessages(tenantId, messages);
-  const summary = { ok: true, scannedAt: new Date().toISOString(), messageCount: messages.length, importedCount: counts.inserted, updatedCount: counts.updated, unmatchedCount: counts.unmatched, ignoredCount: counts.ignored };
+  const summary = { ok: true, scannedAt: new Date().toISOString(), messageCount: messages.length, importedCount: counts.inserted, updatedCount: counts.updated, unmatchedCount: counts.unmatched, ignoredCount: counts.ignored, communicationIds: counts.communicationIds.slice(0, 50) };
   const saved = await dbQuery(
     `update linkedin_integrations
      set enabled=true, session_status='authorized', status=$2, last_sync_at=now(), last_scan_at=now(), last_scan_result=$3::jsonb, updated_at=now()
@@ -3870,7 +3872,7 @@ async function handleApi(req, res) {
       await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "sync-linkedin", target: "linkedin-settings", details: { fields: { provider: "unipile", limit: payload.limit || 50 } } });
       return json(res, 200, sync);
     } catch (error) {
-      return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to sync LinkedIn.", detail: error.statusCode ? undefined : error.message });
+      return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to scan LinkedIn.", detail: error.statusCode ? undefined : error.message });
     }
   }
 
