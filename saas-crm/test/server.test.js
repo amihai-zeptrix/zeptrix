@@ -1307,11 +1307,14 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /data-action="reconcile-linkedin"/);
   assert.match(renderLinkedinSource, /Finalize connection/);
   assert.match(renderLinkedinSource, /data-action="sync-linkedin"/);
-  assert.match(renderLinkedinSource, /Sync messages/);
+  assert.match(renderLinkedinSource, /Scan messages/);
   assert.match(renderLinkedinSource, /providerAccountId/);
   assert.match(renderLinkedinSource, /provider messaging API and webhooks/);
   assert.match(renderLinkedinSource, /Messages needing account match/);
+  assert.match(renderLinkedinSource, /Scan completed/);
+  assert.match(renderLinkedinSource, /Automated updates ignored/);
   assert.match(renderLinkedinSource, /unmatchedCount/);
+  assert.match(renderLinkedinSource, /ignoredCount/);
   assert.doesNotMatch(renderLinkedinSource, /data-action="authorize-linkedin-session"/);
   assert.doesNotMatch(renderLinkedinSource, /Start LinkedIn login/);
   assert.doesNotMatch(renderLinkedinSource, /data-action="open-linkedin-login-tab"/);
@@ -1388,6 +1391,10 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /on conflict \(tenant_id, source, provider_message_id\).*do nothing/s);
   assert.match(server, /updatedCount: counts\.updated/);
   assert.match(server, /unmatchedCount: counts\.unmatched/);
+  assert.match(server, /ignoredCount: counts\.ignored/);
+  assert.match(server, /function shouldIgnoreLinkedinMessage/);
+  assert.match(server, /message\.attendeeType === "ORGANIZATION"/);
+  assert.match(server, /watch on demand/);
   assert.match(server, /LinkedIn import needs account match/);
   assert.match(server, /pathname === "\/api\/linkedin\/unipile\/callback"/);
   assert.match(server, /const tenantId = verifyLinkedinHostedAuthName\(payload\.name\)\.tenantId/);
@@ -1471,7 +1478,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(clickHandlerSource, /finalizeLinkedinConnection\(\)/);
   assert.match(clickHandlerSource, /action === "sync-linkedin" \|\| action === "scan-linkedin"/);
   assert.match(clickHandlerSource, /syncLinkedinViaApi\(tenant\.id, \{ limit: 50 \}\)/);
-  assert.match(clickHandlerSource, /LinkedIn sync completed/);
+  assert.match(clickHandlerSource, /LinkedIn scan completed/);
+  assert.match(clickHandlerSource, /ignoredCount/);
   assert.doesNotMatch(clickHandlerSource, /action === "authorize-linkedin-session"/);
   assert.doesNotMatch(clickHandlerSource, /Temporary LinkedIn login started/);
   assert.doesNotMatch(clickHandlerSource, /action === "open-linkedin-login-tab"/);

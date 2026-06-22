@@ -2009,38 +2009,69 @@ function unipileListFromResponse(body) {
 
 function normalizeUnipileMessage(message = {}) {
   const text = String(message.text || message.body || message.message || message.content || message?.message?.text || "").trim();
+  const subject = String(message.subject || message.title || message?.message?.subject || "").trim();
   const id = String(message.id || message.message_id || message.provider_id || message?.message?.id || "");
   const threadId = String(message.chat_id || message.chatId || message.conversation_id || message.thread_id || message?.message?.chat_id || "");
   const sender = message.sender || message.from || message.author || {};
   const senderName = String(sender.name || sender.display_name || message.sender_name || message.from_name || message.sender_id || "LinkedIn contact");
   const isOutbound = message.is_sender === true || message.sender_is_self === true || sender.is_self === true || String(message.direction || "").toLowerCase() === "outbound";
   const timestamp = message.timestamp || message.date || message.created_at || message.createdAt || message.sent_at || message?.message?.timestamp;
+  const attendeeType = String(message.attendee_type || message.attendeeType || sender.attendee_type || "").toUpperCase();
+  const messageType = String(message.message_type || message.messageType || "").toUpperCase();
   return {
     id,
     threadId,
     text,
+    subject,
     senderName,
+    attendeeType,
+    messageType,
     direction: isOutbound ? "outbound" : "inbound",
     occurredAt: timestamp ? new Date(timestamp) : new Date(),
   };
 }
 
 function findDealForLinkedinMessage(deals, message) {
-  const haystack = `${message.senderName} ${message.text}`.toLowerCase();
+  const haystack = `${message.senderName} ${message.subject} ${message.text}`.toLowerCase();
   return deals.find((deal) => {
     const candidates = [deal.email, deal.contact, deal.account].filter(Boolean).map((value) => String(value).toLowerCase());
     return candidates.some((value) => value && haystack.includes(value));
   }) || null;
 }
 
+function shouldIgnoreLinkedinMessage(message) {
+  if (message.direction === "inbound" && message.attendeeType === "ORGANIZATION") return true;
+  const content = `${message.subject} ${message.text}`.toLowerCase();
+  const automatedSignals = [
+    "unsubscribe",
+    "privacy policy",
+    "view in browser",
+    "watch on demand",
+    "webinar",
+    "newsletter",
+    "weekly digest",
+    "daily digest",
+    "event highlights",
+    "product update",
+    "sponsored",
+    "promotion",
+  ];
+  return automatedSignals.some((signal) => content.includes(signal));
+}
+
 async function saveLinkedinMessages(tenantId, messages = []) {
   let inserted = 0;
   let updated = 0;
   let unmatched = 0;
+  let ignored = 0;
   const dealsResult = await dbQuery(`select * from deals where tenant_id=$1 order by updated_at desc limit 250`, [tenantId]);
   for (const raw of messages) {
     const message = normalizeUnipileMessage(raw);
     if (!message.id || !message.text) continue;
+    if (shouldIgnoreLinkedinMessage(message)) {
+      ignored += 1;
+      continue;
+    }
     const deal = findDealForLinkedinMessage(dealsResult.rows, message);
     if (!deal) unmatched += 1;
     const saved = await dbQuery(
@@ -2071,12 +2102,12 @@ async function saveLinkedinMessages(tenantId, messages = []) {
        select * from inserted
        union all
        select * from updated`,
-      [tenantId, deal?.id || null, message.direction, "LinkedIn message", message.text, message.senderName, `LinkedIn thread · ${message.threadId || "unknown"}`, deal ? "Imported from LinkedIn" : "LinkedIn import needs account match", message.id, message.threadId || null, message.occurredAt],
+      [tenantId, deal?.id || null, message.direction, message.subject || "LinkedIn message", message.text, message.senderName, `LinkedIn thread · ${message.threadId || "unknown"}`, deal ? "Imported from LinkedIn" : "LinkedIn import needs account match", message.id, message.threadId || null, message.occurredAt],
     );
     if (saved.rows[0]?.inserted) inserted += 1;
     else if (saved.rows[0]) updated += 1;
   }
-  return { inserted, updated, unmatched };
+  return { inserted, updated, unmatched, ignored };
 }
 
 async function syncLinkedinMessages(tenantId, payload = {}) {
@@ -2091,13 +2122,13 @@ async function syncLinkedinMessages(tenantId, payload = {}) {
   const body = await unipileApi(`/api/v1/messages?account_id=${encodeURIComponent(integration.provider_account_id)}&limit=${limit}`);
   const messages = unipileListFromResponse(body);
   const counts = await saveLinkedinMessages(tenantId, messages);
-  const summary = { ok: true, scannedAt: new Date().toISOString(), messageCount: messages.length, importedCount: counts.inserted, updatedCount: counts.updated, unmatchedCount: counts.unmatched };
+  const summary = { ok: true, scannedAt: new Date().toISOString(), messageCount: messages.length, importedCount: counts.inserted, updatedCount: counts.updated, unmatchedCount: counts.unmatched, ignoredCount: counts.ignored };
   const saved = await dbQuery(
     `update linkedin_integrations
      set enabled=true, session_status='authorized', status=$2, last_sync_at=now(), last_scan_at=now(), last_scan_result=$3::jsonb, updated_at=now()
      where tenant_id=$1
      returning *`,
-    [tenantId, `LinkedIn sync completed (${counts.inserted} new, ${counts.updated} updated, ${counts.unmatched} need matching)`, JSON.stringify(summary)],
+    [tenantId, `LinkedIn scan completed (${counts.inserted} new, ${counts.updated} updated, ${counts.unmatched} need matching, ${counts.ignored} ignored)`, JSON.stringify(summary)],
   );
   return { linkedinIntegration: linkedinIntegrationFromRow(saved.rows[0]), result: summary };
 }

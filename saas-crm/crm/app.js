@@ -2723,32 +2723,33 @@ function renderLinkedinIntegrationSettings() {
   const finalizeDisabled = canUseBackend ? "" : "disabled";
   return `<section class="settings-layout linkedin-layout">
     <article class="settings-card linkedin-card">
-      <div class="panel-head"><div><h3>LinkedIn</h3><p class="subcopy">Connect LinkedIn through a hosted provider flow, then sync conversations into CRM account history.</p></div><span class="status-pill ${connected ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
+      <div class="panel-head"><div><h3>LinkedIn</h3><p class="subcopy">Connect LinkedIn through a hosted provider flow, then scan conversations into CRM account history.</p></div><span class="status-pill ${connected ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
       ${canUseBackend ? "" : `<p class="admin-notice">LinkedIn settings require signing in to a workspace at /crm.</p>`}
       <form class="settings-form" data-linkedin-settings-form>
         <div class="form-grid">
           ${formField("LinkedIn account email", "accountEmail", linkedin.accountEmail, "email", false, "full")}
         </div>
-        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Connection status<small>${escapeHtml(connected ? `Connected through ${linkedin.provider || "provider"}${linkedin.lastSyncAt ? ` · last sync ${formatTimestamp(linkedin.lastSyncAt)}` : ""}` : "Not connected")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Connection status<small>${escapeHtml(connected ? `Connected through ${linkedin.provider || "provider"}${linkedin.lastSyncAt ? ` · last scan ${formatTimestamp(linkedin.lastSyncAt)}` : ""}` : "Not connected")}</small></span></div>
         <div class="check-list compact">
           <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Attach synced LinkedIn conversation context to matching contacts and accounts.</small></label>
         </div>
         <p class="subcopy">Zeptrix never asks for or stores a LinkedIn password. The provider stores the authorized account and sends CRM only a stable account id plus message events.</p>
         <div class="admin-notice"><strong>No LinkedIn password is stored in the CRM.</strong><br />Click <strong>Connect LinkedIn</strong> to open the hosted authorization flow. After approval, CRM finalizes the connection automatically. If the provider callback is delayed, click <strong>Finalize connection</strong>.</div>
-        <div class="form-actions integration-actions"><button type="button" class="button primary" data-action="connect-linkedin" ${disabled}>Connect LinkedIn</button><button type="button" class="button" data-action="reconcile-linkedin" ${finalizeDisabled}>Finalize connection</button><button type="button" class="button" data-action="sync-linkedin" ${syncDisabled}>Sync messages</button><span class="toolbar-spacer"></span><button class="button" ${disabled}>Save LinkedIn settings</button></div>
+        <div class="form-actions integration-actions"><button type="button" class="button primary" data-action="connect-linkedin" ${disabled}>Connect LinkedIn</button><button type="button" class="button" data-action="reconcile-linkedin" ${finalizeDisabled}>Finalize connection</button><button type="button" class="button" data-action="sync-linkedin" ${syncDisabled}>Scan messages</button><span class="toolbar-spacer"></span><button class="button" ${disabled}>Save LinkedIn settings</button></div>
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
       <h3>What LinkedIn will add</h3>
       <div class="integration-metrics">
         ${summaryCard("♙", "var(--blue-soft)", "var(--blue)", "Contact enrichment", linkedin.syncContacts ? "On" : "Off", "titles and public profile context")}
-        ${summaryCard("▣", "#d8f4e8", "#18764e", "Messages imported", Number(linkedin.lastScanResult?.importedCount || 0), `${Number(linkedin.lastScanResult?.unmatchedCount || 0)} need matching`)}
+        ${summaryCard("▣", "#d8f4e8", "#18764e", "Messages imported", Number(linkedin.lastScanResult?.importedCount || 0), `${Number(linkedin.lastScanResult?.unmatchedCount || 0)} need matching · ${Number(linkedin.lastScanResult?.ignoredCount || 0)} ignored`)}
       </div>
       <div class="signal-list">
-        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Read LinkedIn conversations<small>${escapeHtml(linkedin.lastScanResult?.messageCount ? `${linkedin.lastScanResult.messageCount} messages from last sync` : "Uses the provider messaging API and webhooks.")}</small></span></div>
-        <div class="signal-row"><span class="activity-symbol">?</span><span class="list-primary">Messages needing account match<small>${escapeHtml(linkedin.lastScanResult?.unmatchedCount ? `${linkedin.lastScanResult.unmatchedCount} LinkedIn messages were imported to Inbox and need account matching.` : "Matched messages are attached to account history; unmatched messages remain visible in Inbox.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">in</span><span class="list-primary">Read LinkedIn conversations<small>${escapeHtml(linkedin.lastScanResult?.messageCount ? `${linkedin.lastScanResult.messageCount} messages from last scan` : "Uses the provider messaging API and webhooks.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">?</span><span class="list-primary">Messages needing account match<small>${escapeHtml(linkedin.lastScanResult?.unmatchedCount ? `Scan completed. ${linkedin.lastScanResult.unmatchedCount} LinkedIn messages were imported to Inbox and need account matching.` : "Matched messages are attached to account history; unmatched messages remain visible in Inbox.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">×</span><span class="list-primary">Automated updates ignored<small>${escapeHtml(linkedin.lastScanResult?.ignoredCount ? `${linkedin.lastScanResult.ignoredCount} organization or marketing messages were skipped.` : "Organization broadcasts and automated updates are skipped.")}</small></span></div>
         <div class="signal-row"><span class="activity-symbol">↗</span><span class="list-primary">Add relationship context<small>Use conversation activity to identify accounts and contacts worth follow-up.</small></span></div>
-        <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Sync status<small>${escapeHtml(linkedin.lastSyncAt ? `Last sync ${formatTimestamp(linkedin.lastSyncAt)}` : "Not synced yet")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Scan status<small>${escapeHtml(linkedin.lastSyncAt ? `Last scan ${formatTimestamp(linkedin.lastSyncAt)}` : "Not scanned yet")}</small></span></div>
       </div>
     </article>
   </section>`;
@@ -3246,12 +3247,12 @@ document.addEventListener("click", async (event) => {
       const tenant = currentTenant();
       const form = actionElement.closest("form");
       try {
-        setTenant({ ...tenant, linkedinIntegration: { ...linkedinIntegration(tenant), status: "Syncing LinkedIn messages..." } });
+        setTenant({ ...tenant, linkedinIntegration: { ...linkedinIntegration(tenant), status: "Scanning LinkedIn messages..." } });
         render();
         if (form) await saveLinkedinSettingsViaApi(tenant.id, linkedinFormValues(form));
         const result = await syncLinkedinViaApi(tenant.id, { limit: 50 });
         setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
-        showToast(result.result?.ok ? `LinkedIn sync completed (${Number(result.result.importedCount || 0)} new, ${Number(result.result.updatedCount || 0)} updated, ${Number(result.result.unmatchedCount || 0)} need matching)` : "LinkedIn sync returned no data");
+        showToast(result.result?.ok ? `LinkedIn scan completed (${Number(result.result.importedCount || 0)} new, ${Number(result.result.updatedCount || 0)} updated, ${Number(result.result.unmatchedCount || 0)} need matching, ${Number(result.result.ignoredCount || 0)} ignored)` : "LinkedIn scan returned no data");
       } catch (error) {
         setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
         showToast(error.message);
