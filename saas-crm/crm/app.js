@@ -551,7 +551,7 @@ function authenticate(email, password) {
 
 async function apiRequest(path, options = {}) {
   if (!session?.apiToken && !path.startsWith("/api/auth/")) {
-    throw new Error("Your CRM session is not available in this browser tab. Open zeptrix.io/crm and sign in again.");
+    throw new Error("Please sign in again to continue.");
   }
   const response = await fetch(path, {
     ...options,
@@ -559,12 +559,18 @@ async function apiRequest(path, options = {}) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 401 && body.error === "Authentication required.") {
+      session = null;
+      saveSession();
+      ui.authStep = "password";
+      ui.authError = "Please sign in again to continue.";
+      render();
+      throw new Error("Please sign in again to continue.");
+    }
     const message = body.error === "Unable to scan Gmail." && body.detail
       ? body.detail
       : body.error === "Unable to scan LinkedIn." && body.detail
       ? body.detail
-      : response.status === 401 && body.error === "Authentication required."
-      ? "Your CRM session expired or belongs to another browser domain. Open zeptrix.io/crm and sign in again."
       : body.error || body.detail || "Request failed.";
     throw new Error(message);
   }

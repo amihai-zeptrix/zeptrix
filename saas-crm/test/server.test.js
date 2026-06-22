@@ -1753,7 +1753,7 @@ test("CRM page headers expose contextual online help", () => {
   assert.match(styles, /\.help-guide-index/);
 });
 
-test("CRM rejects stale local sessions but does not log out on protected request failures", () => {
+test("CRM clears stale local sessions with clear sign-in guidance", () => {
   const app = crmAppSource();
   const loadSessionSource = functionSource(app, "loadSession", "saveData");
   const apiRequestSource = functionSource(app, "apiRequest", "loadStateFromApi");
@@ -1765,10 +1765,11 @@ test("CRM rejects stale local sessions but does not log out on protected request
   assert.match(app, /if \(!IS_CANONICAL_REDIRECT\) \{\s*consumeGoogleAuthRedirect\(\)\.finally\(\(\) => render\(\)\);/);
   assert.match(loadSessionSource, /storedSession\.role !== "demo_user" && !storedSession\.apiToken/);
   assert.match(apiRequestSource, /response\.status === 401/);
-  assert.match(apiRequestSource, /Your CRM session is not available in this browser tab/);
-  assert.match(apiRequestSource, /Your CRM session expired or belongs to another browser domain/);
-  assert.doesNotMatch(apiRequestSource, /Please sign in again to continue/);
-  assert.doesNotMatch(apiRequestSource, /session = null/);
+  assert.match(apiRequestSource, /Please sign in again to continue/);
+  assert.match(apiRequestSource, /session = null/);
+  assert.match(apiRequestSource, /ui\.authStep = "password"/);
+  assert.doesNotMatch(apiRequestSource, /Your CRM session is not available in this browser tab/);
+  assert.doesNotMatch(apiRequestSource, /belongs to another browser domain/);
 });
 
 test("CRM inbox expands communication rows into correspondence threads", () => {
