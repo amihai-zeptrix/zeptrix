@@ -1959,6 +1959,9 @@ function isLinkedinUnipileAccount(account = {}) {
 async function reconcileLinkedinProviderAccount(tenantId) {
   const integrationResult = await dbQuery(`select * from linkedin_integrations where tenant_id=$1`, [tenantId]);
   const integration = integrationResult.rows[0];
+  if (integration?.provider_account_id) {
+    return linkedinIntegrationFromRow(integration);
+  }
   const body = await unipileApi("/api/v1/accounts");
   const allAccounts = unipileListFromResponse(body);
   const accounts = allAccounts.filter(isLinkedinUnipileAccount);
