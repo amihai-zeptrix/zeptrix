@@ -1380,6 +1380,7 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /canBindNewest/);
   assert.match(server, /const canBindNewest = !integration\?\.provider_account_id/);
   assert.match(server, /newestAccount/);
+  assert.match(server, /Provider returned \$\{allAccounts\.length\} accounts/);
   assert.match(server, /async function syncLinkedinMessages/);
   assert.match(server, /\/api\/v1\/messages\?account_id=/);
   assert.match(server, /async function saveLinkedinMessages/);

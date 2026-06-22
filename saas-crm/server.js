@@ -1960,7 +1960,9 @@ async function reconcileLinkedinProviderAccount(tenantId) {
   const integrationResult = await dbQuery(`select * from linkedin_integrations where tenant_id=$1`, [tenantId]);
   const integration = integrationResult.rows[0];
   const body = await unipileApi("/api/v1/accounts");
-  const accounts = unipileListFromResponse(body).filter(isLinkedinUnipileAccount);
+  const allAccounts = unipileListFromResponse(body);
+  const accounts = allAccounts.filter(isLinkedinUnipileAccount);
+  console.log(`LinkedIn reconcile tenant=${tenantId} allAccounts=${allAccounts.length} linkedinAccounts=${accounts.length} bound=${integration?.provider_account_id ? "yes" : "no"}`);
   for (const account of accounts) {
     const name = unipileAccountName(account);
     let payload = null;
@@ -1988,7 +1990,7 @@ async function reconcileLinkedinProviderAccount(tenantId) {
   if (fallbackAccountId) {
     return saveLinkedinProviderAccount({ tenantId, accountId: fallbackAccountId, status: fallback.status || "CONNECTED" });
   }
-  const error = new Error("LinkedIn authorization completed, but the provider account was not available yet. Wait a few seconds and click Finalize connection.");
+  const error = new Error(`LinkedIn authorization completed, but the provider account was not available yet. Provider returned ${allAccounts.length} accounts, ${accounts.length} LinkedIn accounts, tenant bound=${integration?.provider_account_id ? "yes" : "no"}.`);
   error.statusCode = 409;
   throw error;
 }
