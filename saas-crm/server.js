@@ -1979,7 +1979,11 @@ async function reconcileLinkedinProviderAccount(tenantId) {
     .map((account) => ({ account, createdAt: unipileAccountCreatedAt(account) }))
     .filter(({ createdAt }) => createdAt && (!connectStartedAt || createdAt >= new Date(connectStartedAt.getTime() - 10 * 60 * 1000)))
     .sort((a, b) => b.createdAt - a.createdAt);
-  const fallback = createdAfterConnect[0]?.account || (accounts.length === 1 ? accounts[0] : null);
+  const newestAccount = accounts
+    .map((account) => ({ account, createdAt: unipileAccountCreatedAt(account) || new Date(0) }))
+    .sort((a, b) => b.createdAt - a.createdAt)[0]?.account || null;
+  const canBindNewest = integration && !integration.provider_account_id && ["PENDING", "", null].includes(integration.provider_status || null);
+  const fallback = createdAfterConnect[0]?.account || (accounts.length === 1 ? accounts[0] : null) || (canBindNewest ? newestAccount : null);
   const fallbackAccountId = fallback ? unipileAccountId(fallback) : "";
   if (fallbackAccountId) {
     return saveLinkedinProviderAccount({ tenantId, accountId: fallbackAccountId, status: fallback.status || "CONNECTED" });
