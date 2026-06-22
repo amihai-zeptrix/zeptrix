@@ -1982,7 +1982,7 @@ async function reconcileLinkedinProviderAccount(tenantId) {
   const newestAccount = accounts
     .map((account) => ({ account, createdAt: unipileAccountCreatedAt(account) || new Date(0) }))
     .sort((a, b) => b.createdAt - a.createdAt)[0]?.account || null;
-  const canBindNewest = integration && !integration.provider_account_id && ["PENDING", "", null].includes(integration.provider_status || null);
+  const canBindNewest = !integration?.provider_account_id;
   const fallback = createdAfterConnect[0]?.account || (accounts.length === 1 ? accounts[0] : null) || (canBindNewest ? newestAccount : null);
   const fallbackAccountId = fallback ? unipileAccountId(fallback) : "";
   if (fallbackAccountId) {
