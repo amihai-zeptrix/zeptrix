@@ -2716,6 +2716,7 @@ function renderGmailConnectivitySettings() {
 function renderLinkedinIntegrationSettings() {
   const tenant = currentTenant();
   const linkedin = linkedinIntegration(tenant);
+  const linkedInMessages = linkedinScannedMessages(tenant);
   const canUseBackend = !!session?.apiToken && session.role !== "demo_user";
   const disabled = canUseBackend ? "" : "disabled";
   const connected = Boolean(linkedin.providerAccountId || linkedin.enabled);
@@ -2750,6 +2751,11 @@ function renderLinkedinIntegrationSettings() {
         <div class="signal-row"><span class="activity-symbol">×</span><span class="list-primary">Automated updates ignored<small>${escapeHtml(linkedin.lastScanResult?.ignoredCount ? `${linkedin.lastScanResult.ignoredCount} organization or marketing messages were skipped.` : "Organization broadcasts and automated updates are skipped.")}</small></span></div>
         <div class="signal-row"><span class="activity-symbol">↗</span><span class="list-primary">Add relationship context<small>Use conversation activity to identify accounts and contacts worth follow-up.</small></span></div>
         <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Scan status<small>${escapeHtml(linkedin.lastSyncAt ? `Last scan ${formatTimestamp(linkedin.lastSyncAt)}` : "Not scanned yet")}</small></span></div>
+      </div>
+      <div class="signal-list">
+        <h4>LinkedIn messages found</h4>
+        <p class="signal-scope">Latest scan results from LinkedIn. Unmatched rows are saved in Inbox so they can be reviewed and matched to accounts.</p>
+        ${linkedInMessages.map((item) => `<div class="signal-row" data-linkedin-message-id="${escapeHtml(item.id)}"><span class="activity-symbol">in</span><button class="activity-main" data-open-communication="${escapeHtml(item.id)}"><span class="list-primary">${escapeHtml(item.person)}<small>${escapeHtml([item.subject, item.account, item.status].filter(Boolean).join(" · "))}</small></span></button><span class="row-actions"><button class="button small" data-open-communication="${escapeHtml(item.id)}">Open</button></span></div>`).join("") || `<p class="empty-state compact">${linkedin.lastScanAt ? "No reviewable LinkedIn messages were found in the latest scan." : "Scan LinkedIn to show imported messages here."}</p>`}
       </div>
     </article>
   </section>`;
@@ -2891,6 +2897,24 @@ function gmailContactDiscoveries(tenant = currentTenant()) {
     { name: "Chris Morgan", email: "chris@procurementhub.com", source: "Cc on renewal discussion" },
     { name: "Nina Patel", email: "nina@legaldesk.io", source: "Vendor review email" },
   ].filter((item) => !existing.has(item.email.toLowerCase()));
+}
+
+function linkedinScannedMessages(tenant = currentTenant()) {
+  return [...(tenant.communications || [])]
+    .filter((item) => item.source === "linkedin")
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
+    .slice(0, 10)
+    .map((item) => {
+      const deal = tenant.deals.find((candidate) => String(candidate.id) === String(item.dealId));
+      const status = item.trackingStatus === "LinkedIn import needs account match" ? "Needs account match" : item.trackingStatus || "Imported";
+      return {
+        id: item.id,
+        person: item.owner || "LinkedIn contact",
+        subject: item.subject || "LinkedIn message",
+        account: deal?.account || "Unmatched",
+        status,
+      };
+    });
 }
 
 function gmailDormantContacts(tenant = currentTenant(), thresholdMonths = 3) {
@@ -3253,6 +3277,9 @@ document.addEventListener("click", async (event) => {
         const result = await syncLinkedinViaApi(tenant.id, { limit: 50 });
         setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
         showToast(result.result?.ok ? `LinkedIn scan completed (${Number(result.result.importedCount || 0)} new, ${Number(result.result.updatedCount || 0)} updated, ${Number(result.result.unmatchedCount || 0)} need matching, ${Number(result.result.ignoredCount || 0)} ignored)` : "LinkedIn scan returned no data");
+        await loadStateFromApi();
+        ui.section = "settings";
+        ui.settingsTab = "linkedin";
       } catch (error) {
         setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
         showToast(error.message);

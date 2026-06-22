@@ -1313,6 +1313,10 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /Messages needing account match/);
   assert.match(renderLinkedinSource, /Scan completed/);
   assert.match(renderLinkedinSource, /Automated updates ignored/);
+  assert.match(renderLinkedinSource, /LinkedIn messages found/);
+  assert.match(renderLinkedinSource, /data-linkedin-message-id/);
+  assert.match(renderLinkedinSource, /data-open-communication/);
+  assert.match(renderLinkedinSource, /linkedinScannedMessages\(tenant\)/);
   assert.match(renderLinkedinSource, /unmatchedCount/);
   assert.match(renderLinkedinSource, /ignoredCount/);
   assert.doesNotMatch(renderLinkedinSource, /data-action="authorize-linkedin-session"/);
@@ -1354,6 +1358,9 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(app, /syncLinkedinViaApi/);
   assert.match(app, /params\.get\("linkedin"\) === "connected"/);
   assert.match(app, /function linkedinIntegration/);
+  assert.match(app, /function linkedinScannedMessages/);
+  assert.match(app, /item\.source === "linkedin"/);
+  assert.match(app, /Needs account match/);
   assert.match(app, /settingsTab: "gmail"/);
   assert.match(app, /settingsTab === "mail" \? "gmail" : settingsTab/);
   assert.match(app, /mfaRequired = values\.mfaRequired === "on"/);
@@ -1480,6 +1487,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(clickHandlerSource, /syncLinkedinViaApi\(tenant\.id, \{ limit: 50 \}\)/);
   assert.match(clickHandlerSource, /LinkedIn scan completed/);
   assert.match(clickHandlerSource, /ignoredCount/);
+  assert.match(clickHandlerSource, /await loadStateFromApi\(\)/);
+  assert.match(clickHandlerSource, /ui\.settingsTab = "linkedin"/);
   assert.doesNotMatch(clickHandlerSource, /action === "authorize-linkedin-session"/);
   assert.doesNotMatch(clickHandlerSource, /Temporary LinkedIn login started/);
   assert.doesNotMatch(clickHandlerSource, /action === "open-linkedin-login-tab"/);
