@@ -253,6 +253,7 @@ let ui = {
   addedGmailContacts: new Set(),
   skippedGmailContacts: new Set(),
   gmailScanProgress: null,
+  linkedinReturnPending: false,
   linkedinLogin: null,
   toasts: [],
   replyingThread: "",
@@ -290,7 +291,8 @@ function handleGmailCallbackQuery() {
   if (params.get("linkedin") === "connected") {
     ui.section = "settings";
     ui.settingsTab = "linkedin";
-    showToast("LinkedIn connected. Click Sync messages to import conversations.");
+    ui.linkedinReturnPending = true;
+    showToast("LinkedIn authorization completed. Finalizing connection...");
     window.history.replaceState({}, "", window.location.pathname);
   }
   if (params.get("linkedin") === "failed") {
@@ -702,9 +704,27 @@ async function loadStateFromApi() {
     if (!data.tenants.some((tenant) => tenant.id === ui.tenantId)) ui.tenantId = data.tenants[0]?.id || "admin";
     saveData();
     render();
+    if (ui.linkedinReturnPending) await finalizeLinkedinConnection();
   } catch (error) {
     console.warn("Using local fallback state:", error.message);
   }
+}
+
+async function finalizeLinkedinConnection() {
+  const tenant = currentTenant();
+  if (!tenant?.id || !session?.apiToken || session.role === "demo_user") return;
+  try {
+    setTenant({ ...tenant, linkedinIntegration: { ...linkedinIntegration(tenant), status: "Finalizing LinkedIn connection..." } });
+    render();
+    const result = await reconcileLinkedinViaApi(tenant.id);
+    ui.linkedinReturnPending = false;
+    setTenant({ ...currentTenant(), linkedinIntegration: result.linkedinIntegration });
+    showToast("LinkedIn connected. You can sync messages now.");
+  } catch (error) {
+    setTenant({ ...currentTenant(), linkedinIntegration: { ...linkedinIntegration(currentTenant()), status: error.message } });
+    showToast(error.message);
+  }
+  render();
 }
 
 async function loginViaApi(email, password) {
@@ -895,6 +915,10 @@ async function scanLinkedinViaApi(tenantId, values = {}) {
 
 async function connectLinkedinViaApi(tenantId) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/connect`, { method: "POST", body: JSON.stringify({}) });
+}
+
+async function reconcileLinkedinViaApi(tenantId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/reconcile`, { method: "POST", body: JSON.stringify({}) });
 }
 
 async function syncLinkedinViaApi(tenantId, values = {}) {
@@ -2696,6 +2720,7 @@ function renderLinkedinIntegrationSettings() {
   const disabled = canUseBackend ? "" : "disabled";
   const connected = Boolean(linkedin.providerAccountId || linkedin.enabled);
   const syncDisabled = canUseBackend && connected ? "" : "disabled";
+  const finalizeDisabled = canUseBackend ? "" : "disabled";
   return `<section class="settings-layout linkedin-layout">
     <article class="settings-card linkedin-card">
       <div class="panel-head"><div><h3>LinkedIn</h3><p class="subcopy">Connect LinkedIn through a hosted provider flow, then sync conversations into CRM account history.</p></div><span class="status-pill ${connected ? "stage-won" : "stage-lead"}">${escapeHtml(linkedin.status)}</span></div>
@@ -2709,8 +2734,8 @@ function renderLinkedinIntegrationSettings() {
           <label class="check-row"><input type="checkbox" name="syncContacts" ${linkedin.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from LinkedIn</span><small>Attach synced LinkedIn conversation context to matching contacts and accounts.</small></label>
         </div>
         <p class="subcopy">Zeptrix never asks for or stores a LinkedIn password. The provider stores the authorized account and sends CRM only a stable account id plus message events.</p>
-        <div class="admin-notice"><strong>No LinkedIn password is stored in the CRM.</strong><br />Click <strong>Connect LinkedIn</strong> to open the hosted authorization flow. After approval, return here and click <strong>Sync messages</strong>.</div>
-        <div class="form-actions integration-actions"><button type="button" class="button primary" data-action="connect-linkedin" ${disabled}>Connect LinkedIn</button><button type="button" class="button" data-action="sync-linkedin" ${syncDisabled}>Sync messages</button><span class="toolbar-spacer"></span><button class="button" ${disabled}>Save LinkedIn settings</button></div>
+        <div class="admin-notice"><strong>No LinkedIn password is stored in the CRM.</strong><br />Click <strong>Connect LinkedIn</strong> to open the hosted authorization flow. After approval, CRM finalizes the connection automatically. If the provider callback is delayed, click <strong>Finalize connection</strong>.</div>
+        <div class="form-actions integration-actions"><button type="button" class="button primary" data-action="connect-linkedin" ${disabled}>Connect LinkedIn</button><button type="button" class="button" data-action="reconcile-linkedin" ${finalizeDisabled}>Finalize connection</button><button type="button" class="button" data-action="sync-linkedin" ${syncDisabled}>Sync messages</button><span class="toolbar-spacer"></span><button class="button" ${disabled}>Save LinkedIn settings</button></div>
       </form>
     </article>
     <article class="settings-card linkedin-preview-card">
@@ -3211,6 +3236,10 @@ document.addEventListener("click", async (event) => {
         showToast(error.message);
         render();
       }
+      return;
+    }
+    if (action === "reconcile-linkedin") {
+      await finalizeLinkedinConnection();
       return;
     }
     if (action === "sync-linkedin" || action === "scan-linkedin") {

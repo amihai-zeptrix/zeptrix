@@ -1862,7 +1862,7 @@ async function unipileApi(pathname, options = {}) {
 }
 
 function linkedinHostedAuthName(tenantId, userId = "") {
-  return signPayload({ purpose: "linkedin-hosted-auth", tenantId, userId: userId || "", exp: Date.now() + 2 * 60 * 60 * 1000 });
+  return signPayload({ purpose: "linkedin-hosted-auth", tenantId, userId: userId || "" });
 }
 
 function verifyLinkedinHostedAuthName(name = "") {
@@ -1935,6 +1935,41 @@ async function saveLinkedinProviderAccount({ tenantId, accountId, status = "CONN
     [tenantId, accountId, status],
   );
   return linkedinIntegrationFromRow(result.rows[0]);
+}
+
+function unipileAccountId(account = {}) {
+  return String(account.id || account.account_id || account.accountId || account.provider_account_id || "");
+}
+
+function unipileAccountName(account = {}) {
+  return String(account.name || account.label || account.metadata?.name || account.provider_metadata?.name || "");
+}
+
+function isLinkedinUnipileAccount(account = {}) {
+  const provider = String(account.provider || account.type || account.connection_type || account.account_type || "").toLowerCase();
+  return provider.includes("linkedin") || String(account.linkedin_id || account.public_identifier || "").length > 0;
+}
+
+async function reconcileLinkedinProviderAccount(tenantId) {
+  const body = await unipileApi("/api/v1/accounts");
+  const accounts = unipileListFromResponse(body);
+  for (const account of accounts) {
+    if (!isLinkedinUnipileAccount(account)) continue;
+    const name = unipileAccountName(account);
+    let payload = null;
+    try {
+      payload = verifyLinkedinHostedAuthName(name);
+    } catch {
+      payload = null;
+    }
+    if (payload?.tenantId !== tenantId) continue;
+    const accountId = unipileAccountId(account);
+    if (!accountId) continue;
+    return saveLinkedinProviderAccount({ tenantId, accountId, status: account.status || "CONNECTED" });
+  }
+  const error = new Error("LinkedIn authorization completed, but the provider account was not available yet. Wait a few seconds and click Finalize connection.");
+  error.statusCode = 409;
+  throw error;
 }
 
 function unipileListFromResponse(body) {
@@ -3126,7 +3161,6 @@ async function handleApi(req, res) {
   if (req.method === "POST" && pathname === "/api/linkedin/unipile/callback") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
-      requireUnipileWebhookSecret(req);
       const payload = await readBody(req);
       const accountId = payload.account_id || payload.accountId || payload.account?.id;
       const tenantId = verifyLinkedinHostedAuthName(payload.name).tenantId;
@@ -3751,6 +3785,20 @@ async function handleApi(req, res) {
       return json(res, 200, result);
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to connect LinkedIn.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin/reconcile")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const linkedinIntegration = await reconcileLinkedinProviderAccount(resolved.tenantId);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "reconcile-linkedin", target: "linkedin-settings", details: { fields: { provider: "unipile" } } });
+      return json(res, 200, { linkedinIntegration });
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to finalize LinkedIn connection.", detail: error.statusCode ? undefined : error.message });
     }
   }
 

@@ -1304,6 +1304,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(renderLinkedinSource, /hosted provider flow/);
   assert.match(renderLinkedinSource, /data-action="connect-linkedin"/);
   assert.match(renderLinkedinSource, /Connect LinkedIn/);
+  assert.match(renderLinkedinSource, /data-action="reconcile-linkedin"/);
+  assert.match(renderLinkedinSource, /Finalize connection/);
   assert.match(renderLinkedinSource, /data-action="sync-linkedin"/);
   assert.match(renderLinkedinSource, /Sync messages/);
   assert.match(renderLinkedinSource, /providerAccountId/);
@@ -1343,6 +1345,9 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(app, /saveGmailSettingsViaApi/);
   assert.match(app, /saveLinkedinSettingsViaApi/);
   assert.match(app, /connectLinkedinViaApi/);
+  assert.match(app, /reconcileLinkedinViaApi/);
+  assert.match(app, /function finalizeLinkedinConnection/);
+  assert.match(app, /ui\.linkedinReturnPending/);
   assert.match(app, /syncLinkedinViaApi/);
   assert.match(app, /params\.get\("linkedin"\) === "connected"/);
   assert.match(app, /function linkedinIntegration/);
@@ -1367,6 +1372,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /async function createLinkedinHostedAuthLink/);
   assert.match(server, /\/api\/v1\/hosted\/accounts\/link/);
   assert.match(server, /notify_url/);
+  assert.match(server, /async function reconcileLinkedinProviderAccount/);
+  assert.match(server, /\/api\/v1\/accounts/);
   assert.match(server, /async function syncLinkedinMessages/);
   assert.match(server, /\/api\/v1\/messages\?account_id=/);
   assert.match(server, /async function saveLinkedinMessages/);
@@ -1376,8 +1383,11 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /LinkedIn import needs account match/);
   assert.match(server, /pathname === "\/api\/linkedin\/unipile\/callback"/);
   assert.match(server, /const tenantId = verifyLinkedinHostedAuthName\(payload\.name\)\.tenantId/);
+  const callbackRouteSource = server.slice(server.indexOf('pathname === "/api/linkedin/unipile/callback"'), server.indexOf('pathname === "/api/linkedin/unipile/messages"'));
+  assert.doesNotMatch(callbackRouteSource, /requireUnipileWebhookSecret/);
   assert.doesNotMatch(server, /payload\.tenant_id \|\| payload\.tenantId/);
   assert.match(server, /pathname === "\/api\/linkedin\/unipile\/messages"/);
+  assert.match(server, /pathname\.endsWith\("\/linkedin\/reconcile"\)/);
   assert.match(server, /pathname\.endsWith\("\/linkedin\/connect"\)/);
   assert.match(server, /pathname\.endsWith\("\/linkedin\/sync"\)/);
   assert.match(server, /operation: "connect-linkedin"/);
@@ -1449,6 +1459,8 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(clickHandlerSource, /action === "connect-linkedin"/);
   assert.match(clickHandlerSource, /connectLinkedinViaApi\(tenant\.id\)/);
   assert.match(clickHandlerSource, /window\.location\.href = result\.authUrl/);
+  assert.match(clickHandlerSource, /action === "reconcile-linkedin"/);
+  assert.match(clickHandlerSource, /finalizeLinkedinConnection\(\)/);
   assert.match(clickHandlerSource, /action === "sync-linkedin" \|\| action === "scan-linkedin"/);
   assert.match(clickHandlerSource, /syncLinkedinViaApi\(tenant\.id, \{ limit: 50 \}\)/);
   assert.match(clickHandlerSource, /LinkedIn sync completed/);
