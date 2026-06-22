@@ -1374,6 +1374,9 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /notify_url/);
   assert.match(server, /async function reconcileLinkedinProviderAccount/);
   assert.match(server, /\/api\/v1\/accounts/);
+  assert.match(server, /function unipileAccountCreatedAt/);
+  assert.match(server, /createdAfterConnect/);
+  assert.match(server, /10 \* 60 \* 1000/);
   assert.match(server, /async function syncLinkedinMessages/);
   assert.match(server, /\/api\/v1\/messages\?account_id=/);
   assert.match(server, /async function saveLinkedinMessages/);

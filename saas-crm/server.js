@@ -1945,16 +1945,23 @@ function unipileAccountName(account = {}) {
   return String(account.name || account.label || account.metadata?.name || account.provider_metadata?.name || "");
 }
 
+function unipileAccountCreatedAt(account = {}) {
+  const value = account.created_at || account.createdAt || account.created || "";
+  const date = value ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime()) ? date : null;
+}
+
 function isLinkedinUnipileAccount(account = {}) {
   const provider = String(account.provider || account.type || account.connection_type || account.account_type || "").toLowerCase();
   return provider.includes("linkedin") || String(account.linkedin_id || account.public_identifier || "").length > 0;
 }
 
 async function reconcileLinkedinProviderAccount(tenantId) {
+  const integrationResult = await dbQuery(`select * from linkedin_integrations where tenant_id=$1`, [tenantId]);
+  const integration = integrationResult.rows[0];
   const body = await unipileApi("/api/v1/accounts");
-  const accounts = unipileListFromResponse(body);
+  const accounts = unipileListFromResponse(body).filter(isLinkedinUnipileAccount);
   for (const account of accounts) {
-    if (!isLinkedinUnipileAccount(account)) continue;
     const name = unipileAccountName(account);
     let payload = null;
     try {
@@ -1966,6 +1973,16 @@ async function reconcileLinkedinProviderAccount(tenantId) {
     const accountId = unipileAccountId(account);
     if (!accountId) continue;
     return saveLinkedinProviderAccount({ tenantId, accountId, status: account.status || "CONNECTED" });
+  }
+  const connectStartedAt = integration?.updated_at ? new Date(integration.updated_at) : null;
+  const createdAfterConnect = accounts
+    .map((account) => ({ account, createdAt: unipileAccountCreatedAt(account) }))
+    .filter(({ createdAt }) => createdAt && (!connectStartedAt || createdAt >= new Date(connectStartedAt.getTime() - 10 * 60 * 1000)))
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const fallback = createdAfterConnect[0]?.account || (accounts.length === 1 ? accounts[0] : null);
+  const fallbackAccountId = fallback ? unipileAccountId(fallback) : "";
+  if (fallbackAccountId) {
+    return saveLinkedinProviderAccount({ tenantId, accountId: fallbackAccountId, status: fallback.status || "CONNECTED" });
   }
   const error = new Error("LinkedIn authorization completed, but the provider account was not available yet. Wait a few seconds and click Finalize connection.");
   error.statusCode = 409;
