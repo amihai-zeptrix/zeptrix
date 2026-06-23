@@ -98,6 +98,15 @@ Do not add static `/crm` redirects in Nginx. `/crm`, `/crm/settings`, `/crm/ron`
 
 The deployable CRM app lives under `saas-crm/` in this repo. The source mirror currently lives in `../your-new-crm/`; sync source into `saas-crm/` before building an EB application version.
 
+GitHub pushes and deploy preparation for this repo must use the `amihai-zeptrix` GitHub account. If a push fails because another account is active, such as `ahadarbioa`, run:
+
+```bash
+gh auth switch -u amihai-zeptrix
+gh auth status
+```
+
+Confirm `amihai-zeptrix` is marked as the active account before pushing.
+
 Required EB application environment settings include:
 
 - `DATABASE_URL`
