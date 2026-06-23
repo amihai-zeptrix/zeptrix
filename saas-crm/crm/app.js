@@ -181,6 +181,22 @@ const defaultLinkedinIntegration = {
   updatedAt: "",
 };
 
+const defaultInstagramIntegration = {
+  enabled: false,
+  status: "Not connected",
+  provider: "unipile",
+  providerAccountId: "",
+  providerStatus: "",
+  accountUsername: "",
+  syncContacts: true,
+  sessionStatus: "not_configured",
+  authorizedAt: "",
+  lastSyncAt: "",
+  lastScanAt: "",
+  lastScanResult: {},
+  updatedAt: "",
+};
+
 const defaultOutgoingEmail = {
   configured: false,
   status: "Not configured",
@@ -254,6 +270,7 @@ let ui = {
   skippedGmailContacts: new Set(),
   gmailScanProgress: null,
   linkedinReturnPending: false,
+  instagramReturnPending: false,
   linkedinLogin: null,
   toasts: [],
   replyingThread: "",
@@ -301,6 +318,19 @@ function handleGmailCallbackQuery() {
     showToast("LinkedIn authorization failed.");
     window.history.replaceState({}, "", window.location.pathname);
   }
+  if (params.get("instagram") === "connected") {
+    ui.section = "settings";
+    ui.settingsTab = "instagram";
+    ui.instagramReturnPending = true;
+    showToast("Instagram authorization completed. Finalizing connection...");
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+  if (params.get("instagram") === "failed") {
+    ui.section = "settings";
+    ui.settingsTab = "instagram";
+    showToast("Instagram authorization failed.");
+    window.history.replaceState({}, "", window.location.pathname);
+  }
 }
 
 function loadData() {
@@ -325,6 +355,7 @@ function normalizeData(nextData) {
     outgoingEmail: { ...defaultOutgoingEmail, ...(tenant.outgoingEmail || {}) },
     workflowAutomation: { ...defaultWorkflowAutomation, ...(tenant.workflowAutomation || {}) },
     linkedinIntegration: { ...defaultLinkedinIntegration, ...(tenant.linkedinIntegration || {}) },
+    instagramIntegration: { ...defaultInstagramIntegration, ...(tenant.instagramIntegration || {}) },
     campaigns: (tenant.campaigns?.length ? tenant.campaigns : defaultCampaignsForTenant(tenant)).map((campaign) => ({ recurrence: "one-time", ...campaign })),
     supportTickets: normalizeSupportTickets(tenant),
     gmailIntegration: { ...defaultGmailIntegration, ...(tenant.gmailIntegration || {}) },
@@ -705,9 +736,27 @@ async function loadStateFromApi() {
     saveData();
     render();
     if (ui.linkedinReturnPending) await finalizeLinkedinConnection();
+    if (ui.instagramReturnPending) await finalizeInstagramConnection();
   } catch (error) {
     console.warn("Using local fallback state:", error.message);
   }
+}
+
+async function finalizeInstagramConnection() {
+  const tenant = currentTenant();
+  if (!tenant?.id || !session?.apiToken || session.role === "demo_user") return;
+  try {
+    setTenant({ ...tenant, instagramIntegration: { ...instagramIntegration(tenant), status: "Finalizing Instagram connection..." } });
+    render();
+    const result = await reconcileInstagramViaApi(tenant.id);
+    ui.instagramReturnPending = false;
+    setTenant({ ...currentTenant(), instagramIntegration: result.instagramIntegration });
+    showToast("Instagram connected. You can scan messages now.");
+  } catch (error) {
+    setTenant({ ...currentTenant(), instagramIntegration: { ...instagramIntegration(currentTenant()), status: error.message } });
+    showToast(error.message);
+  }
+  render();
 }
 
 async function finalizeLinkedinConnection() {
@@ -909,6 +958,10 @@ async function saveLinkedinSettingsViaApi(tenantId, values) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin`, { method: "PUT", body: JSON.stringify(values) });
 }
 
+async function saveInstagramSettingsViaApi(tenantId, values) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/instagram`, { method: "PUT", body: JSON.stringify(values) });
+}
+
 async function scanLinkedinViaApi(tenantId, values = {}) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/scan`, { method: "POST", body: JSON.stringify(values) });
 }
@@ -921,8 +974,20 @@ async function reconcileLinkedinViaApi(tenantId) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/reconcile`, { method: "POST", body: JSON.stringify({}) });
 }
 
+async function connectInstagramViaApi(tenantId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/instagram/connect`, { method: "POST", body: JSON.stringify({}) });
+}
+
+async function reconcileInstagramViaApi(tenantId) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/instagram/reconcile`, { method: "POST", body: JSON.stringify({}) });
+}
+
 async function syncLinkedinViaApi(tenantId, values = {}) {
   return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/linkedin/sync`, { method: "POST", body: JSON.stringify(values) });
+}
+
+async function syncInstagramViaApi(tenantId, values = {}) {
+  return apiRequest(`/api/tenants/${encodeURIComponent(tenantId)}/instagram/sync`, { method: "POST", body: JSON.stringify(values) });
 }
 
 async function authorizeLinkedinSessionViaApi(tenantId) {
@@ -1251,7 +1316,7 @@ function connectivityNav() {
   const item = (tab, label) => `<button class="side-link side-sublink ${ui.section === "settings" && ui.settingsTab === tab ? "active" : ""}" data-section="settings" data-settings-tab="${tab}">${label}</button>`;
   return `<div class="side-group">
     <button class="side-link ${ui.section === "settings" ? "active" : ""}" data-action="toggle-connectivity" aria-expanded="${open ? "true" : "false"}"><span class="icon">⚙</span>Connectivity<span class="count chevron">${open ? "▾" : "▸"}</span></button>
-    ${open ? `<div class="side-submenu">${item("gmail", "Gmail")}${item("linkedin", "LinkedIn")}${item("zoom", "Zoom")}${item("wechat", "WeChat")}${item("configuration", "Settings")}</div>` : ""}
+    ${open ? `<div class="side-submenu">${item("gmail", "Gmail")}${item("linkedin", "LinkedIn")}${item("instagram", "Instagram")}${item("zoom", "Zoom")}${item("wechat", "WeChat")}${item("configuration", "Settings")}</div>` : ""}
   </div>`;
 }
 
@@ -2505,13 +2570,14 @@ function renderInbox() {
 }
 
 function renderInboxThread(item, deal) {
-  const importedSender = item.source === "linkedin" ? (item.owner || "LinkedIn contact") : "";
+  const socialChannel = item.source === "linkedin" ? "LinkedIn" : item.source === "instagram" ? "Instagram" : "";
+  const importedSender = socialChannel ? (item.owner || `${socialChannel} contact`) : "";
   const contactName = deal?.contact || importedSender || "Customer";
   const accountName = deal?.account || "Unlinked account";
   const customerBody = item.direction === "inbound" ? item.body : "Thanks for the update. Please keep this attached to the account plan so the next owner has full context.";
   const teamBody = item.direction === "inbound" ? "I logged this in the account timeline and added the next step for the owner." : item.body;
-  const sourceDetails = item.source === "linkedin" && item.tracked ? ` · ${escapeHtml(item.tracked)}` : "";
-  return `<div class="inbox-thread-row"><section class="thread-card inbox-thread-card"><header><div><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(accountName)} · ${escapeHtml(contactName)} · ${formatTimestamp(item.date)}${item.gmailThreadId ? ` · thread ${escapeHtml(item.gmailThreadId)}` : ""}${sourceDetails}</small></div><span class="thread-actions">${renderTrackingPill(item)}<button class="icon-button small" data-open-account="${escapeHtml(accountName)}" data-tooltip="Open account" aria-label="Open account">↗</button></span></header><div class="thread-messages"><div class="message-bubble customer"><small>${escapeHtml(contactName)}${item.source === "linkedin" ? " · LinkedIn" : ""}</small><p>${escapeHtml(customerBody)}</p></div><div class="message-bubble team"><small>${escapeHtml(item.direction === "inbound" ? "CRM note" : item.owner)}</small><p>${escapeHtml(teamBody)}</p></div></div></section></div>`;
+  const sourceDetails = socialChannel && item.tracked ? ` · ${escapeHtml(item.tracked)}` : "";
+  return `<div class="inbox-thread-row"><section class="thread-card inbox-thread-card"><header><div><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(accountName)} · ${escapeHtml(contactName)} · ${formatTimestamp(item.date)}${item.gmailThreadId ? ` · thread ${escapeHtml(item.gmailThreadId)}` : ""}${sourceDetails}</small></div><span class="thread-actions">${renderTrackingPill(item)}<button class="icon-button small" data-open-account="${escapeHtml(accountName)}" data-tooltip="Open account" aria-label="Open account">↗</button></span></header><div class="thread-messages"><div class="message-bubble customer"><small>${escapeHtml(contactName)}${socialChannel ? ` · ${socialChannel}` : ""}</small><p>${escapeHtml(customerBody)}</p></div><div class="message-bubble team"><small>${escapeHtml(item.direction === "inbound" ? "CRM note" : item.owner)}</small><p>${escapeHtml(teamBody)}</p></div></div></section></div>`;
 }
 
 function renderModal() {
@@ -2600,7 +2666,7 @@ function renderSettings() {
 
 function renderSettingsPage() {
   if (ui.settingsTab === "mail") ui.settingsTab = "gmail";
-  const connectivityActive = ["gmail", "linkedin", "zoom", "wechat"].includes(ui.settingsTab);
+  const connectivityActive = ["gmail", "linkedin", "instagram", "zoom", "wechat"].includes(ui.settingsTab);
   return `
     ${renderPageHeader("Settings", "Configure CRM integrations and workspace behavior.")}
     <nav class="settings-tabs">
@@ -2610,7 +2676,7 @@ function renderSettingsPage() {
       <button class="${ui.settingsTab === "automation" ? "active" : ""}" data-settings-tab="automation">Workflow automation</button>
       <button class="${ui.settingsTab === "configuration" ? "active" : ""}" data-settings-tab="configuration">Configuration</button>
     </nav>
-    ${ui.settingsTab === "gmail" ? renderGmailConnectivitySettings() : ui.settingsTab === "linkedin" ? renderLinkedinIntegrationSettings() : ui.settingsTab === "zoom" ? renderZoomIntegrationSettings() : ui.settingsTab === "wechat" ? renderWeChatIntegrationSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : ui.settingsTab === "automation" ? renderWorkflowAutomationSettingsPanel() : renderConfigurationSettingsPanel()}`;
+    ${ui.settingsTab === "gmail" ? renderGmailConnectivitySettings() : ui.settingsTab === "linkedin" ? renderLinkedinIntegrationSettings() : ui.settingsTab === "instagram" ? renderInstagramIntegrationSettings() : ui.settingsTab === "zoom" ? renderZoomIntegrationSettings() : ui.settingsTab === "wechat" ? renderWeChatIntegrationSettings() : ui.settingsTab === "outgoing" ? renderOutgoingEmailSettingsPanel() : ui.settingsTab === "templates" ? renderTemplatesSettingsPanel() : ui.settingsTab === "automation" ? renderWorkflowAutomationSettingsPanel() : renderConfigurationSettingsPanel()}`;
 }
 
 function renderZoomIntegrationSettings() {
@@ -2763,6 +2829,53 @@ function renderLinkedinIntegrationSettings() {
   </section>`;
 }
 
+function renderInstagramIntegrationSettings() {
+  const tenant = currentTenant();
+  const instagram = instagramIntegration(tenant);
+  const messages = instagramScannedMessages(tenant);
+  const canUseBackend = !!session?.apiToken && session.role !== "demo_user";
+  const disabled = canUseBackend ? "" : "disabled";
+  const connected = Boolean(instagram.providerAccountId || instagram.enabled);
+  const scanDisabled = canUseBackend && connected ? "" : "disabled";
+  const finalizeDisabled = canUseBackend ? "" : "disabled";
+  return `<section class="settings-layout linkedin-layout">
+    <article class="settings-card linkedin-card">
+      <div class="panel-head"><div><h3>Instagram</h3><p class="subcopy">Connect Instagram through a hosted provider flow, then scan DMs into CRM account history.</p></div><span class="status-pill ${connected ? "stage-won" : "stage-lead"}">${escapeHtml(instagram.status)}</span></div>
+      ${canUseBackend ? "" : `<p class="admin-notice">Instagram settings require signing in to a workspace at /crm.</p>`}
+      <form class="settings-form" data-instagram-settings-form>
+        <div class="form-grid">
+          ${formField("Instagram username", "accountUsername", instagram.accountUsername, "text", false, "full")}
+        </div>
+        <div class="signal-row"><span class="activity-symbol">ig</span><span class="list-primary">Connection status<small>${escapeHtml(connected ? `Connected through ${instagram.provider || "provider"}${instagram.lastSyncAt ? ` · last scan ${formatTimestamp(instagram.lastSyncAt)}` : ""}` : "Not connected")}</small></span></div>
+        <div class="check-list compact">
+          <label class="check-row"><input type="checkbox" name="syncContacts" ${instagram.syncContacts ? "checked" : ""} /><span>Enrich CRM contacts from Instagram</span><small>Attach scanned Instagram DM context to matching contacts and accounts.</small></label>
+        </div>
+        <p class="subcopy">Zeptrix never asks for or stores an Instagram password. The provider stores the authorized account and sends CRM only a stable account id plus message events.</p>
+        <div class="admin-notice"><strong>No Instagram password is stored in the CRM.</strong><br />Click <strong>Connect Instagram</strong> to open the hosted authorization flow. After approval, CRM finalizes the connection automatically. If the provider callback is delayed, click <strong>Finalize connection</strong>.</div>
+        <div class="form-actions integration-actions"><button type="button" class="button primary" data-action="connect-instagram" ${disabled}>Connect Instagram</button><button type="button" class="button" data-action="reconcile-instagram" ${finalizeDisabled}>Finalize connection</button><button type="button" class="button" data-action="scan-instagram" ${scanDisabled}>Scan messages</button><span class="toolbar-spacer"></span><button class="button" ${disabled}>Save Instagram settings</button></div>
+      </form>
+    </article>
+    <article class="settings-card linkedin-preview-card">
+      <h3>Instagram scan results</h3>
+      <div class="integration-metrics">
+        ${summaryCard("ig", "var(--blue-soft)", "var(--blue)", "Contact enrichment", instagram.syncContacts ? "On" : "Off", "DM context")}
+        ${summaryCard("▣", "#d8f4e8", "#18764e", "Messages imported", Number(instagram.lastScanResult?.importedCount || 0), `${Number(instagram.lastScanResult?.unmatchedCount || 0)} need matching · ${Number(instagram.lastScanResult?.ignoredCount || 0)} ignored`)}
+      </div>
+      <div class="signal-list">
+        <h4>Contacts and messages found in Instagram</h4>
+        <p class="signal-scope">Latest scan results from Instagram. Updated rows are shown here too, so a scan with 0 new messages still gives visible feedback.</p>
+        ${messages.map((item) => `<div class="signal-row" data-instagram-message-id="${escapeHtml(item.id)}"><span class="activity-symbol">ig</span><button class="activity-main" data-open-communication="${escapeHtml(item.id)}"><span class="list-primary">${escapeHtml(item.person)}<small>${escapeHtml([item.subject, item.account, item.status].filter(Boolean).join(" · "))}</small></span></button><span class="row-actions"><button class="button small" data-open-communication="${escapeHtml(item.id)}">Open</button></span></div>`).join("") || `<p class="empty-state compact">${instagram.lastScanAt ? "No reviewable Instagram messages were found in the latest scan." : "Scan Instagram to show imported contacts and messages here."}</p>`}
+      </div>
+      <div class="signal-list">
+        <div class="signal-row"><span class="activity-symbol">ig</span><span class="list-primary">Read Instagram DMs<small>${escapeHtml(instagram.lastScanResult?.messageCount ? `${instagram.lastScanResult.messageCount} messages from last scan` : "Uses the provider messaging API and webhooks.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">?</span><span class="list-primary">Messages needing account match<small>${escapeHtml(instagram.lastScanResult?.unmatchedCount ? `Scan completed. ${instagram.lastScanResult.unmatchedCount} Instagram messages were imported to Inbox and need account matching.` : "Matched messages are attached to account history; unmatched messages remain visible in Inbox.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">×</span><span class="list-primary">Automated updates ignored<small>${escapeHtml(instagram.lastScanResult?.ignoredCount ? `${instagram.lastScanResult.ignoredCount} automated messages were skipped.` : "Automated updates are skipped where detectable.")}</small></span></div>
+        <div class="signal-row"><span class="activity-symbol">!</span><span class="list-primary">Scan status<small>${escapeHtml(instagram.lastSyncAt ? `Last scan ${formatTimestamp(instagram.lastSyncAt)}` : "Not scanned yet")}</small></span></div>
+      </div>
+    </article>
+  </section>`;
+}
+
 function renderGmailDiscoveryPagination(total, page, totalPages) {
   if (total <= GMAIL_DISCOVERY_PAGE_SIZE) return "";
   const start = (page - 1) * GMAIL_DISCOVERY_PAGE_SIZE + 1;
@@ -2837,6 +2950,10 @@ function linkedinIntegration(tenant = currentTenant()) {
   return { ...defaultLinkedinIntegration, ...(tenant.linkedinIntegration || {}) };
 }
 
+function instagramIntegration(tenant = currentTenant()) {
+  return { ...defaultInstagramIntegration, ...(tenant.instagramIntegration || {}) };
+}
+
 function outgoingEmailSettings(tenant = currentTenant()) {
   return { ...defaultOutgoingEmail, ...(tenant.outgoingEmail || {}) };
 }
@@ -2867,6 +2984,14 @@ function linkedinFormValues(form) {
   const values = Object.fromEntries(new FormData(form));
   return {
     accountEmail: values.accountEmail || "",
+    syncContacts: Boolean(values.syncContacts),
+  };
+}
+
+function instagramFormValues(form) {
+  const values = Object.fromEntries(new FormData(form));
+  return {
+    accountUsername: values.accountUsername || "",
     syncContacts: Boolean(values.syncContacts),
   };
 }
@@ -2919,6 +3044,30 @@ function linkedinScannedMessages(tenant = currentTenant()) {
         id: item.id,
         person: item.owner || "LinkedIn contact",
         subject: item.subject || "LinkedIn message",
+        account: deal?.account || item.tracked || "Unmatched",
+        status,
+      };
+    });
+}
+
+function instagramScannedMessages(tenant = currentTenant()) {
+  const instagram = instagramIntegration(tenant);
+  const lastScanIds = new Set((instagram.lastScanResult?.communicationIds || []).map((id) => String(id)));
+  const messages = [...(tenant.communications || [])]
+    .filter((item) => item.source === "instagram" || lastScanIds.has(String(item.id)));
+  const prioritized = messages.sort((a, b) => {
+    const scanPriority = Number(lastScanIds.has(String(b.id))) - Number(lastScanIds.has(String(a.id)));
+    return scanPriority || String(b.date || "").localeCompare(String(a.date || ""));
+  });
+  return prioritized
+    .slice(0, 10)
+    .map((item) => {
+      const deal = tenant.deals.find((candidate) => String(candidate.id) === String(item.dealId));
+      const status = item.trackingStatus === "Instagram import needs account match" ? "Needs account match" : item.trackingStatus || "Imported";
+      return {
+        id: item.id,
+        person: item.owner || "Instagram contact",
+        subject: item.subject || "Instagram message",
         account: deal?.account || item.tracked || "Unmatched",
         status,
       };
@@ -3273,6 +3422,49 @@ document.addEventListener("click", async (event) => {
     }
     if (action === "reconcile-linkedin") {
       await finalizeLinkedinConnection();
+      return;
+    }
+    if (action === "connect-instagram") {
+      const tenant = currentTenant();
+      const form = actionElement.closest("form");
+      try {
+        if (form) {
+          const saved = await saveInstagramSettingsViaApi(tenant.id, instagramFormValues(form));
+          setTenant({ ...currentTenant(), instagramIntegration: { ...saved.instagramIntegration, status: "Preparing Instagram authorization..." } });
+        }
+        const result = await connectInstagramViaApi(tenant.id);
+        setTenant({ ...currentTenant(), instagramIntegration: result.instagramIntegration });
+        showToast("Redirecting to Instagram authorization");
+        window.location.href = result.authUrl;
+      } catch (error) {
+        setTenant({ ...currentTenant(), instagramIntegration: { ...instagramIntegration(currentTenant()), status: error.message } });
+        showToast(error.message);
+      }
+      render();
+      return;
+    }
+    if (action === "reconcile-instagram") {
+      await finalizeInstagramConnection();
+      return;
+    }
+    if (action === "scan-instagram") {
+      const tenant = currentTenant();
+      const form = actionElement.closest("form");
+      try {
+        setTenant({ ...tenant, instagramIntegration: { ...instagramIntegration(tenant), status: "Scanning Instagram messages..." } });
+        render();
+        if (form) await saveInstagramSettingsViaApi(tenant.id, instagramFormValues(form));
+        const result = await syncInstagramViaApi(tenant.id, { limit: 50 });
+        setTenant({ ...currentTenant(), instagramIntegration: result.instagramIntegration });
+        showToast(result.result?.ok ? `Instagram scan completed (${Number(result.result.importedCount || 0)} new, ${Number(result.result.updatedCount || 0)} updated, ${Number(result.result.unmatchedCount || 0)} need matching, ${Number(result.result.ignoredCount || 0)} ignored)` : "Instagram scan returned no data");
+        await loadStateFromApi();
+        ui.section = "settings";
+        ui.settingsTab = "instagram";
+      } catch (error) {
+        setTenant({ ...currentTenant(), instagramIntegration: { ...instagramIntegration(currentTenant()), status: error.message } });
+        showToast(error.message);
+      }
+      render();
       return;
     }
     if (action === "sync-linkedin" || action === "scan-linkedin") {
@@ -3919,6 +4111,24 @@ document.addEventListener("submit", async (event) => {
     }
     ui.section = "settings";
     ui.settingsTab = "linkedin";
+    render();
+    return;
+  }
+  if (event.target.matches("[data-instagram-settings-form]")) {
+    event.preventDefault();
+    const tenant = currentTenant();
+    const values = instagramFormValues(event.target);
+    try {
+      const result = await saveInstagramSettingsViaApi(tenant.id, values);
+      setTenant({ ...currentTenant(), instagramIntegration: result.instagramIntegration });
+      showToast("Instagram settings saved");
+      auditSubmitEvent(event.target);
+    } catch (error) {
+      setTenant({ ...tenant, instagramIntegration: { ...instagramIntegration(tenant), ...values, status: session?.apiToken ? error.message : "Instagram settings saved locally" } });
+      showToast(session?.apiToken ? error.message : "Instagram settings saved locally");
+    }
+    ui.section = "settings";
+    ui.settingsTab = "instagram";
     render();
     return;
   }

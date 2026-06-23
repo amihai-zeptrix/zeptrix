@@ -784,6 +784,24 @@ async function initDatabase() {
       updated_at timestamptz not null default now()
     )`);
   await dbQuery(`
+    create table if not exists instagram_integrations (
+      tenant_id uuid primary key references tenants(id) on delete cascade,
+      account_username text,
+      sync_contacts boolean not null default true,
+      enabled boolean not null default false,
+      status text not null default 'Not connected',
+      provider text not null default 'unipile',
+      provider_account_id text,
+      provider_status text,
+      session_status text not null default 'not_configured',
+      authorized_at timestamptz,
+      last_sync_at timestamptz,
+      last_scan_at timestamptz,
+      last_scan_result jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )`);
+  await dbQuery(`
     create table if not exists workflow_automations (
       tenant_id uuid primary key references tenants(id) on delete cascade,
       enabled boolean not null default true,
@@ -836,6 +854,18 @@ async function initDatabase() {
   await dbQuery(`alter table linkedin_integrations add column if not exists last_sync_at timestamptz`);
   await dbQuery(`alter table linkedin_integrations add column if not exists last_scan_at timestamptz`);
   await dbQuery(`alter table linkedin_integrations add column if not exists last_scan_result jsonb not null default '{}'::jsonb`);
+  await dbQuery(`alter table instagram_integrations add column if not exists account_username text`);
+  await dbQuery(`alter table instagram_integrations add column if not exists sync_contacts boolean not null default true`);
+  await dbQuery(`alter table instagram_integrations add column if not exists enabled boolean not null default false`);
+  await dbQuery(`alter table instagram_integrations add column if not exists status text not null default 'Not connected'`);
+  await dbQuery(`alter table instagram_integrations add column if not exists provider text not null default 'unipile'`);
+  await dbQuery(`alter table instagram_integrations add column if not exists provider_account_id text`);
+  await dbQuery(`alter table instagram_integrations add column if not exists provider_status text`);
+  await dbQuery(`alter table instagram_integrations add column if not exists session_status text not null default 'not_configured'`);
+  await dbQuery(`alter table instagram_integrations add column if not exists authorized_at timestamptz`);
+  await dbQuery(`alter table instagram_integrations add column if not exists last_sync_at timestamptz`);
+  await dbQuery(`alter table instagram_integrations add column if not exists last_scan_at timestamptz`);
+  await dbQuery(`alter table instagram_integrations add column if not exists last_scan_result jsonb not null default '{}'::jsonb`);
   await dbQuery(`create index if not exists deals_tenant_stage_idx on deals(tenant_id, stage)`);
   await dbQuery(`create index if not exists contact_tags_tenant_name_idx on contact_tags(tenant_id, lower(name))`);
   await dbQuery(`create index if not exists mail_templates_tenant_updated_idx on mail_templates(tenant_id, updated_at desc)`);
@@ -844,6 +874,7 @@ async function initDatabase() {
   await dbQuery(`create index if not exists gmail_signals_tenant_type_idx on gmail_contact_signals(tenant_id, signal_type, created_at desc)`);
   await dbQuery(`create index if not exists gmail_blacklist_tenant_email_idx on gmail_contact_blacklist(tenant_id, email)`);
   await dbQuery(`create index if not exists linkedin_integrations_updated_idx on linkedin_integrations(updated_at desc)`);
+  await dbQuery(`create index if not exists instagram_integrations_updated_idx on instagram_integrations(updated_at desc)`);
   await dbQuery(`create index if not exists communications_tenant_thread_idx on communications(tenant_id, gmail_thread_id)`);
   await dbQuery(`create unique index if not exists communications_tenant_source_provider_message_idx on communications(tenant_id, source, provider_message_id) where provider_message_id is not null`);
   await dbQuery(`create index if not exists workflow_automations_updated_idx on workflow_automations(updated_at desc)`);
@@ -1149,7 +1180,7 @@ async function upsertMailTemplateForTenant(tenantId, payload, templateId = "") {
 }
 
 async function readState(auth) {
-  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, linkedinResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult, workflowAutomationResult, auditLogResult] = await Promise.all([
+  const [tenantsResult, usersResult, dealsResult, tasksResult, communicationsResult, invitesResult, gmailResult, gmailSignalResult, linkedinResult, instagramResult, contactTagsResult, mailTemplatesResult, outgoingEmailResult, workflowAutomationResult, auditLogResult] = await Promise.all([
     dbQuery(`select * from tenants order by created_at`),
     dbQuery(`select * from users order by created_at`),
     dbQuery(`select * from deals order by created_at`),
@@ -1159,6 +1190,7 @@ async function readState(auth) {
     dbQuery(`select * from gmail_integrations`),
     dbQuery(`select * from gmail_contact_signals order by created_at desc limit 500`),
     dbQuery(`select * from linkedin_integrations`),
+    dbQuery(`select * from instagram_integrations`),
     dbQuery(`select * from contact_tags order by lower(name), name`),
     dbQuery(`select * from mail_templates order by updated_at desc`),
     dbQuery(`select * from outgoing_email_settings`),
@@ -1178,6 +1210,7 @@ async function readState(auth) {
       gmailResult.rows.find((integration) => integration.tenant_id === tenant.id),
       gmailSignalResult.rows.filter((signal) => signal.tenant_id === tenant.id),
       linkedinResult.rows.find((integration) => integration.tenant_id === tenant.id),
+      instagramResult.rows.find((integration) => integration.tenant_id === tenant.id),
       contactTagsResult.rows.filter((tag) => tag.tenant_id === tenant.id),
       mailTemplatesResult.rows.filter((template) => template.tenant_id === tenant.id),
       outgoingEmailResult.rows.find((settings) => settings.tenant_id === tenant.id),
@@ -1188,7 +1221,7 @@ async function readState(auth) {
   };
 }
 
-function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], linkedinIntegration = null, contactTags = [], mailTemplates = [], outgoingEmailSettings = null, workflowAutomation = null) {
+function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegration, gmailSignals = [], linkedinIntegration = null, instagramIntegration = null, contactTags = [], mailTemplates = [], outgoingEmailSettings = null, workflowAutomation = null) {
   const normalizedDeals = deals.map(dealFromRow);
   return {
     id: tenant.id,
@@ -1206,6 +1239,7 @@ function tenantFromRow(tenant, users, deals, tasks, communications, gmailIntegra
     communications: communications.map(communicationFromRow),
     gmailIntegration: gmailIntegrationFromRow(gmailIntegration, gmailSignals),
     linkedinIntegration: linkedinIntegrationFromRow(linkedinIntegration),
+    instagramIntegration: instagramIntegrationFromRow(instagramIntegration),
     availableTags: availableContactTags(contactTags, normalizedDeals),
     mailTemplates: mailTemplates.map(mailTemplateFromRow),
     outgoingEmail: outgoingEmailSettingsFromRow(outgoingEmailSettings),
@@ -1356,6 +1390,24 @@ function linkedinIntegrationFromRow(row) {
     accountEmail: row?.account_email || "",
     syncContacts: row?.sync_contacts ?? true,
     syncCompanyUpdates: row?.sync_company_updates ?? false,
+    sessionStatus: row?.session_status || "not_configured",
+    authorizedAt: row?.authorized_at ? row.authorized_at.toISOString() : "",
+    lastSyncAt: row?.last_sync_at ? row.last_sync_at.toISOString() : "",
+    lastScanAt: row?.last_scan_at ? row.last_scan_at.toISOString() : "",
+    lastScanResult: row?.last_scan_result || {},
+    updatedAt: row?.updated_at ? row.updated_at.toISOString() : "",
+  };
+}
+
+function instagramIntegrationFromRow(row) {
+  return {
+    enabled: !!row?.enabled,
+    status: row?.status || "Not connected",
+    provider: row?.provider || "unipile",
+    providerAccountId: row?.provider_account_id || "",
+    providerStatus: row?.provider_status || "",
+    accountUsername: row?.account_username || "",
+    syncContacts: row?.sync_contacts ?? true,
     sessionStatus: row?.session_status || "not_configured",
     authorizedAt: row?.authorized_at ? row.authorized_at.toISOString() : "",
     lastSyncAt: row?.last_sync_at ? row.last_sync_at.toISOString() : "",
@@ -1805,6 +1857,31 @@ async function upsertLinkedinSettings(tenantId, payload) {
   return linkedinIntegrationFromRow(result.rows[0]);
 }
 
+function normalizeInstagramSettings(payload = {}) {
+  return {
+    accountUsername: String(payload.accountUsername || "").trim().replace(/^@/, ""),
+    syncContacts: payload.syncContacts !== false,
+  };
+}
+
+async function upsertInstagramSettings(tenantId, payload) {
+  const settings = normalizeInstagramSettings(payload);
+  const result = await dbQuery(
+    `insert into instagram_integrations
+       (tenant_id, account_username, sync_contacts, provider, enabled, status, updated_at)
+     values ($1,$2,$3,'unipile',false,'Settings saved - connect Instagram to start scanning',now())
+     on conflict (tenant_id) do update set
+       account_username=excluded.account_username,
+       sync_contacts=excluded.sync_contacts,
+       provider='unipile',
+       status=case when instagram_integrations.provider_account_id is null then 'Settings saved - connect Instagram to start scanning' else instagram_integrations.status end,
+       updated_at=now()
+     returning *`,
+    [tenantId, settings.accountUsername, settings.syncContacts],
+  );
+  return instagramIntegrationFromRow(result.rows[0]);
+}
+
 function unipileConfigured() {
   return Boolean(unipileDsn && unipileApiKey);
 }
@@ -1830,7 +1907,7 @@ function requireUnipileWebhookSecret(req) {
 
 async function unipileApi(pathname, options = {}) {
   if (!unipileConfigured()) {
-    const error = new Error("LinkedIn provider is not configured. Set UNIPILE_DSN and UNIPILE_API_KEY.");
+    const error = new Error("Messaging provider is not configured. Set UNIPILE_DSN and UNIPILE_API_KEY.");
     error.statusCode = 503;
     throw error;
   }
@@ -1865,10 +1942,24 @@ function linkedinHostedAuthName(tenantId, userId = "") {
   return signPayload({ purpose: "linkedin-hosted-auth", tenantId, userId: userId || "" });
 }
 
+function instagramHostedAuthName(tenantId, userId = "") {
+  return signPayload({ purpose: "instagram-hosted-auth", tenantId, userId: userId || "" });
+}
+
 function verifyLinkedinHostedAuthName(name = "") {
   const payload = verifySignedPayload(name);
   if (payload?.purpose !== "linkedin-hosted-auth" || !payload.tenantId) {
     const error = new Error("Invalid LinkedIn hosted-auth callback.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return payload;
+}
+
+function verifyInstagramHostedAuthName(name = "") {
+  const payload = verifySignedPayload(name);
+  if (payload?.purpose !== "instagram-hosted-auth" || !payload.tenantId) {
+    const error = new Error("Invalid Instagram hosted-auth callback.");
     error.statusCode = 400;
     throw error;
   }
@@ -1916,6 +2007,47 @@ async function createLinkedinHostedAuthLink(tenantId, auth) {
   return { authUrl, linkedinIntegration: linkedinIntegrationFromRow(result.rows[0]) };
 }
 
+async function createInstagramHostedAuthLink(tenantId, auth) {
+  const existing = await dbQuery(`select * from instagram_integrations where tenant_id=$1`, [tenantId]);
+  const integration = existing.rows[0];
+  const reconnect = Boolean(integration?.provider_account_id);
+  const expiresOn = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const successUrl = `${publicBaseUrl}/crm/?instagram=connected`;
+  const failureUrl = `${publicBaseUrl}/crm/?instagram=failed`;
+  const notifyUrl = `${publicBaseUrl}/api/instagram/unipile/callback`;
+  const payload = {
+    type: reconnect ? "reconnect" : "create",
+    providers: ["INSTAGRAM"],
+    api_url: unipileDsn,
+    expiresOn,
+    success_redirect_url: successUrl,
+    failure_redirect_url: failureUrl,
+    notify_url: notifyUrl,
+    name: instagramHostedAuthName(tenantId, auth?.id || auth?.userId || ""),
+    ...(reconnect ? { reconnect_account: integration.provider_account_id } : {}),
+  };
+  const body = await unipileApi("/api/v1/hosted/accounts/link", { method: "POST", body: JSON.stringify(payload) });
+  const authUrl = body.url || body.hosted_url || body.auth_url || body.link;
+  if (!authUrl) {
+    const error = new Error("Instagram provider did not return a hosted authorization URL.");
+    error.statusCode = 502;
+    throw error;
+  }
+  const result = await dbQuery(
+    `insert into instagram_integrations
+       (tenant_id, provider, enabled, status, provider_status, updated_at)
+     values ($1,'unipile',false,'Redirecting to Instagram authorization','PENDING',now())
+     on conflict (tenant_id) do update set
+       provider='unipile',
+       status='Redirecting to Instagram authorization',
+       provider_status='PENDING',
+       updated_at=now()
+     returning *`,
+    [tenantId],
+  );
+  return { authUrl, instagramIntegration: instagramIntegrationFromRow(result.rows[0]) };
+}
+
 async function saveLinkedinProviderAccount({ tenantId, accountId, status = "CONNECTED" }) {
   if (!accountId) return null;
   const result = await dbQuery(
@@ -1937,6 +2069,27 @@ async function saveLinkedinProviderAccount({ tenantId, accountId, status = "CONN
   return linkedinIntegrationFromRow(result.rows[0]);
 }
 
+async function saveInstagramProviderAccount({ tenantId, accountId, status = "CONNECTED" }) {
+  if (!accountId) return null;
+  const result = await dbQuery(
+    `insert into instagram_integrations
+       (tenant_id, provider, provider_account_id, provider_status, enabled, session_status, status, authorized_at, updated_at)
+     values ($1,'unipile',$2,$3,true,'authorized','Instagram connected',now(),now())
+     on conflict (tenant_id) do update set
+       provider='unipile',
+       provider_account_id=excluded.provider_account_id,
+       provider_status=excluded.provider_status,
+       enabled=true,
+       session_status='authorized',
+       status='Instagram connected',
+       authorized_at=now(),
+       updated_at=now()
+     returning *`,
+    [tenantId, accountId, status],
+  );
+  return instagramIntegrationFromRow(result.rows[0]);
+}
+
 function unipileAccountId(account = {}) {
   return String(account.id || account.account_id || account.accountId || account.provider_account_id || "");
 }
@@ -1954,6 +2107,11 @@ function unipileAccountCreatedAt(account = {}) {
 function isLinkedinUnipileAccount(account = {}) {
   const provider = String(account.provider || account.type || account.connection_type || account.account_type || "").toLowerCase();
   return provider.includes("linkedin") || String(account.linkedin_id || account.public_identifier || "").length > 0;
+}
+
+function isInstagramUnipileAccount(account = {}) {
+  const provider = String(account.provider || account.type || account.connection_type || account.account_type || "").toLowerCase();
+  return provider.includes("instagram") || String(account.instagram_id || account.username || "").length > 0;
 }
 
 async function reconcileLinkedinProviderAccount(tenantId) {
@@ -1994,6 +2152,47 @@ async function reconcileLinkedinProviderAccount(tenantId) {
     return saveLinkedinProviderAccount({ tenantId, accountId: fallbackAccountId, status: fallback.status || "CONNECTED" });
   }
   const error = new Error(`LinkedIn authorization completed, but the provider account was not available yet. Provider returned ${allAccounts.length} accounts, ${accounts.length} LinkedIn accounts, tenant bound=${integration?.provider_account_id ? "yes" : "no"}.`);
+  error.statusCode = 409;
+  throw error;
+}
+
+async function reconcileInstagramProviderAccount(tenantId) {
+  const integrationResult = await dbQuery(`select * from instagram_integrations where tenant_id=$1`, [tenantId]);
+  const integration = integrationResult.rows[0];
+  if (integration?.provider_account_id) {
+    return instagramIntegrationFromRow(integration);
+  }
+  const body = await unipileApi("/api/v1/accounts");
+  const allAccounts = unipileListFromResponse(body);
+  const accounts = allAccounts.filter(isInstagramUnipileAccount);
+  console.log(`Instagram reconcile tenant=${tenantId} allAccounts=${allAccounts.length} instagramAccounts=${accounts.length} bound=${integration?.provider_account_id ? "yes" : "no"}`);
+  for (const account of accounts) {
+    const name = unipileAccountName(account);
+    let payload = null;
+    try {
+      payload = verifyInstagramHostedAuthName(name);
+    } catch {
+      payload = null;
+    }
+    if (payload?.tenantId !== tenantId) continue;
+    const accountId = unipileAccountId(account);
+    if (!accountId) continue;
+    return saveInstagramProviderAccount({ tenantId, accountId, status: account.status || "CONNECTED" });
+  }
+  const connectStartedAt = integration?.updated_at ? new Date(integration.updated_at) : null;
+  const createdAfterConnect = accounts
+    .map((account) => ({ account, createdAt: unipileAccountCreatedAt(account) }))
+    .filter(({ createdAt }) => createdAt && (!connectStartedAt || createdAt >= new Date(connectStartedAt.getTime() - 10 * 60 * 1000)))
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const newestAccount = accounts
+    .map((account) => ({ account, createdAt: unipileAccountCreatedAt(account) || new Date(0) }))
+    .sort((a, b) => b.createdAt - a.createdAt)[0]?.account || null;
+  const fallback = createdAfterConnect[0]?.account || (accounts.length === 1 ? accounts[0] : null) || (!integration?.provider_account_id ? newestAccount : null);
+  const fallbackAccountId = fallback ? unipileAccountId(fallback) : "";
+  if (fallbackAccountId) {
+    return saveInstagramProviderAccount({ tenantId, accountId: fallbackAccountId, status: fallback.status || "CONNECTED" });
+  }
+  const error = new Error(`Instagram authorization completed, but the provider account was not available yet. Provider returned ${allAccounts.length} accounts, ${accounts.length} Instagram accounts, tenant bound=${integration?.provider_account_id ? "yes" : "no"}.`);
   error.statusCode = 409;
   throw error;
 }
@@ -2060,7 +2259,7 @@ async function linkedinAttendeesByChat(messages = []) {
       });
       byChat.set(chatId, byId);
     } catch (error) {
-      console.warn(`Unable to load LinkedIn attendees for chat ${chatId}: ${error.message}`);
+      console.warn(`Unable to load provider attendees for chat ${chatId}: ${error.message}`);
     }
   }));
   return byChat;
@@ -2123,7 +2322,9 @@ function shouldIgnoreLinkedinMessage(message) {
   return automatedSignals.some((signal) => content.includes(signal));
 }
 
-async function saveLinkedinMessages(tenantId, messages = []) {
+async function saveLinkedinMessages(tenantId, messages = [], options = {}) {
+  const source = options.source || "linkedin";
+  const channelLabel = options.channelLabel || "LinkedIn";
   let inserted = 0;
   let updated = 0;
   let unmatched = 0;
@@ -2133,6 +2334,7 @@ async function saveLinkedinMessages(tenantId, messages = []) {
   const attendeesByChat = await linkedinAttendeesByChat(messages);
   for (const raw of messages) {
     const message = normalizeUnipileMessage(raw, attendeesByChat);
+    if (message.senderName === "LinkedIn contact" && channelLabel !== "LinkedIn") message.senderName = `${channelLabel} contact`;
     if (!message.id || !message.text) continue;
     if (shouldIgnoreLinkedinMessage(message)) {
       ignored += 1;
@@ -2144,7 +2346,7 @@ async function saveLinkedinMessages(tenantId, messages = []) {
       `with inserted as (
          insert into communications
            (tenant_id, deal_id, type, direction, subject, body, owner, tracked, tracking_status, source, provider_message_id, provider_thread_id, occurred_at)
-         values ($1,$2,'Email',$3,$4,$5,$6,$7,$8,'linkedin',$9,$10,$11)
+         values ($1,$2,'Email',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          on conflict (tenant_id, source, provider_message_id) where provider_message_id is not null do nothing
          returning id, true as inserted
        ),
@@ -2157,18 +2359,18 @@ async function saveLinkedinMessages(tenantId, messages = []) {
                 owner=$6,
                 tracked=$7,
                 tracking_status=$8,
-                provider_thread_id=$10,
-                occurred_at=$11
+                provider_thread_id=$11,
+                occurred_at=$12
           where tenant_id=$1
-            and source='linkedin'
-            and provider_message_id=$9
+            and source=$9
+            and provider_message_id=$10
             and not exists (select 1 from inserted)
           returning id, false as inserted
        )
        select * from inserted
        union all
        select * from updated`,
-      [tenantId, deal?.id || null, message.direction, message.subject || "LinkedIn message", message.text, message.senderName, [message.senderDetails, `LinkedIn thread · ${message.threadId || "unknown"}`].filter(Boolean).join(" · "), deal ? "Imported from LinkedIn" : "LinkedIn import needs account match", message.id, message.threadId || null, message.occurredAt],
+      [tenantId, deal?.id || null, message.direction, message.subject || `${channelLabel} message`, message.text, message.senderName, [message.senderDetails, `${channelLabel} thread · ${message.threadId || "unknown"}`].filter(Boolean).join(" · "), deal ? `Imported from ${channelLabel}` : `${channelLabel} import needs account match`, source, message.id, message.threadId || null, message.occurredAt],
     );
     if (saved.rows[0]?.id) communicationIds.push(saved.rows[0].id);
     if (saved.rows[0]?.inserted) inserted += 1;
@@ -2198,6 +2400,29 @@ async function syncLinkedinMessages(tenantId, payload = {}) {
     [tenantId, `LinkedIn scan completed (${counts.inserted} new, ${counts.updated} updated, ${counts.unmatched} need matching, ${counts.ignored} ignored)`, JSON.stringify(summary)],
   );
   return { linkedinIntegration: linkedinIntegrationFromRow(saved.rows[0]), result: summary };
+}
+
+async function syncInstagramMessages(tenantId, payload = {}) {
+  const integrationResult = await dbQuery(`select * from instagram_integrations where tenant_id=$1`, [tenantId]);
+  const integration = integrationResult.rows[0];
+  if (!integration?.provider_account_id) {
+    const error = new Error("Connect Instagram before scanning messages.");
+    error.statusCode = 409;
+    throw error;
+  }
+  const limit = Math.max(1, Math.min(100, Number(payload.limit || 50)));
+  const body = await unipileApi(`/api/v1/messages?account_id=${encodeURIComponent(integration.provider_account_id)}&limit=${limit}`);
+  const messages = unipileListFromResponse(body);
+  const counts = await saveLinkedinMessages(tenantId, messages, { source: "instagram", channelLabel: "Instagram" });
+  const summary = { ok: true, scannedAt: new Date().toISOString(), messageCount: messages.length, importedCount: counts.inserted, updatedCount: counts.updated, unmatchedCount: counts.unmatched, ignoredCount: counts.ignored, communicationIds: counts.communicationIds.slice(0, 50) };
+  const saved = await dbQuery(
+    `update instagram_integrations
+     set enabled=true, session_status='authorized', status=$2, last_sync_at=now(), last_scan_at=now(), last_scan_result=$3::jsonb, updated_at=now()
+     where tenant_id=$1
+     returning *`,
+    [tenantId, `Instagram scan completed (${counts.inserted} new, ${counts.updated} updated, ${counts.unmatched} need matching, ${counts.ignored} ignored)`, JSON.stringify(summary)],
+  );
+  return { instagramIntegration: instagramIntegrationFromRow(saved.rows[0]), result: summary };
 }
 
 function linkedinTenantProfilePath(tenantId) {
@@ -3296,6 +3521,20 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "POST" && pathname === "/api/instagram/unipile/callback") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const payload = await readBody(req);
+      const accountId = payload.account_id || payload.accountId || payload.account?.id;
+      const tenantId = verifyInstagramHostedAuthName(payload.name).tenantId;
+      if (!tenantId || !accountId) return json(res, 400, { error: "Instagram callback is missing tenant or account id." });
+      const instagramIntegration = await saveInstagramProviderAccount({ tenantId, accountId, status: payload.status || "CONNECTED" });
+      return json(res, 200, { ok: true, instagramIntegration });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.message || "Unable to process Instagram callback." });
+    }
+  }
+
   if (req.method === "POST" && pathname === "/api/linkedin/unipile/messages") {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -3317,6 +3556,30 @@ async function handleApi(req, res) {
       return json(res, 200, { ok: true, ...counts });
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.message || "Unable to process LinkedIn message webhook." });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/instagram/unipile/messages") {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      requireUnipileWebhookSecret(req);
+      const payload = await readBody(req);
+      const accountId = payload.account_id || payload.accountId || payload.account?.id || payload.message?.account_id;
+      if (!accountId) return json(res, 400, { error: "Instagram message webhook is missing account id." });
+      const integrationResult = await dbQuery(`select * from instagram_integrations where provider='unipile' and provider_account_id=$1`, [accountId]);
+      const integration = integrationResult.rows[0];
+      if (!integration) return json(res, 202, { ok: true, ignored: true });
+      const messages = Array.isArray(payload.messages) ? payload.messages : [payload.message || payload];
+      const counts = await saveLinkedinMessages(integration.tenant_id, messages, { source: "instagram", channelLabel: "Instagram" });
+      await dbQuery(
+        `update instagram_integrations
+         set enabled=true, status=$2, provider_status='CONNECTED', last_sync_at=now(), updated_at=now()
+         where tenant_id=$1`,
+        [integration.tenant_id, `Instagram webhook processed ${counts.inserted} new and ${counts.updated} updated message${counts.inserted + counts.updated === 1 ? "" : "s"}`],
+      );
+      return json(res, 200, { ok: true, ...counts });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.message || "Unable to process Instagram message webhook." });
     }
   }
 
@@ -3898,6 +4161,21 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "PUT" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/instagram")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-2));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const payload = await readBody(req);
+      const instagramIntegration = await upsertInstagramSettings(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "update-instagram-settings", target: "instagram-settings", details: { fields: payload } });
+      return json(res, 200, { instagramIntegration });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to save Instagram settings.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin/connect")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -3909,6 +4187,20 @@ async function handleApi(req, res) {
       return json(res, 200, result);
     } catch (error) {
       return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to connect LinkedIn.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/instagram/connect")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const result = await createInstagramHostedAuthLink(resolved.tenantId, resolved.auth);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "connect-instagram", target: "instagram-settings", details: { fields: { provider: "unipile" } } });
+      return json(res, 200, result);
+    } catch (error) {
+      return json(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Unable to connect Instagram.", detail: error.statusCode ? undefined : error.message });
     }
   }
 
@@ -3926,6 +4218,20 @@ async function handleApi(req, res) {
     }
   }
 
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/instagram/reconcile")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const instagramIntegration = await reconcileInstagramProviderAccount(resolved.tenantId);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "reconcile-instagram", target: "instagram-settings", details: { fields: { provider: "unipile" } } });
+      return json(res, 200, { instagramIntegration });
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to finalize Instagram connection.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
   if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/linkedin/sync")) {
     try {
       if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
@@ -3938,6 +4244,21 @@ async function handleApi(req, res) {
       return json(res, 200, sync);
     } catch (error) {
       return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to scan LinkedIn.", detail: error.statusCode ? undefined : error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/instagram/sync")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const payload = await readBody(req);
+      const scan = await syncInstagramMessages(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "sync-instagram", target: "instagram-settings", details: { fields: { provider: "unipile", limit: payload.limit || 50 } } });
+      return json(res, 200, scan);
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: error.statusCode ? error.message : "Unable to scan Instagram.", detail: error.statusCode ? undefined : error.message });
     }
   }
 
@@ -3981,6 +4302,21 @@ async function handleApi(req, res) {
       return json(res, 200, scan);
     } catch (error) {
       return json(res, error.statusCode || 502, { error: "Unable to scan LinkedIn.", detail: error.message });
+    }
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/tenants/") && pathname.endsWith("/instagram/scan")) {
+    try {
+      if (!pool) return json(res, 503, { error: "DATABASE_URL is not configured." });
+      const tenantId = decodeURIComponent(pathname.split("/").at(-3));
+      const resolved = await resolveAuthorizedTenant(req, res, tenantId);
+      if (!resolved) return;
+      const payload = await readBody(req);
+      const scan = await syncInstagramMessages(resolved.tenantId, payload);
+      await recordServerAudit({ auth: resolved.auth, tenantId: resolved.tenantId, operation: "scan-instagram", target: "instagram-settings", details: { fields: { limit: payload.limit || 50 } } });
+      return json(res, 200, scan);
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: "Unable to scan Instagram.", detail: error.message });
     }
   }
 

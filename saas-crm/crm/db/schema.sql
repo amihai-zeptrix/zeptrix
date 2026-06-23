@@ -154,6 +154,24 @@ create table linkedin_integrations (
   updated_at timestamptz not null default now()
 );
 
+create table instagram_integrations (
+  tenant_id uuid primary key references tenants(id) on delete cascade,
+  account_username text,
+  sync_contacts boolean not null default true,
+  enabled boolean not null default false,
+  status text not null default 'Not connected',
+  provider text not null default 'unipile',
+  provider_account_id text,
+  provider_status text,
+  session_status text not null default 'not_configured',
+  authorized_at timestamptz,
+  last_sync_at timestamptz,
+  last_scan_at timestamptz,
+  last_scan_result jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table workflow_automations (
   tenant_id uuid primary key references tenants(id) on delete cascade,
   enabled boolean not null default true,
