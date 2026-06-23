@@ -2007,13 +2007,76 @@ function unipileListFromResponse(body) {
   return [];
 }
 
-function normalizeUnipileMessage(message = {}) {
+function providerLikeLinkedinId(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  if (/\s/.test(text)) return false;
+  return /^(ACo|ACw|AE|urn:|fsd_|msg_|chat_|[A-Za-z0-9_-]{18,})/.test(text);
+}
+
+function unipileAttendeeId(attendee = {}) {
+  return String(attendee.id || attendee.attendee_id || attendee.attendeeId || attendee.provider_id || attendee.providerId || attendee.messaging_id || attendee.messagingId || "").trim();
+}
+
+function normalizeUnipileAttendee(attendee = {}) {
+  const profile = attendee.profile || attendee.public_profile || attendee.linkedin || {};
+  const name = String(
+    attendee.name
+    || attendee.display_name
+    || attendee.displayName
+    || attendee.full_name
+    || attendee.fullName
+    || profile.name
+    || profile.full_name
+    || "",
+  ).trim();
+  const headline = String(attendee.headline || attendee.occupation || attendee.jobtitle || attendee.job_title || profile.headline || "").trim();
+  const company = String(attendee.company || attendee.company_name || profile.company || "").trim();
+  const profileUrl = String(attendee.profile_url || attendee.profileUrl || attendee.public_profile_url || profile.url || profile.profile_url || "").trim();
+  return {
+    id: unipileAttendeeId(attendee),
+    providerId: String(attendee.provider_id || attendee.providerId || "").trim(),
+    name,
+    details: [headline, company, profileUrl].filter(Boolean).join(" · "),
+    isSelf: attendee.is_self === true || attendee.isSelf === true || attendee.self === true,
+  };
+}
+
+function linkedinSenderAttendeeId(message = {}) {
+  const sender = message.sender || message.from || message.author || {};
+  return String(message.sender_attendee_id || message.senderAttendeeId || message.sender_id || message.senderId || sender.id || sender.provider_id || "").trim();
+}
+
+async function linkedinAttendeesByChat(messages = []) {
+  const chatIds = [...new Set(messages.map((message) => String(message.chat_id || message.chatId || message.conversation_id || message.thread_id || "").trim()).filter(Boolean))].slice(0, 50);
+  const byChat = new Map();
+  await Promise.all(chatIds.map(async (chatId) => {
+    try {
+      const body = await unipileApi(`/api/v1/chats/${encodeURIComponent(chatId)}/attendees`);
+      const attendees = unipileListFromResponse(body).map(normalizeUnipileAttendee).filter((attendee) => attendee.id || attendee.providerId || attendee.name);
+      const byId = new Map();
+      attendees.forEach((attendee) => {
+        [attendee.id, attendee.providerId].filter(Boolean).forEach((id) => byId.set(String(id), attendee));
+      });
+      byChat.set(chatId, byId);
+    } catch (error) {
+      console.warn(`Unable to load LinkedIn attendees for chat ${chatId}: ${error.message}`);
+    }
+  }));
+  return byChat;
+}
+
+function normalizeUnipileMessage(message = {}, attendeesByChat = new Map()) {
   const text = String(message.text || message.body || message.message || message.content || message?.message?.text || "").trim();
   const subject = String(message.subject || message.title || message?.message?.subject || "").trim();
   const id = String(message.id || message.message_id || message.provider_id || message?.message?.id || "");
   const threadId = String(message.chat_id || message.chatId || message.conversation_id || message.thread_id || message?.message?.chat_id || "");
   const sender = message.sender || message.from || message.author || {};
-  const senderName = String(sender.name || sender.display_name || message.sender_name || message.from_name || message.sender_id || "LinkedIn contact");
+  const senderAttendeeId = linkedinSenderAttendeeId(message);
+  const chatAttendees = attendeesByChat.get(threadId);
+  const senderAttendee = chatAttendees?.get(senderAttendeeId) || [...(chatAttendees?.values() || [])].find((attendee) => !attendee.isSelf && attendee.name);
+  const rawSenderName = String(sender.name || sender.display_name || message.sender_name || message.from_name || "").trim();
+  const senderName = senderAttendee?.name || (providerLikeLinkedinId(rawSenderName) ? "" : rawSenderName) || "LinkedIn contact";
   const isOutbound = message.is_sender === true || message.sender_is_self === true || sender.is_self === true || String(message.direction || "").toLowerCase() === "outbound";
   const timestamp = message.timestamp || message.date || message.created_at || message.createdAt || message.sent_at || message?.message?.timestamp;
   const attendeeType = String(message.attendee_type || message.attendeeType || sender.attendee_type || "").toUpperCase();
@@ -2024,6 +2087,7 @@ function normalizeUnipileMessage(message = {}) {
     text,
     subject,
     senderName,
+    senderDetails: senderAttendee?.details || "",
     attendeeType,
     messageType,
     direction: isOutbound ? "outbound" : "inbound",
@@ -2066,8 +2130,9 @@ async function saveLinkedinMessages(tenantId, messages = []) {
   let ignored = 0;
   const communicationIds = [];
   const dealsResult = await dbQuery(`select * from deals where tenant_id=$1 order by updated_at desc limit 250`, [tenantId]);
+  const attendeesByChat = await linkedinAttendeesByChat(messages);
   for (const raw of messages) {
-    const message = normalizeUnipileMessage(raw);
+    const message = normalizeUnipileMessage(raw, attendeesByChat);
     if (!message.id || !message.text) continue;
     if (shouldIgnoreLinkedinMessage(message)) {
       ignored += 1;
@@ -2103,7 +2168,7 @@ async function saveLinkedinMessages(tenantId, messages = []) {
        select * from inserted
        union all
        select * from updated`,
-      [tenantId, deal?.id || null, message.direction, message.subject || "LinkedIn message", message.text, message.senderName, `LinkedIn thread · ${message.threadId || "unknown"}`, deal ? "Imported from LinkedIn" : "LinkedIn import needs account match", message.id, message.threadId || null, message.occurredAt],
+      [tenantId, deal?.id || null, message.direction, message.subject || "LinkedIn message", message.text, message.senderName, [message.senderDetails, `LinkedIn thread · ${message.threadId || "unknown"}`].filter(Boolean).join(" · "), deal ? "Imported from LinkedIn" : "LinkedIn import needs account match", message.id, message.threadId || null, message.occurredAt],
     );
     if (saved.rows[0]?.id) communicationIds.push(saved.rows[0].id);
     if (saved.rows[0]?.inserted) inserted += 1;

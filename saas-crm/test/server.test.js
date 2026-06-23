@@ -1398,6 +1398,13 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   assert.match(server, /async function syncLinkedinMessages/);
   assert.match(server, /\/api\/v1\/messages\?account_id=/);
   assert.match(server, /async function saveLinkedinMessages/);
+  assert.match(server, /async function linkedinAttendeesByChat/);
+  assert.match(server, /\/api\/v1\/chats\/\$\{encodeURIComponent\(chatId\)\}\/attendees/);
+  assert.match(server, /function providerLikeLinkedinId/);
+  assert.match(server, /senderAttendee\?\.name/);
+  assert.match(server, /senderDetails: senderAttendee\?\.details/);
+  assert.match(server, /attendee\.isSelf/);
+  assert.match(server, /find\(\(attendee\) => !attendee\.isSelf && attendee\.name\)/);
   assert.match(server, /on conflict \(tenant_id, source, provider_message_id\).*do nothing/s);
   assert.match(server, /updatedCount: counts\.updated/);
   assert.match(server, /unmatchedCount: counts\.unmatched/);
@@ -1828,6 +1835,10 @@ test("CRM inbox expands communication rows into correspondence threads", () => {
   assert.match(renderInboxThreadSource, /class="inbox-thread-row"/);
   assert.match(renderInboxThreadSource, /class="message-bubble customer"/);
   assert.match(renderInboxThreadSource, /class="message-bubble team"/);
+  assert.match(renderInboxThreadSource, /importedSender/);
+  assert.match(renderInboxThreadSource, /item\.source === "linkedin"/);
+  assert.match(renderInboxThreadSource, /LinkedIn/);
+  assert.match(renderInboxThreadSource, /sourceDetails/);
   assert.match(renderInboxThreadSource, /data-open-account/);
   assert.match(styles, /\.inbox-thread-row/);
   assert.match(styles, /\.communication-row\.is-open/);

@@ -2505,11 +2505,13 @@ function renderInbox() {
 }
 
 function renderInboxThread(item, deal) {
-  const contactName = deal?.contact || "Customer";
+  const importedSender = item.source === "linkedin" ? (item.owner || "LinkedIn contact") : "";
+  const contactName = deal?.contact || importedSender || "Customer";
   const accountName = deal?.account || "Unlinked account";
   const customerBody = item.direction === "inbound" ? item.body : "Thanks for the update. Please keep this attached to the account plan so the next owner has full context.";
   const teamBody = item.direction === "inbound" ? "I logged this in the account timeline and added the next step for the owner." : item.body;
-  return `<div class="inbox-thread-row"><section class="thread-card inbox-thread-card"><header><div><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(accountName)} · ${escapeHtml(contactName)} · ${formatTimestamp(item.date)}${item.gmailThreadId ? ` · thread ${escapeHtml(item.gmailThreadId)}` : ""}</small></div><span class="thread-actions">${renderTrackingPill(item)}<button class="icon-button small" data-open-account="${escapeHtml(accountName)}" data-tooltip="Open account" aria-label="Open account">↗</button></span></header><div class="thread-messages"><div class="message-bubble customer"><small>${escapeHtml(contactName)}</small><p>${escapeHtml(customerBody)}</p></div><div class="message-bubble team"><small>${escapeHtml(item.owner)}</small><p>${escapeHtml(teamBody)}</p></div></div></section></div>`;
+  const sourceDetails = item.source === "linkedin" && item.tracked ? ` · ${escapeHtml(item.tracked)}` : "";
+  return `<div class="inbox-thread-row"><section class="thread-card inbox-thread-card"><header><div><strong>${escapeHtml(item.subject)}</strong><small>${escapeHtml(accountName)} · ${escapeHtml(contactName)} · ${formatTimestamp(item.date)}${item.gmailThreadId ? ` · thread ${escapeHtml(item.gmailThreadId)}` : ""}${sourceDetails}</small></div><span class="thread-actions">${renderTrackingPill(item)}<button class="icon-button small" data-open-account="${escapeHtml(accountName)}" data-tooltip="Open account" aria-label="Open account">↗</button></span></header><div class="thread-messages"><div class="message-bubble customer"><small>${escapeHtml(contactName)}${item.source === "linkedin" ? " · LinkedIn" : ""}</small><p>${escapeHtml(customerBody)}</p></div><div class="message-bubble team"><small>${escapeHtml(item.direction === "inbound" ? "CRM note" : item.owner)}</small><p>${escapeHtml(teamBody)}</p></div></div></section></div>`;
 }
 
 function renderModal() {
@@ -2917,7 +2919,7 @@ function linkedinScannedMessages(tenant = currentTenant()) {
         id: item.id,
         person: item.owner || "LinkedIn contact",
         subject: item.subject || "LinkedIn message",
-        account: deal?.account || "Unmatched",
+        account: deal?.account || item.tracked || "Unmatched",
         status,
       };
     });
