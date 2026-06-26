@@ -474,6 +474,7 @@ function slugify(value) {
 
 function applyDemoSession() {
   ensureClientDemoTenant();
+  repairClientDemoTenant();
   const demoTenant = data.tenants.find((tenant) => tenant.slug === "demo" || tenant.id === "demo");
   session = {
     email: `${slugify(DEMO_USER_NAME)}@demo.zeptrix.io`,
@@ -485,6 +486,7 @@ function applyDemoSession() {
   ui.tenantId = session.tenantId;
   ui.section = "home";
   ui.authError = "";
+  saveData();
   saveSession();
 }
 
@@ -511,6 +513,22 @@ function ensureClientDemoTenant() {
       users: [],
     },
   ];
+}
+
+function demoDealValue(deal, index = 0) {
+  const template = data.tenants.find((tenant) => tenant.slug === "admin") || tenantSeed[0];
+  const match = template.deals.find((item) => item.email === deal.email || item.account === deal.account || item.name === deal.name);
+  return Number(match?.value || DEMO_DEAL_VALUE + index * 2500);
+}
+
+function repairClientDemoTenant() {
+  data.tenants = data.tenants.map((tenant) => {
+    if (tenant.slug !== "demo" && tenant.id !== "demo") return tenant;
+    const template = data.tenants.find((item) => item.slug === "admin") || tenantSeed[0];
+    const sourceDeals = tenant.deals?.length ? tenant.deals : structuredClone(template.deals);
+    const deals = sourceDeals.map((deal, index) => ({ ...deal, value: Number(deal.value) > 0 ? Number(deal.value) : demoDealValue(deal, index) }));
+    return { ...tenant, deals, supportTickets: normalizeSupportTickets({ ...tenant, deals }) };
+  });
 }
 
 function currentTenant() {

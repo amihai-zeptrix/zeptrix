@@ -741,6 +741,10 @@ test("CRM named demo routes use the demo tenant instead of admin", () => {
   assert.doesNotMatch(app, /"\$0"/);
   assert.match(app, /section: CRM_SECTION_ROUTE \|\| "admin"/);
   assert.match(app, /function ensureClientDemoTenant/);
+  assert.match(app, /function repairClientDemoTenant/);
+  assert.match(app, /repairClientDemoTenant\(\)/);
+  assert.match(app, /Number\(deal\.value\) > 0 \? Number\(deal\.value\) : demoDealValue\(deal, index\)/);
+  assert.match(app, /saveData\(\)/);
   assert.match(app, /name: "CRM Demo"/);
   assert.match(app, /tenantId: demoTenant\?\.id \|\| "demo"/);
   assert.match(app, /saveSession\(\)/);
