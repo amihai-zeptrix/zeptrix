@@ -707,6 +707,7 @@ test("password changes require an authenticated matching user", () => {
 });
 
 test("CRM demo route serves the CRM app shell", () => {
+  const server = serverSource();
   const crmIndex = path.join(__dirname, "..", "crm", "index.html");
 
   assert.equal(staticFilePathForUrlPath("/crm/demo"), crmIndex);
@@ -715,6 +716,8 @@ test("CRM demo route serves the CRM app shell", () => {
   assert.equal(staticFilePathForUrlPath("/crm/ron"), crmIndex);
   assert.equal(staticFilePathForUrlPath("/crm/settings"), crmIndex);
   assert.notEqual(staticFilePathForUrlPath("/crm/app.js"), crmIndex);
+  assert.match(server, /headers\["cache-control"\] = "no-store"/);
+  assert.match(server, /urlPath === "\/crm" \|\| urlPath\.startsWith\("\/crm\/"\)/);
 });
 
 test("CRM named demo routes use the demo tenant instead of admin", () => {

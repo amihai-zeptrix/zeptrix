@@ -4521,7 +4521,9 @@ function serveStatic(req, res) {
     const stat = fs.statSync(filePath);
     if (stat.isDirectory()) filePath = path.join(filePath, "index.html");
     const ext = path.extname(filePath);
-    res.writeHead(200, { "content-type": mimeTypes[ext] || "application/octet-stream" });
+    const headers = { "content-type": mimeTypes[ext] || "application/octet-stream" };
+    if (urlPath === "/crm" || urlPath.startsWith("/crm/")) headers["cache-control"] = "no-store";
+    res.writeHead(200, headers);
     fs.createReadStream(filePath).pipe(res);
   } catch {
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
