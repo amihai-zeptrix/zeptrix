@@ -730,9 +730,15 @@ test("CRM named demo routes use the demo tenant instead of admin", () => {
   assert.match(app, /"settings", "templates"\]\.includes\(CRM_NAMED_ROUTE_MATCH\[1\]\)/);
   assert.ok(app.includes("const DEMO_ROUTE_MATCH = location.pathname.match(/^\\/crm\\/demo(?:\\/([^/]+))?\\/?$/) || (!CRM_SECTION_ROUTE ? CRM_NAMED_ROUTE_MATCH : null);"));
   assert.match(app, /const DEMO_NAMES = \{ gadig: "Gadi Glikberg" \}/);
+  assert.match(app, /const DEMO_DEAL_VALUE = 18500/);
   assert.match(app, /DEMO_NAMES\[DEMO_USER_SLUG\.toLowerCase\(\)\]/);
   assert.match(app, /function homeGreetingName/);
   assert.match(app, /const name = IS_DEMO_ROUTE \? DEMO_USER_NAME : currentUser\(\)\.name/);
+  assert.match(app, /function defaultDealValue\(\)/);
+  assert.match(app, /return IS_DEMO_ROUTE \? DEMO_DEAL_VALUE : 0/);
+  assert.ok(app.includes('value="${defaultDealValue()}"'));
+  assert.match(app, /dealValue: deal \? money\(deal\.value\) : money\(defaultDealValue\(\) \|\| DEMO_DEAL_VALUE\)/);
+  assert.doesNotMatch(app, /"\$0"/);
   assert.match(app, /section: CRM_SECTION_ROUTE \|\| "admin"/);
   assert.match(app, /function ensureClientDemoTenant/);
   assert.match(app, /name: "CRM Demo"/);

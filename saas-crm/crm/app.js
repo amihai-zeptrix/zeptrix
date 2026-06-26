@@ -15,6 +15,7 @@ const IS_DEMO_ROUTE = !!DEMO_ROUTE_MATCH;
 const DEMO_NAMES = { gadig: "Gadi Glikberg" };
 const DEMO_USER_SLUG = DEMO_ROUTE_MATCH?.[1] || DEMO_ROUTE_MATCH?.[2] || "";
 const DEMO_USER_NAME = DEMO_USER_SLUG ? (DEMO_NAMES[DEMO_USER_SLUG.toLowerCase()] || titleCase(DEMO_USER_SLUG)) : "Demo User";
+const DEMO_DEAL_VALUE = 18500;
 const IS_CANONICAL_REDIRECT = !IS_DEMO_ROUTE && location.hostname === "www.zeptrix.io";
 
 if (IS_CANONICAL_REDIRECT) {
@@ -1051,6 +1052,10 @@ function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 }
 
+function defaultDealValue() {
+  return IS_DEMO_ROUTE ? DEMO_DEAL_VALUE : 0;
+}
+
 function initials(name) {
   return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 }
@@ -1850,7 +1855,7 @@ function renderGroup(key, label, color, deals) {
 }
 
 function renderInlineDealRow(group = "active") {
-  return `<tr class="inline-deal-row"><td></td><td colspan="8"><form class="inline-add-form deal-inline-form" data-inline-deal-form data-group="${escapeHtml(group)}"><input name="name" placeholder="Deal name" required /><input name="account" placeholder="Account" required /><input name="contact" placeholder="Contact" /><input name="email" type="email" placeholder="Email" /><select name="owner">${Object.keys(owners).map((owner) => `<option>${escapeHtml(owner)}</option>`).join("")}</select><select name="stage">${stages.map((stage) => `<option ${stage === "Lead" ? "selected" : ""}>${stage}</option>`).join("")}</select><input name="value" type="number" min="0" placeholder="Value" value="0" /><input name="close" type="date" value="${daysFromNow(30)}" /><select name="priority"><option>Medium</option><option>High</option><option>Low</option></select><span class="row-actions"><button class="button small primary">Save</button><button type="button" class="button small" data-action="cancel-inline-add">Cancel</button></span></form></td></tr>`;
+  return `<tr class="inline-deal-row"><td></td><td colspan="8"><form class="inline-add-form deal-inline-form" data-inline-deal-form data-group="${escapeHtml(group)}"><input name="name" placeholder="Deal name" required /><input name="account" placeholder="Account" required /><input name="contact" placeholder="Contact" /><input name="email" type="email" placeholder="Email" /><select name="owner">${Object.keys(owners).map((owner) => `<option>${escapeHtml(owner)}</option>`).join("")}</select><select name="stage">${stages.map((stage) => `<option ${stage === "Lead" ? "selected" : ""}>${stage}</option>`).join("")}</select><input name="value" type="number" min="0" placeholder="Value" value="${defaultDealValue()}" /><input name="close" type="date" value="${daysFromNow(30)}" /><select name="priority"><option>Medium</option><option>High</option><option>Low</option></select><span class="row-actions"><button class="button small primary">Save</button><button type="button" class="button small" data-action="cancel-inline-add">Cancel</button></span></form></td></tr>`;
 }
 
 function columnHeading(column) {
@@ -2162,7 +2167,7 @@ function mergeDataForDeal(deal) {
     accountName: deal?.account || "account",
     ownerName: deal?.owner || currentUser().name,
     dealName: deal?.name || "your next initiative",
-    dealValue: deal ? money(deal.value) : "$0",
+    dealValue: deal ? money(deal.value) : money(defaultDealValue() || DEMO_DEAL_VALUE),
     closeDate: deal ? formatDate(deal.close) : "the target date",
   };
 }
@@ -2712,7 +2717,7 @@ function renderTenantForm() {
 }
 
 function renderDealForm() {
-  const deal = ui.editing || { name: "", account: "", contact: "", email: "", owner: currentUser().name, stage: "Lead", value: "", close: "2026-07-01", priority: "Medium", group: ui.newGroup || "active", note: "" };
+  const deal = ui.editing || { name: "", account: "", contact: "", email: "", owner: currentUser().name, stage: "Lead", value: defaultDealValue(), close: "2026-07-01", priority: "Medium", group: ui.newGroup || "active", note: "" };
   return `<div class="modal-layer center"><form class="modal" data-deal-form><header class="modal-head"><div><h2>${deal.id ? "Edit deal" : "Create deal"}</h2><p class="subcopy">Add the details your team needs to move this opportunity forward.</p></div><button type="button" class="close-button" data-action="close">×</button></header><div class="form-grid">${formField("Deal name", "name", deal.name, "text", true, "full")}${formField("Account", "account", deal.account, "text", true)}${formField("Contact", "contact", deal.contact)}${formField("Email", "email", deal.email, "email")}${selectField("Owner", "owner", Object.keys(owners), deal.owner)}${selectField("Stage", "stage", stages, deal.stage)}${formField("Deal value", "value", deal.value, "number", true)}${formField("Close date", "close", deal.close, "date", true)}${selectField("Priority", "priority", ["High", "Medium", "Low"], deal.priority)}${selectField("Group", "group", ["active", "closed"], deal.group)}<div class="field full"><label>Notes</label><textarea name="note">${escapeHtml(deal.note || "")}</textarea></div></div><div class="form-actions">${deal.id ? `<button type="button" class="button danger" data-action="delete-deal" data-id="${deal.id}">Delete</button>` : ""}<span class="toolbar-spacer"></span><button type="button" class="button" data-action="close">Cancel</button><button class="button primary">Save deal</button></div></form></div>`;
 }
 
@@ -3660,7 +3665,7 @@ document.addEventListener("click", async (event) => {
           phone: discovery.phone || "",
           owner: currentUser().name,
           stage: "Lead",
-          value: 0,
+          value: defaultDealValue(),
           close: daysFromNow(30),
           priority: "Medium",
           group: "active",
@@ -4308,7 +4313,7 @@ document.addEventListener("submit", async (event) => {
       phone: values.phone,
       owner: values.owner,
       stage: "Lead",
-      value: 0,
+      value: defaultDealValue(),
       close: daysFromNow(30),
       priority: "Medium",
       group: "active",
@@ -4371,7 +4376,7 @@ document.addEventListener("submit", async (event) => {
     const deal = {
       ...values,
       id: localRecordId("deal"),
-      value: Number(values.value || 0),
+      value: Number(values.value || defaultDealValue()),
       close: values.close || daysFromNow(30),
       group,
       tags: defaultAccountTags(values),
@@ -4410,7 +4415,7 @@ document.addEventListener("submit", async (event) => {
     const values = Object.fromEntries(new FormData(event.target));
     const tenant = currentTenant();
     const existing = ui.editing;
-    const deal = { ...existing, ...values, id: existing?.id || localRecordId("deal"), value: Number(values.value), tags: existing?.tags || defaultAccountTags(values), updated: "Just now" };
+    const deal = { ...existing, ...values, id: existing?.id || localRecordId("deal"), value: Number(values.value || defaultDealValue()), tags: existing?.tags || defaultAccountTags(values), updated: "Just now" };
     try {
       const saved = session?.apiToken
         ? (existing ? (await updateDealViaApi(tenant.id, existing.id, deal)).deal : (await createDealViaApi(tenant.id, deal)).deal)
