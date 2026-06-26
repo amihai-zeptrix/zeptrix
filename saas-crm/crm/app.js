@@ -484,6 +484,12 @@ function applyDemoSession() {
   ui.tenantId = session.tenantId;
   ui.section = "home";
   ui.authError = "";
+  saveSession();
+}
+
+function homeGreetingName() {
+  const name = IS_DEMO_ROUTE ? DEMO_USER_NAME : currentUser().name;
+  return name.split(" ")[0];
 }
 
 function ensureClientDemoTenant() {
@@ -1577,7 +1583,7 @@ function renderHome() {
   const tasks = openTasks(tenant);
   const attentionAccounts = accountsNeedingAttention(tenant);
   return `
-    ${renderPageHeader(`${israelGreeting()}, ${currentUser().name.split(" ")[0]}`, `Here is what is happening in ${tenant.name}.`)}
+    ${renderPageHeader(`${israelGreeting()}, ${homeGreetingName()}`, `Here is what is happening in ${tenant.name}.`)}
     ${renderSummary()}
     <section class="admin-grid">
       <article class="widget wide"><h3>Accounts that need attention</h3>${attentionAccounts.map(renderHomeAttentionAccount).join("") || `<p class="empty-state">No high-priority accounts right now.</p>`}</article>

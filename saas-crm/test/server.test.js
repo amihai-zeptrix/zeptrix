@@ -728,10 +728,13 @@ test("CRM named demo routes use the demo tenant instead of admin", () => {
   assert.ok(app.includes("const DEMO_ROUTE_MATCH = location.pathname.match(/^\\/crm\\/demo(?:\\/([^/]+))?\\/?$/) || (!CRM_SECTION_ROUTE ? CRM_NAMED_ROUTE_MATCH : null);"));
   assert.match(app, /const DEMO_NAMES = \{ gadig: "Gadi Glikberg" \}/);
   assert.match(app, /DEMO_NAMES\[DEMO_USER_SLUG\.toLowerCase\(\)\]/);
+  assert.match(app, /function homeGreetingName/);
+  assert.match(app, /const name = IS_DEMO_ROUTE \? DEMO_USER_NAME : currentUser\(\)\.name/);
   assert.match(app, /section: CRM_SECTION_ROUTE \|\| "admin"/);
   assert.match(app, /function ensureClientDemoTenant/);
   assert.match(app, /name: "CRM Demo"/);
   assert.match(app, /tenantId: demoTenant\?\.id \|\| "demo"/);
+  assert.match(app, /saveSession\(\)/);
 });
 
 test("CRM admin page exposes tenant invite and audit tabs", () => {
@@ -847,7 +850,7 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   const renderHomeEventSource = functionSource(app, "renderHomeEvent", "birthdayDate");
 
   assert.match(renderHomeSource, /israelGreeting\(\)/);
-  assert.match(renderHomeSource, /currentUser\(\)\.name\.split\(" "\)\[0\]/);
+  assert.match(renderHomeSource, /homeGreetingName\(\)/);
   assert.doesNotMatch(renderHomeSource, /Good morning,/);
   assert.match(israelGreetingSource, /timeZone: "Asia\/Jerusalem"/);
   assert.match(renderHomeSource, /Accounts that need attention/);
