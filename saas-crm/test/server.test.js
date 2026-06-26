@@ -1127,7 +1127,9 @@ test("CRM campaigns support account tags, audience targeting, and merge tokens",
   assert.match(app, /function renderMergedTemplate/);
   assert.match(app, /function recurrenceLabel/);
   assert.match(app, /data = normalizeData\(\{ \.\.\.data, tenants: remote\.tenants, inviteEmails: remote\.inviteEmails, auditLogs: remote\.auditLogs \|\| \[\] \}\)/);
-  assert.match(sidebarSource, /sideLink\("campaigns", "◉", "Campaigns"/);
+  assert.match(app, /id: "engage"/);
+  assert.match(app, /section: "campaigns", label: "Campaigns"/);
+  assert.match(sidebarSource, /class="icon-rail"/);
   assert.match(renderSectionSource, /ui\.section === "campaigns"/);
   assert.match(renderCampaignsSource, /data-campaign-form/);
   assert.match(renderCampaignsSource, /const campaigns = tenant\.campaigns \|\| \[\]/);
@@ -1214,7 +1216,9 @@ test("CRM settings include Connectivity Gmail and LinkedIn controls", () => {
   const server = serverSource();
   const summarizeLinkedinSource = server.slice(server.indexOf("function summarizeLinkedinPuppeteerResult"), server.indexOf("async function runLinkedinPuppeteerScan"));
 
-  assert.match(sidebarSource, /connectivityNav\(\)/);
+  assert.match(app, /id: "connectivity"/);
+  assert.match(app, /settingsTab: "gmail", label: "Gmail"/);
+  assert.match(sidebarSource, /class="icon-rail"/);
   assert.match(app, /function connectivityNav/);
   assert.match(app, /connectivityOpen: false/);
   assert.match(app, /data-action="toggle-connectivity"/);

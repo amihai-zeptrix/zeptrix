@@ -220,61 +220,140 @@ h3 { font-size: 14px; }
 
 .app-shell {
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
+  grid-template-columns: 292px minmax(0, 1fr);
   min-height: 100vh;
 }
 .sidebar {
+  display: grid;
+  grid-template-columns: 72px 220px;
+  min-height: 100vh;
+  color: #172235;
+  background: #edf3ff;
+  border-right: 1px solid #d9e2f2;
+}
+.icon-rail {
   display: flex;
+  align-items: center;
+  gap: 14px;
   min-height: 100vh;
   flex-direction: column;
-  color: #c8cfda;
-  background: var(--navy);
+  padding: 18px 10px;
+  background: #e8eef8;
 }
-.sidebar .brand { height: 68px; padding: 0 18px; border-bottom: 1px solid rgba(255,255,255,.08); color: #fff; }
-.tenant-card {
-  margin: 14px 12px 10px;
-  padding: 11px;
-  border: 1px solid rgba(255,255,255,.1);
-  border-radius: 8px;
+.rail-brand {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
   color: #fff;
-  background: rgba(255,255,255,.05);
+  text-decoration: none;
 }
-.tenant-card small, .side-label, .profile small { color: #92a0b3; }
+.zeptrix-logo {
+  display: block;
+  width: 42px;
+  height: 42px;
+}
+.zeptrix-logo rect { fill: #14355f; }
+.zeptrix-logo path,
+.zeptrix-logo circle {
+  fill: none;
+  stroke: #57d1a3;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.rail-links {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.rail-link {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #6c7480;
+  background: transparent;
+}
+.rail-link svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+.rail-link:hover,
+.rail-link.active {
+  border-color: #2f6be6;
+  color: #1f5fd0;
+  background: #dde8ff;
+}
+.rail-logout { margin-top: auto; }
+.side-menu {
+  display: flex;
+  min-width: 0;
+  min-height: 100vh;
+  flex-direction: column;
+  padding: 18px 14px;
+  background: #f3f7ff;
+}
+.sidebar .brand { height: auto; padding: 0; color: #172235; }
+.side-brand {
+  margin: 6px 4px 20px;
+  color: #172235;
+  font-size: 18px;
+}
+.tenant-card {
+  margin: 0 0 18px;
+  padding: 11px;
+  border: 1px solid #dce6f5;
+  border-radius: 8px;
+  color: #172235;
+  background: #fff;
+}
+.tenant-card small, .side-label, .profile small { color: #6c7480; }
 .tenant-card strong { display: block; margin-top: 2px; }
 .side-label {
-  margin: 18px 18px 6px;
+  margin: 0 4px 12px;
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: .08em;
+  letter-spacing: .14em;
   text-transform: uppercase;
 }
+.side-menu-list { display: grid; gap: 6px; }
+.side-menu-group { border-radius: 8px; }
+.side-menu-group.active { background: #dfe9fb; }
 .side-link {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 1px 10px;
-  padding: 9px 10px;
+  width: 100%;
+  margin: 0;
+  padding: 11px 10px;
   border: 0;
   border-radius: 7px;
-  color: #b7c0cd;
+  color: #172235;
   background: transparent;
   text-align: left;
+  font-weight: 750;
 }
-.side-link:hover, .side-link.active { color: #fff; background: rgba(102,151,238,.2); }
+.side-link:hover, .side-link.active { color: #1f5fd0; background: #e7efff; }
 .side-link .icon { width: 16px; text-align: center; }
 .side-group { margin: 1px 0; }
 .side-submenu {
   display: grid;
-  gap: 1px;
-  margin: 2px 10px 8px 34px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(255,255,255,.12);
+  gap: 2px;
+  padding: 0 8px 10px 42px;
 }
 .side-sublink {
-  margin: 0;
-  padding: 7px 9px;
-  font-size: 13px;
+  min-height: 30px;
+  border: 0;
+  color: #172235;
+  background: transparent;
+  text-align: left;
+  font-weight: 650;
 }
+.side-sublink:hover { color: #1f5fd0; }
 .side-link .chevron {
   font-size: 19px;
   font-weight: 900;
@@ -287,10 +366,51 @@ h3 { font-size: 14px; }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
-  border-top: 1px solid rgba(255,255,255,.08);
-  color: #fff;
+  min-width: 0;
+  padding: 14px 4px 0;
+  border-top: 1px solid #d9e2f2;
+  color: #172235;
 }
+.profile > div { min-width: 0; }
+.profile strong,
+.profile small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.brand-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+.brand-icon.gmail { fill: #ea4335; }
+.brand-icon.linkedin { fill: #0a66c2; }
+.brand-icon.instagram { fill: #e4405f; }
+.brand-icon.zoom { fill: #0b5cff; }
+.brand-icon.wechat { fill: #07c160; }
+.connectivity-status {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #d9e2f2;
+  border-radius: 8px;
+  background: #fff;
+}
+.connectivity-status div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.connectivity-status span { min-width: 0; }
+.connectivity-status strong,
+.connectivity-status small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.connectivity-status small { color: var(--muted); }
 
 .main { min-width: 0; }
 .topbar {
@@ -479,6 +599,44 @@ h3 { font-size: 14px; }
 .error { margin-top: 12px; color: var(--red); font-size: 12px; font-weight: 700; }
 .success { margin-top: 12px; color: #18794e; font-size: 12px; font-weight: 800; line-height: 1.45; }
 .auth-link-button { justify-content: center; border-color: transparent; }
+
+.connectivity-grid {
+  display: grid;
+  grid-template-columns: 1.3fr repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.connectivity-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  min-height: 70px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.connectivity-card.primary {
+  grid-row: span 2;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  border-color: #c8dcff;
+  background: #f8fbff;
+}
+.connectivity-card.primary .brand-icon {
+  width: 30px;
+  height: 30px;
+}
+.connectivity-card strong,
+.connectivity-card small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.connectivity-card small { color: var(--muted); }
+.connectivity-card.muted { color: #384456; }
 
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
 .summary-card {

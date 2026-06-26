@@ -1283,32 +1283,102 @@ function renderToasts() {
   return `<div class="toast-stack" aria-live="polite">${ui.toasts.map((toast) => `<div class="toast">${escapeHtml(toast.message)}</div>`).join("")}</div>`;
 }
 
+const navGroups = [
+  { id: "home", label: "Home", icon: "home", items: [{ section: "home", label: "Today" }] },
+  { id: "workspace", label: "Workspace", icon: "workspace", items: [{ section: "pipeline", label: "Sales pipeline" }, { section: "accounts", label: "Accounts" }, { section: "contacts", label: "Contacts" }, { section: "activities", label: "Activities" }, { section: "inbox", label: "Inbox" }] },
+  { id: "engage", label: "Engage", icon: "send", items: [{ section: "campaigns", label: "Campaigns" }, { section: "templates", label: "Email templates" }, { section: "reports", label: "Reports" }] },
+  {
+    id: "connectivity",
+    label: "Connectivity",
+    icon: "connect",
+    items: [
+      { section: "settings", settingsTab: "gmail", label: "Gmail", children: [{ action: "connect-gmail", label: "Connect mailbox" }, { action: "scan-gmail", label: "Scan Gmail" }] },
+      { section: "settings", settingsTab: "linkedin", label: "LinkedIn" },
+      { section: "settings", settingsTab: "instagram", label: "Instagram" },
+      { section: "settings", settingsTab: "zoom", label: "Zoom" },
+      { section: "settings", settingsTab: "wechat", label: "WeChat" },
+    ],
+  },
+  { id: "settings", label: "Settings", icon: "settings", items: [{ section: "settings", settingsTab: "configuration", label: "Configuration" }, { section: "settings", settingsTab: "automation", label: "Workflow automation" }, { section: "settings", settingsTab: "outgoing", label: "Outgoing email" }] },
+];
+
+function activeNavGroup() {
+  if (ui.section === "settings" && ["gmail", "linkedin", "instagram", "zoom", "wechat"].includes(ui.settingsTab)) return "connectivity";
+  if (ui.section === "settings") return "settings";
+  if (["campaigns", "templates", "reports"].includes(ui.section)) return "engage";
+  if (["pipeline", "accounts", "contacts", "activities", "inbox"].includes(ui.section)) return "workspace";
+  if (ui.section === "admin" && isPlatformAdmin()) return "admin";
+  return "home";
+}
+
+function navIcon(name) {
+  const icons = {
+    home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.8 12 3l9 7.8v9.7h-6v-6h-6v6H3z"/></svg>`,
+    workspace: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v5H4zm0 9h7v5H4zm11 0h5v5h-5z"/></svg>`,
+    send: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-8-8 18-2-8z"/></svg>`,
+    connect: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h8v8H8zM4 4h5v3H7v2H4zm11 0h5v5h-3V7h-2zM4 15h3v2h2v3H4zm13 0h3v5h-5v-3h2z"/></svg>`,
+    settings: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.2a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6zm8.1 3.8a7.6 7.6 0 0 0-.1-1.1l2-1.5-2-3.4-2.4 1a8.5 8.5 0 0 0-1.9-1.1L15.4 3h-6.8l-.4 2.9A8.5 8.5 0 0 0 6.4 7L4 6 2 9.4l2 1.5A7.6 7.6 0 0 0 4 12c0 .4 0 .8.1 1.1L2 14.6 4 18l2.4-1a8.5 8.5 0 0 0 1.8 1.1l.4 2.9h6.8l.4-2.9a8.5 8.5 0 0 0 1.9-1.1l2.4 1 2-3.4-2-1.5c.1-.3.1-.7.1-1.1z"/></svg>`,
+    admin: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v4H4zm0 6h7v10H4zm9 0h7v10h-7z"/></svg>`,
+  };
+  return icons[name] || icons.workspace;
+}
+
+function brandIcon(name) {
+  const icons = {
+    gmail: `<svg class="brand-icon gmail" viewBox="0 0 24 24" aria-hidden="true"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/></svg>`,
+    linkedin: `<svg class="brand-icon linkedin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.34V8.98h3.42v1.57h.05c.48-.9 1.64-1.85 3.37-1.85 3.61 0 4.27 2.37 4.27 5.46zM5.32 7.42a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.1 20.45H3.54V8.98H7.1z"/></svg>`,
+    instagram: `<svg class="brand-icon instagram" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.03.08c-1.28.06-2.15.27-2.91.57-.79.31-1.46.72-2.12 1.39C1.33 2.7.92 3.37.62 4.16.32 4.93.12 5.8.06 7.08 0 8.35-.01 8.76 0 12.02c.01 3.26.02 3.67.08 4.95.06 1.28.26 2.15.56 2.91.31.79.72 1.46 1.39 2.12.67.67 1.34 1.08 2.13 1.38.76.3 1.64.5 2.91.55 1.28.06 1.69.07 4.95.06 3.26-.01 3.67-.02 4.95-.08 1.28-.06 2.15-.27 2.91-.56.79-.31 1.46-.72 2.12-1.39.67-.67 1.07-1.34 1.38-2.13.3-.76.5-1.64.55-2.91.06-1.28.07-1.69.06-4.95-.01-3.26-.02-3.67-.08-4.95-.06-1.28-.26-2.15-.56-2.91-.31-.79-.72-1.46-1.39-2.12C21.3 1.33 20.63.92 19.84.62 19.07.32 18.2.12 16.92.06 15.65.01 15.24-.01 11.98 0 8.72.01 8.31.02 7.03.08zm4.96 5.76A6.16 6.16 0 1 1 12 18.16a6.16 6.16 0 0 1-.01-12.32zm4.96-.25a1.44 1.44 0 1 1 1.44 1.44 1.44 1.44 0 0 1-1.44-1.44zM8 12.01a4 4 0 1 0 8-.01 4 4 0 0 0-8 .01z"/></svg>`,
+    zoom: `<svg class="brand-icon zoom" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.03 14.65H.74a.74.74 0 0 1-.52-1.27l2.97-2.97H1.06A1.06 1.06 0 0 1 0 9.35h3.96a.74.74 0 0 1 .52 1.27L1.51 13.59h2.46c.59 0 1.06.48 1.06 1.06zM24 11.34c0-1.14-.93-2.07-2.07-2.07-.61 0-1.16.27-1.53.69a2.06 2.06 0 0 0-3.6 1.38v3.31a1.06 1.06 0 0 0 1.06-1.06v-2.25a1 1 0 0 1 2.01 0v2.25c0 .59.47 1.06 1.06 1.06v-3.31a1 1 0 0 1 2.01 0v2.25c0 .59.48 1.06 1.06 1.06zM16.27 12a2.73 2.73 0 1 1-5.46 0 2.73 2.73 0 0 1 5.46 0zm-5.89 0a2.73 2.73 0 1 1-5.45 0 2.73 2.73 0 0 1 5.45 0z"/></svg>`,
+    wechat: `<svg class="brand-icon wechat" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.69 2.19C3.89 2.19 0 5.48 0 9.53c0 2.21 1.17 4.2 3 5.55.2.15.29.41.21.67l-.39 1.48c-.02.07-.05.14-.05.21 0 .16.13.3.29.3.06 0 .12-.02.17-.06l1.91-1.11c.21-.13.47-.16.72-.1.89.27 1.84.4 2.83.4.28 0 .54-.02.81-.05-.86-2.58.16-4.97 1.93-6.45 1.7-1.41 3.88-1.98 5.85-1.83-.57-3.59-4.19-6.35-8.59-6.35zM5.79 5.99a1.18 1.18 0 1 1 0 2.36 1.18 1.18 0 0 1 0-2.36zm5.81 0a1.18 1.18 0 1 1 0 2.36 1.18 1.18 0 0 1 0-2.36zm5.34 2.87c-1.8-.05-3.75.51-5.28 1.78-1.72 1.43-2.69 3.72-1.78 6.22.94 2.46 3.67 4.23 6.88 4.23.83 0 1.62-.12 2.36-.33.2-.06.41-.03.6.08l1.58.92c.04.03.09.05.14.05.14 0 .24-.11.24-.25 0-.06-.02-.12-.04-.18l-.32-1.23a.5.5 0 0 1 .18-.55c1.52-1.12 2.5-2.78 2.5-4.62 0-3.21-2.93-5.84-6.66-6.09-.13-.01-.27-.03-.4-.03zm-2.53 3.27a.98.98 0 1 1 0 1.97.98.98 0 0 1 0-1.97zm4.84 0a.98.98 0 1 1 0 1.97.98.98 0 0 1 0-1.97z"/></svg>`,
+  };
+  return icons[name] || "";
+}
+
 function renderSidebar() {
   const tenant = currentTenant();
+  const activeGroup = activeNavGroup();
+  const groups = isPlatformAdmin() ? [{ id: "admin", label: "Admin", icon: "admin", items: [{ section: "admin", label: "Tenants" }] }, ...navGroups] : navGroups;
+  const menu = groups.find((group) => group.id === activeGroup) || groups[0];
   return `
     <aside class="sidebar">
-      <a class="brand" href="/crm/"><span class="brand-mark">Z</span><span>Zeptrix CRM</span></a>
-      <div class="tenant-card"><small>TENANT</small><strong>${escapeHtml(tenant.name)}</strong><small>${escapeHtml(tenant.plan)} · ${escapeHtml(tenant.status)}</small></div>
-      <p class="side-label">Control</p>
-      ${isPlatformAdmin() ? sideLink("admin", "▣", "Tenants", data.tenants.length) : ""}
-      ${sideLink("home", "⌂", "Home")}
-      <p class="side-label">Workspace</p>
-      ${sideLink("pipeline", "▦", "Sales pipeline")}
-      ${sideLink("accounts", "▣", "Accounts", uniqueBy("account").length)}
-      ${sideLink("campaigns", "◉", "Campaigns", tenant.campaigns?.length || 0)}
-      ${sideLink("contacts", "♙", "Contacts", uniqueBy("email").length)}
-      ${sideLink("activities", "✓", "Activities", openTasks().length)}
-      ${sideLink("inbox", "✉", "Inbox", tenant.communications.length)}
-      ${sideLink("reports", "◴", "Reports")}
-      ${connectivityNav()}
-      <div class="side-spacer"></div>
-      <button class="side-link" data-action="logout"><span class="icon">⇤</span> Sign out</button>
-      <div class="profile">${avatar(currentUser().name)}<div><strong>${escapeHtml(currentUser().name)}</strong><small>${escapeHtml(currentUser().role)}</small></div></div>
+      <nav class="icon-rail" aria-label="Primary navigation">
+        <a class="rail-brand" href="/crm/" aria-label="Zeptrix CRM">${zeptrixLogo()}</a>
+        <div class="rail-links">
+          ${groups.map((group) => `<button class="rail-link ${group.id === activeGroup ? "active" : ""}" data-section="${escapeHtml(group.items[0]?.section || "home")}" ${group.items[0]?.settingsTab ? `data-settings-tab="${escapeHtml(group.items[0].settingsTab)}"` : ""} data-tooltip="${escapeHtml(group.label)}" aria-label="${escapeHtml(group.label)}">${navIcon(group.icon)}</button>`).join("")}
+        </div>
+        <button class="rail-link rail-logout" data-action="logout" data-tooltip="Sign out" aria-label="Sign out">${navIcon("settings")}</button>
+      </nav>
+      <section class="side-menu">
+        <a class="brand side-brand" href="/crm/"><span>Zeptrix CRM</span></a>
+        <div class="tenant-card"><small>TENANT</small><strong>${escapeHtml(tenant.name)}</strong><small>${escapeHtml(tenant.plan)} · ${escapeHtml(tenant.status)}</small></div>
+        <p class="side-label">${escapeHtml(menu.label)}</p>
+        <div class="side-menu-list">${menu.items.map((item) => sideMenuItem(item)).join("")}</div>
+        ${activeGroup === "connectivity" ? renderConnectivityMenuStatus(tenant) : ""}
+        <div class="side-spacer"></div>
+        <div class="profile">${avatar(currentUser().name)}<div><strong>${escapeHtml(currentUser().name)}</strong><small>${escapeHtml(currentUser().role)}</small></div></div>
+      </section>
     </aside>`;
 }
 
 function sideLink(section, icon, label, count = "") {
   return `<button class="side-link ${ui.section === section ? "active" : ""}" data-section="${section}"><span class="icon">${icon}</span>${label}${count !== "" ? `<span class="count">${count}</span>` : ""}</button>`;
+}
+
+function zeptrixLogo() {
+  return `<svg class="zeptrix-logo" viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="6" width="36" height="36" rx="10"/><path d="M16 15h18L21 33h13" /><circle cx="16" cy="33" r="3"/></svg>`;
+}
+
+function sideMenuItem(item) {
+  const isActive = ui.section === item.section && (!item.settingsTab || ui.settingsTab === item.settingsTab);
+  return `<div class="side-menu-group ${isActive ? "active" : ""}">
+    <button class="side-link ${isActive ? "active" : ""}" data-section="${escapeHtml(item.section)}"${item.settingsTab ? ` data-settings-tab="${escapeHtml(item.settingsTab)}"` : ""}>${brandIcon(item.label.toLowerCase().replace(/\s+/g, ""))}<span>${escapeHtml(item.label)}</span>${item.children?.length ? `<span class="count">⌃</span>` : ""}</button>
+    ${isActive && item.children?.length ? `<div class="side-submenu">${item.children.map((child) => `<button class="side-sublink" data-action="${escapeHtml(child.action)}">${escapeHtml(child.label)}</button>`).join("")}</div>` : ""}
+  </div>`;
+}
+
+function renderConnectivityMenuStatus(tenant) {
+  const gmail = gmailIntegration(tenant);
+  return `<div class="connectivity-status"><div>${brandIcon("gmail")}<span><strong>${escapeHtml(gmail.enabled ? "Gmail connected" : "Gmail not connected")}</strong><small>${escapeHtml(gmail.accountEmail || "Open Gmail to connect or scan")}</small></span></div></div>`;
 }
 
 function connectivityNav() {
@@ -2732,6 +2802,21 @@ function renderGmailConnectivitySettings() {
   const canUseGmailBackend = !!session?.apiToken && session.role !== "demo_user";
   const actionDisabled = canUseGmailBackend ? "" : "disabled";
   return `
+    <section class="connectivity-grid">
+      <article class="connectivity-card primary">
+        ${brandIcon("gmail")}
+        <div><strong>Gmail</strong><small>${escapeHtml(gmail.accountEmail || "Mailbox, contact discovery, thread scan")}</small></div>
+        <span class="toolbar-spacer"></span>
+        <button type="button" class="button small primary" data-action="connect-gmail" ${actionDisabled}>Connect</button>
+        <button type="button" class="button small" data-action="scan-gmail" ${actionDisabled}>Scan</button>
+      </article>
+      ${[
+        ["linkedin", "LinkedIn", "Relationship and message intelligence"],
+        ["instagram", "Instagram", "Social engagement signals"],
+        ["zoom", "Zoom", "Meetings and call context"],
+        ["wechat", "WeChat", "Customer messaging"],
+      ].map(([icon, label, copy]) => `<article class="connectivity-card muted">${brandIcon(icon)}<div><strong>${label}</strong><small>${copy}</small></div><span class="status-pill stage-lead">${["linkedin", "instagram"].includes(icon) ? "Available" : "Soon"}</span></article>`).join("")}
+    </section>
     <section class="settings-layout">
       <div class="settings-stack">
         <article class="settings-card">
@@ -2977,6 +3062,18 @@ function gmailFormValues(form) {
     ...values,
     detectNewContacts: Boolean(values.detectNewContacts),
     detectDormantContacts: Boolean(values.detectDormantContacts),
+  };
+}
+
+function gmailActionValues(actionElement) {
+  const form = actionElement.closest("form");
+  if (form) return gmailFormValues(form);
+  const gmail = gmailIntegration(currentTenant());
+  return {
+    labels: gmail.labels,
+    detectNewContacts: gmail.detectNewContacts,
+    detectDormantContacts: gmail.detectDormantContacts,
+    gmailLookbackDays: gmail.gmailLookbackDays,
   };
 }
 
@@ -3491,7 +3588,7 @@ document.addEventListener("click", async (event) => {
       const tenant = currentTenant();
       try {
         setGmailStatus("Saving Gmail settings...", tenant);
-        const saved = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(actionElement.closest("form")));
+        const saved = await saveGmailSettingsViaApi(tenant.id, gmailActionValues(actionElement));
         setTenant({ ...currentTenant(), gmailIntegration: { ...saved.gmailIntegration, status: "Preparing Google authorization..." } });
         render();
         const connected = await connectGmailViaApi(tenant.id);
@@ -3508,7 +3605,7 @@ document.addEventListener("click", async (event) => {
       let progressTimer = null;
       try {
         setGmailStatus("Saving Gmail settings...", tenant);
-        const saved = await saveGmailSettingsViaApi(tenant.id, gmailFormValues(actionElement.closest("form")));
+        const saved = await saveGmailSettingsViaApi(tenant.id, gmailActionValues(actionElement));
         setTenant({ ...currentTenant(), gmailIntegration: { ...saved.gmailIntegration, signals: [], status: "Scanning Gmail..." } });
         ui.addedGmailContacts.clear();
         ui.skippedGmailContacts.clear();
