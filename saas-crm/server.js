@@ -4509,7 +4509,13 @@ function staticFilePathForUrlPath(urlPath) {
 }
 
 function serveStatic(req, res) {
-  const urlPath = decodeURIComponent(new URL(req.url, `http://localhost:${port}`).pathname);
+  const requestUrl = new URL(req.url, `http://localhost:${port}`);
+  const urlPath = decodeURIComponent(requestUrl.pathname);
+  if ((urlPath === "/crm/demo/gadig" || urlPath === "/crm/gadig") && requestUrl.searchParams.get("v") !== "20260626-demo-gadig") {
+    res.writeHead(302, { location: `${urlPath}?v=20260626-demo-gadig`, "cache-control": "no-store" });
+    res.end();
+    return;
+  }
   let filePath = staticFilePathForUrlPath(urlPath);
   if (!filePath.startsWith(root)) {
     res.writeHead(403);

@@ -718,6 +718,9 @@ test("CRM demo route serves the CRM app shell", () => {
   assert.notEqual(staticFilePathForUrlPath("/crm/app.js"), crmIndex);
   assert.match(server, /headers\["cache-control"\] = "no-store"/);
   assert.match(server, /urlPath === "\/crm" \|\| urlPath\.startsWith\("\/crm\/"\)/);
+  assert.match(server, /urlPath === "\/crm\/demo\/gadig"/);
+  assert.match(server, /urlPath === "\/crm\/gadig"/);
+  assert.doesNotMatch(server, /gagig/i);
 });
 
 test("CRM named demo routes use the demo tenant instead of admin", () => {
