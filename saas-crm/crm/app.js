@@ -12,7 +12,9 @@ const CRM_NAMED_ROUTE_MATCH = location.pathname.match(/^\/crm\/([^/.]+)\/?$/);
 const CRM_SECTION_ROUTE = CRM_NAMED_ROUTE_MATCH && ["admin", "home", "pipeline", "accounts", "campaigns", "contacts", "activities", "inbox", "reports", "settings", "templates"].includes(CRM_NAMED_ROUTE_MATCH[1]) ? CRM_NAMED_ROUTE_MATCH[1] : "";
 const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm\/demo(?:\/([^/]+))?\/?$/) || (!CRM_SECTION_ROUTE ? CRM_NAMED_ROUTE_MATCH : null);
 const IS_DEMO_ROUTE = !!DEMO_ROUTE_MATCH;
-const DEMO_USER_NAME = DEMO_ROUTE_MATCH?.[1] || DEMO_ROUTE_MATCH?.[2] ? titleCase(DEMO_ROUTE_MATCH[1] || DEMO_ROUTE_MATCH[2]) : "Demo User";
+const DEMO_NAMES = { gadig: "Gadi Glikberg" };
+const DEMO_USER_SLUG = DEMO_ROUTE_MATCH?.[1] || DEMO_ROUTE_MATCH?.[2] || "";
+const DEMO_USER_NAME = DEMO_USER_SLUG ? (DEMO_NAMES[DEMO_USER_SLUG.toLowerCase()] || titleCase(DEMO_USER_SLUG)) : "Demo User";
 const IS_CANONICAL_REDIRECT = !IS_DEMO_ROUTE && location.hostname === "www.zeptrix.io";
 
 if (IS_CANONICAL_REDIRECT) {
