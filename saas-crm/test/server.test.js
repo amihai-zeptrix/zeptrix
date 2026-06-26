@@ -844,7 +844,9 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   const renderHomeEventSource = functionSource(app, "renderHomeEvent", "birthdayDate");
 
   assert.match(renderHomeSource, /israelGreeting\(\)/);
+  assert.match(renderHomeSource, /`\$\{israelGreeting\(\)\}, \$\{currentUser\(\)\.name\}`/);
   assert.doesNotMatch(renderHomeSource, /Good morning,/);
+  assert.doesNotMatch(renderHomeSource, /currentUser\(\)\.name\.split/);
   assert.match(israelGreetingSource, /timeZone: "Asia\/Jerusalem"/);
   assert.match(renderHomeSource, /Accounts that need attention/);
   assert.match(renderHomeSource, /attentionAccounts\.map\(renderHomeAttentionAccount\)/);
