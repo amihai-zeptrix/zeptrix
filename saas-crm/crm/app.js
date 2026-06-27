@@ -1763,6 +1763,7 @@ function accountsNeedingAttention(tenant = currentTenant()) {
     });
   for (const thread of homeAccountAttentionCorrelations(tenant)) {
     const deal = tenant.deals.find((item) => String(item.id) === String(thread.dealId))
+      || tenant.deals.find((item) => String(item.email || "").toLowerCase() === String(thread.email || "").toLowerCase())
       || tenant.deals.find((item) => item.account === thread.account);
     if (!deal || !isOpenDeal(deal)) continue;
     if (!deal) continue;
@@ -1782,7 +1783,11 @@ function accountsNeedingAttention(tenant = currentTenant()) {
 
 function homeAccountAttentionCorrelations(tenant = currentTenant()) {
   return [...homeCorrespondenceRequiringAttention(tenant), ...homeContactsNeedingFollowUp(tenant)]
-    .filter((thread) => thread.dealId && tenant.deals.some((deal) => String(deal.id) === String(thread.dealId)));
+    .filter((thread) => tenant.deals.some((deal) => (
+      String(deal.id) === String(thread.dealId)
+      || String(deal.email || "").toLowerCase() === String(thread.email || "").toLowerCase()
+      || deal.account === thread.account
+    )));
 }
 
 function isOpenDeal(deal) {

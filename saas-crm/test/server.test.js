@@ -900,9 +900,13 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(renderHomeAccountSource, /correlated-attention-row/);
   assert.match(accountsNeedingAttentionSource, /homeAccountAttentionCorrelations\(tenant\)/);
   assert.match(accountsNeedingAttentionSource, /Correspondence needs attention/);
+  assert.match(accountsNeedingAttentionSource, /thread\.subject/);
+  assert.match(accountsNeedingAttentionSource, /thread\.email/);
   assert.match(accountsNeedingAttentionSource, /correspondenceRisk/);
   assert.match(accountsNeedingAttentionSource, /isOpenDeal\(deal\)/);
   assert.match(correlationSource, /thread\.dealId/);
+  assert.match(correlationSource, /thread\.email/);
+  assert.match(correlationSource, /thread\.account/);
   assert.doesNotMatch(homeFollowUpSource, /\|\| tenant\.deals\[0\]/);
   assert.match(isOpenDealSource, /!\["Won", "Lost"\]\.includes\(deal\.stage\)/);
   assert.match(focusHomeCorrespondenceSource, /querySelectorAll\("\[data-home-thread-id\]"\)/);
