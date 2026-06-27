@@ -514,7 +514,7 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUr
       <div>
         <span class="eyebrow">Assume role setup</span>
         <h3>Connect AWS with one field</h3>
-        <p>CloudPrune generates the setup values. After the read-only role exists in AWS, enter the 12-digit AWS account ID.</p>
+        <p>CloudPrune generates the setup values. After the AWS stack finishes, paste the AccountId output below.</p>
       </div>
       <input name="externalId" type="hidden" value="${draftExternalId}" />
       <input name="roleArn" type="hidden" value="${draftRoleArn}" />
@@ -523,7 +523,7 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUr
           <span>1</span>
           <div>
             <strong>Create read-only AWS role</strong>
-            <p>Launch the AWS stack. CloudPrune uses a fixed role name, so you only need the account ID afterward.</p>
+            <p>Launch the AWS stack with these parameters. The account ID appears later in the stack Outputs.</p>
             ${hasPrincipal
               ? `<a class="launch-stack-button" href="${escapeHtml(launchUrl)}" target="_blank" rel="noopener">Launch CloudFormation</a>`
               : `<button class="launch-stack-button" type="button" disabled>Launch CloudFormation</button>`}
@@ -542,6 +542,7 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUr
           <div>
             <strong>Enter AWS account ID</strong>
             <label>AWS account ID<input name="awsAccountId" value="${draftAccountId}" inputmode="numeric" maxlength="12" placeholder="123456789012" /></label>
+            <p>Copy the <strong>AccountId</strong> value from the CloudFormation stack Outputs.</p>
             <p class="derived-role" data-derived-role>${draftRoleArn || "Role ARN will be derived automatically."}</p>
           </div>
         </section>

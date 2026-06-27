@@ -108,7 +108,10 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
     const template = await fetch(`${baseUrl}/cloudprune/aws-readonly-role-template.yaml`);
     assert.equal(template.status, 200);
     assert.match(template.headers.get("content-type"), /text\/yaml/);
-    assert.match(await template.text(), /CloudPruneReadOnlyRole/);
+    const templateBody = await template.text();
+    assert.match(templateBody, /CloudPruneReadOnlyRole/);
+    assert.match(templateBody, /AccountId:/);
+    assert.match(templateBody, /!Ref AWS::AccountId/);
 
     const fallback = await fetch(`${baseUrl}/cloudprune/recommendations`);
     assert.equal(fallback.status, 200);
@@ -175,6 +178,7 @@ test("CloudPrune empty workspace opens AWS assume-role setup", () => {
   assert.match(workspace, /External ID/);
   assert.match(workspace, /Read-only cost, inventory, and utilization signals/);
   assert.match(workspace, /AWS account ID/);
+  assert.match(workspace, /AccountId/);
   assert.match(workspace, /placeholder="123456789012"/);
   assert.match(workspace, /Role ARN will be derived automatically/);
   assert.match(workspace, /arn:aws:iam::ACCOUNT_ID:role\/CloudPruneReadOnlyRole/);

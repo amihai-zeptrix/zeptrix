@@ -56,8 +56,11 @@ Resources:
                 Resource: "*"
 
 Outputs:
+  AccountId:
+    Description: Paste this value into CloudPrune after the stack is created.
+    Value: !Ref AWS::AccountId
   RoleArn:
-    Description: Paste this value into CloudPrune.
+    Description: IAM role ARN created by this stack.
     Value: !GetAtt CloudPruneReadOnlyRole.Arn
   ExternalId:
     Description: External ID CloudPrune will use when assuming this role.
