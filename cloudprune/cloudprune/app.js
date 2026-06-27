@@ -468,21 +468,42 @@ function renderEmptyWorkspace() {
 function renderAwsConnectForm(externalId, principalArn, roleArn = "") {
   const draftRoleArn = escapeHtml(state.awsConnectDraft.roleArn || roleArn);
   const draftExternalId = escapeHtml(state.awsConnectDraft.externalId || externalId);
+  const canSave = Boolean((state.awsConnectDraft.roleArn || roleArn || "").trim());
   return `
     <form class="connect-form" data-connect-form="aws">
       <div>
         <span class="eyebrow">Assume role setup</span>
-        <h3>AWS read-only access</h3>
+        <h3>Connect AWS with one field</h3>
+        <p>CloudPrune generates the setup values. After the read-only role exists in AWS, paste only the Role ARN.</p>
       </div>
-      <label>External ID<input name="externalId" value="${draftExternalId}" readonly /></label>
-      <label>Role ARN<input name="roleArn" value="${draftRoleArn}" placeholder="arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole" /></label>
-      <div class="trust-policy">
-        <span>Trust policy values</span>
-        <code>Principal: ${principalArn}</code>
-        <code>sts:ExternalId: ${externalId}</code>
+      <input name="externalId" type="hidden" value="${draftExternalId}" />
+      <div class="setup-steps">
+        <section class="setup-step">
+          <span>1</span>
+          <div>
+            <strong>Create read-only AWS role</strong>
+            <p>Use these generated values in the AWS trust policy.</p>
+            <div class="trust-policy">
+              <span>CloudPrune principal</span>
+              <code>${principalArn}</code>
+              <span>External ID</span>
+              <code>${externalId}</code>
+              <span>Permissions</span>
+              <code>Read-only cost, inventory, and utilization signals</code>
+            </div>
+          </div>
+        </section>
+        <section class="setup-step">
+          <span>2</span>
+          <div>
+            <strong>Paste the AWS Role ARN</strong>
+            <label>Role ARN<input name="roleArn" value="${draftRoleArn}" placeholder="Paste the IAM role ARN from AWS" /></label>
+          </div>
+        </section>
       </div>
+      <p class="field-help">Example: <code>arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole</code></p>
       <div class="connect-actions">
-        <button type="submit">Save role</button>
+        <button data-action="save-role" type="submit" ${canSave ? "" : "disabled"}>Save role</button>
         <button class="secondary-connect" data-action="cancel-connect" type="button">Cancel</button>
       </div>
       <p class="auth-message">${escapeHtml(state.connectMessage)}</p>
@@ -716,7 +737,9 @@ document.addEventListener("change", (event) => {
 function handleTextInput(event) {
   const connectForm = event.target.closest("[data-connect-form='aws']");
   if (connectForm) {
-    captureAwsConnectDraft(connectForm);
+    const draft = captureAwsConnectDraft(connectForm);
+    const saveButton = connectForm.querySelector("[data-action='save-role']");
+    if (saveButton) saveButton.disabled = !draft.roleArn;
     return;
   }
   const form = event.target.closest("[data-auth-form='register']");
@@ -734,6 +757,7 @@ document.addEventListener("submit", async (event) => {
   if (connectForm) {
     event.preventDefault();
     const payload = captureAwsConnectDraft(connectForm);
+    if (!payload.roleArn) return;
     state.connectMessage = "Saving AWS role...";
     render();
     try {

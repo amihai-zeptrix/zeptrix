@@ -159,9 +159,16 @@ test("CloudPrune empty workspace opens AWS assume-role setup", () => {
     });
   });
   assert.match(workspace, /Assume role setup/);
+  assert.match(workspace, /Connect AWS with one field/);
   assert.match(workspace, /<button data-action="connect" disabled>Connect AWS<\/button>/);
   assert.match(workspace, /<button data-action="connect" disabled>Connect cloud<\/button>/);
-  assert.match(workspace, /arn:aws:iam::123456789012:role\/CloudPruneReadOnlyRole/);
+  assert.match(workspace, /name="externalId" type="hidden" value="cloudprune-account-1"/);
+  assert.match(workspace, /CloudPrune principal/);
+  assert.match(workspace, /External ID/);
+  assert.match(workspace, /Read-only cost, inventory, and utilization signals/);
+  assert.match(workspace, /placeholder="Paste the IAM role ARN from AWS"/);
+  assert.match(workspace, /Example: <code>arn:aws:iam::123456789012:role\/CloudPruneReadOnlyRole<\/code>/);
+  assert.match(workspace, /<button data-action="save-role" type="submit" disabled>Save role<\/button>/);
   assert.doesNotMatch(workspace, /name="roleArn"[^>]*required/);
   assert.match(workspace, /cloudprune-account-1/);
 });
