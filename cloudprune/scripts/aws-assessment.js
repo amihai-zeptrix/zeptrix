@@ -1,0 +1,884 @@
+#!/usr/bin/env node
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const DEFAULT_DAYS = 30;
+const DEFAULT_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
+const DEFAULT_AWS_TIMEOUT_MS = 30000;
+const DEFAULT_CONCURRENCY = 6;
+
+const CHECKS = [
+  {
+    id: "identity",
+    service: "STS",
+    command: ["sts", "get-caller-identity"],
+    required: true,
+  },
+  {
+    id: "costByService",
+    service: "Cost Explorer",
+    command: ({ startDate, endDate }) => [
+      "ce",
+      "get-cost-and-usage",
+      "--time-period",
+      `Start=${startDate},End=${endDate}`,
+      "--granularity",
+      "MONTHLY",
+      "--metrics",
+      "UnblendedCost",
+      "--group-by",
+      "Type=DIMENSION,Key=SERVICE",
+    ],
+  },
+  {
+    id: "savingsPlansRecommendation",
+    service: "Cost Explorer",
+    command: [
+      "ce",
+      "get-savings-plans-purchase-recommendation",
+      "--savings-plans-type",
+      "COMPUTE_SP",
+      "--term-in-years",
+      "ONE_YEAR",
+      "--payment-option",
+      "NO_UPFRONT",
+      "--lookback-period-in-days",
+      "SIXTY_DAYS",
+    ],
+    global: true,
+  },
+  {
+    id: "ec2Instances",
+    service: "EC2",
+    command: ["ec2", "describe-instances"],
+  },
+  {
+    id: "ebsVolumes",
+    service: "EBS",
+    command: ["ec2", "describe-volumes"],
+  },
+  {
+    id: "elasticIps",
+    service: "EC2",
+    command: ["ec2", "describe-addresses"],
+  },
+  {
+    id: "natGateways",
+    service: "VPC",
+    command: ["ec2", "describe-nat-gateways"],
+  },
+  {
+    id: "loadBalancers",
+    service: "ELBv2",
+    command: ["elbv2", "describe-load-balancers"],
+  },
+  {
+    id: "rdsInstances",
+    service: "RDS",
+    command: ["rds", "describe-db-instances"],
+  },
+  {
+    id: "logGroups",
+    service: "CloudWatch Logs",
+    command: ["logs", "describe-log-groups"],
+  },
+  {
+    id: "s3Buckets",
+    service: "S3",
+    command: ["s3api", "list-buckets"],
+    global: true,
+  },
+  {
+    id: "computeOptimizerEc2",
+    service: "Compute Optimizer",
+    command: ["compute-optimizer", "get-ec2-instance-recommendations"],
+  },
+  {
+    id: "trustedAdvisorChecks",
+    service: "Trusted Advisor",
+    command: ["support", "describe-trusted-advisor-checks", "--language", "en"],
+    region: "us-east-1",
+  },
+];
+
+function parseArgs(argv) {
+  const args = {
+    days: DEFAULT_DAYS,
+    concurrency: DEFAULT_CONCURRENCY,
+    format: "both",
+    maxResources: 25,
+    outDir: path.resolve(process.cwd(), "reports"),
+    region: DEFAULT_REGION,
+    timeoutMs: DEFAULT_AWS_TIMEOUT_MS,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--concurrency") args.concurrency = Number(argv[++index]);
+    else if (arg === "--days") args.days = Number(argv[++index]);
+    else if (arg === "--format") args.format = argv[++index];
+    else if (arg === "--max-resources") args.maxResources = Number(argv[++index]);
+    else if (arg === "--out-dir") args.outDir = path.resolve(argv[++index]);
+    else if (arg === "--profile") args.profile = argv[++index];
+    else if (arg === "--region") args.region = argv[++index];
+    else if (arg === "--timeout-ms") args.timeoutMs = Number(argv[++index]);
+    else if (arg === "--help" || arg === "-h") args.help = true;
+    else throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  if (!Number.isInteger(args.days) || args.days < 1 || args.days > 366) throw new Error("--days must be an integer from 1 to 366.");
+  if (!Number.isInteger(args.concurrency) || args.concurrency < 1 || args.concurrency > 20) throw new Error("--concurrency must be an integer from 1 to 20.");
+  if (!Number.isInteger(args.maxResources) || args.maxResources < 1 || args.maxResources > 250) throw new Error("--max-resources must be an integer from 1 to 250.");
+  if (!Number.isInteger(args.timeoutMs) || args.timeoutMs < 1000 || args.timeoutMs > 300000) throw new Error("--timeout-ms must be an integer from 1000 to 300000.");
+  if (!["json", "markdown", "both"].includes(args.format)) throw new Error("--format must be json, markdown, or both.");
+  return args;
+}
+
+function isoDateDaysAgo(daysAgo) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - daysAgo);
+  return date.toISOString().slice(0, 10);
+}
+
+function compactError(stderr) {
+  const text = String(stderr || "").trim();
+  return text.split("\n").map((line) => line.trim()).filter(Boolean).slice(-2).join(" ") || "Unknown AWS CLI error.";
+}
+
+function createLimiter(concurrency) {
+  let active = 0;
+  const queue = [];
+
+  function drain() {
+    while (active < concurrency && queue.length) {
+      const item = queue.shift();
+      active += 1;
+      Promise.resolve()
+        .then(item.task)
+        .then(item.resolve, item.reject)
+        .finally(() => {
+          active -= 1;
+          drain();
+        });
+    }
+  }
+
+  return function limit(task) {
+    return new Promise((resolve, reject) => {
+      queue.push({ task, resolve, reject });
+      drain();
+    });
+  };
+}
+
+function awsExecutionOptions(options, extra = {}) {
+  return {
+    profile: options.profile,
+    timeoutMs: options.timeoutMs,
+    awsLimiter: options.awsLimiter,
+    ...extra,
+  };
+}
+
+async function runAwsJson(commandArgs, options = {}) {
+  if (options.awsLimiter && !options.skipLimit) {
+    return options.awsLimiter(() => runAwsJson(commandArgs, { ...options, skipLimit: true }));
+  }
+
+  const args = [...commandArgs, "--output", "json"];
+  if (options.profile) args.unshift("--profile", options.profile);
+  if (options.region) args.unshift("--region", options.region);
+
+  return new Promise((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timeoutMs = options.timeoutMs || DEFAULT_AWS_TIMEOUT_MS;
+    const child = spawn("aws", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const timer = setTimeout(() => {
+      settled = true;
+      child.kill("SIGTERM");
+      resolve({ ok: false, error: `AWS CLI command timed out after ${timeoutMs}ms.` });
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      if (stdout.length > 20 * 1024 * 1024) {
+        settled = true;
+        child.kill("SIGTERM");
+        clearTimeout(timer);
+        resolve({ ok: false, error: "AWS CLI output exceeded 20MB." });
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ ok: false, error: error.code === "ENOENT" ? "AWS CLI is not installed or not on PATH." : error.message });
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code !== 0) {
+        resolve({ ok: false, error: compactError(stderr) });
+        return;
+      }
+
+      try {
+        resolve({ ok: true, data: JSON.parse(stdout || "{}") });
+      } catch (error) {
+        resolve({ ok: false, error: `AWS CLI returned invalid JSON: ${error.message}` });
+      }
+    });
+  });
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function addCheck(checks, id, service, result) {
+  checks[id] = {
+    service,
+    ok: result.ok,
+    data: result.data,
+    error: result.error,
+    required: false,
+  };
+}
+
+function metricAverage(datapoints) {
+  const values = (datapoints || []).map((point) => Number(point.Average)).filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+function metricSum(datapoints, key = "Sum") {
+  const values = (datapoints || []).map((point) => Number(point[key])).filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function metricSummary(datapoints, key = "Sum") {
+  const values = (datapoints || []).map((point) => Number(point[key])).filter((value) => Number.isFinite(value));
+  if (!values.length) return { hasData: false, value: null };
+  return { hasData: true, value: values.reduce((total, value) => total + value, 0) };
+}
+
+async function getMetric(options, context, namespace, metricName, dimensions, statistic) {
+  const period = Math.max(3600, Math.ceil((options.days * 86400) / 60));
+  const dimensionArgs = dimensions.map((dimension) => `Name=${dimension.name},Value=${dimension.value}`);
+  return runAwsJson(
+    [
+      "cloudwatch",
+      "get-metric-statistics",
+      "--namespace",
+      namespace,
+      "--metric-name",
+      metricName,
+      "--start-time",
+      `${context.startDate}T00:00:00Z`,
+      "--end-time",
+      `${context.endDate}T00:00:00Z`,
+      "--period",
+      String(period),
+      "--statistics",
+      statistic,
+      "--dimensions",
+      ...dimensionArgs,
+    ],
+    options
+  );
+}
+
+function loadBalancerDimension(loadBalancerArn) {
+  const marker = ":loadbalancer/";
+  const index = loadBalancerArn.indexOf(marker);
+  return index === -1 ? null : loadBalancerArn.slice(index + marker.length);
+}
+
+function classifyS3Lifecycle(result) {
+  if (result.ok) {
+    return {
+      status: Array.isArray(result.data?.Rules) && result.data.Rules.length > 0 ? "configured" : "missing",
+      configured: Array.isArray(result.data?.Rules) && result.data.Rules.length > 0,
+      error: null,
+    };
+  }
+
+  const error = result.error || "";
+  if (/NoSuchLifecycleConfiguration/i.test(error)) return { status: "missing", configured: false, error };
+  return { status: "unknown", configured: null, error };
+}
+
+async function collectS3LifecycleSignals(checks, options) {
+  const buckets = checks.s3Buckets?.data?.Buckets || [];
+  const sampled = buckets.slice(0, options.maxResources);
+  const data = await mapWithConcurrency(sampled, options.concurrency, async (bucket) => {
+    const s3Options = awsExecutionOptions(options);
+    const [lifecycleResult, versioning] = await Promise.all([
+      runAwsJson(["s3api", "get-bucket-lifecycle-configuration", "--bucket", bucket.Name], s3Options),
+      runAwsJson(["s3api", "get-bucket-versioning", "--bucket", bucket.Name], s3Options),
+    ]);
+    const lifecycle = classifyS3Lifecycle(lifecycleResult);
+    return {
+      name: bucket.Name,
+      createdAt: bucket.CreationDate,
+      lifecycleStatus: lifecycle.status,
+      lifecycleConfigured: lifecycle.configured,
+      lifecycleError: lifecycle.error,
+      versioningStatus: versioning.ok ? versioning.data?.Status || "Suspended" : "Unknown",
+      versioningError: versioning.ok ? null : versioning.error,
+    };
+  });
+
+  addCheck(checks, "s3Lifecycle", "S3 Lifecycle", {
+    ok: true,
+    data: { buckets: data, sampled: sampled.length, total: buckets.length },
+  });
+}
+
+async function collectRdsMetricSignals(checks, options, context) {
+  const instances = checks.rdsInstances?.data?.DBInstances || [];
+  const data = await mapWithConcurrency(instances.slice(0, options.maxResources), options.concurrency, async (instance) => {
+    const id = instance.DBInstanceIdentifier;
+    const [cpu, connections] = await Promise.all([
+      getMetric(options, context, "AWS/RDS", "CPUUtilization", [{ name: "DBInstanceIdentifier", value: id }], "Average"),
+      getMetric(options, context, "AWS/RDS", "DatabaseConnections", [{ name: "DBInstanceIdentifier", value: id }], "Average"),
+    ]);
+    return {
+      id,
+      class: instance.DBInstanceClass,
+      engine: instance.Engine,
+      multiAz: Boolean(instance.MultiAZ),
+      status: instance.DBInstanceStatus,
+      averageCpu: cpu.ok ? metricAverage(cpu.data?.Datapoints) : null,
+      averageConnections: connections.ok ? metricAverage(connections.data?.Datapoints) : null,
+      cpuError: cpu.ok ? null : cpu.error,
+      connectionsError: connections.ok ? null : connections.error,
+    };
+  });
+
+  addCheck(checks, "rdsMetrics", "CloudWatch RDS Metrics", {
+    ok: true,
+    data: { instances: data },
+  });
+}
+
+async function collectLoadBalancerMetricSignals(checks, options, context) {
+  const loadBalancers = checks.loadBalancers?.data?.LoadBalancers || [];
+  const data = await mapWithConcurrency(loadBalancers.slice(0, options.maxResources), options.concurrency, async (loadBalancer) => {
+    const dimension = loadBalancerDimension(loadBalancer.LoadBalancerArn || "");
+    const metricConfigByType = {
+      application: { namespace: "AWS/ApplicationELB", metricName: "RequestCount" },
+      network: { namespace: "AWS/NetworkELB", metricName: "ActiveFlowCount" },
+      gateway: { unsupportedReason: "Gateway Load Balancer idle detection is not implemented yet." },
+    };
+    const config = metricConfigByType[loadBalancer.Type] || { unsupportedReason: `Unsupported load balancer type: ${loadBalancer.Type || "unknown"}.` };
+    const result = dimension && !config.unsupportedReason ? await getMetric(options, context, config.namespace, config.metricName, [{ name: "LoadBalancer", value: dimension }], "Sum") : { ok: false, error: config.unsupportedReason || "Unable to parse load balancer dimension." };
+    const summary = result.ok ? metricSummary(result.data?.Datapoints) : { hasData: false, value: null };
+    return {
+      name: loadBalancer.LoadBalancerName,
+      arn: loadBalancer.LoadBalancerArn,
+      type: loadBalancer.Type,
+      state: loadBalancer.State?.Code,
+      metricName: config.metricName || null,
+      metricStatus: result.ok ? (summary.hasData ? "observed" : "no-data") : "unavailable",
+      metricSum: result.ok ? summary.value : null,
+      metricError: result.ok ? null : result.error,
+    };
+  });
+
+  addCheck(checks, "loadBalancerMetrics", "CloudWatch ELB Metrics", {
+    ok: true,
+    data: { loadBalancers: data },
+  });
+}
+
+async function collectNatMetricSignals(checks, options, context) {
+  const natGateways = checks.natGateways?.data?.NatGateways || [];
+  const data = await mapWithConcurrency(natGateways.slice(0, options.maxResources), options.concurrency, async (gateway) => {
+    const result = await getMetric(options, context, "AWS/NATGateway", "BytesOutToDestination", [{ name: "NatGatewayId", value: gateway.NatGatewayId }], "Sum");
+    return {
+      id: gateway.NatGatewayId,
+      state: gateway.State,
+      bytesOutToDestination: result.ok ? metricSum(result.data?.Datapoints) : null,
+      metricError: result.ok ? null : result.error,
+    };
+  });
+
+  addCheck(checks, "natGatewayMetrics", "CloudWatch NAT Gateway Metrics", {
+    ok: true,
+    data: { natGateways: data },
+  });
+}
+
+async function collectAwsSignals(options) {
+  const endDate = isoDateDaysAgo(0);
+  const startDate = isoDateDaysAgo(options.days);
+  const context = { startDate, endDate };
+  const checks = {};
+  const runtimeOptions = { ...options, awsLimiter: createLimiter(options.concurrency) };
+
+  for (const check of CHECKS) {
+    const command = typeof check.command === "function" ? check.command(context) : check.command;
+    const result = await runAwsJson(command, { ...runtimeOptions, region: check.region || (check.global ? null : options.region) });
+    checks[check.id] = {
+      service: check.service,
+      ok: result.ok,
+      data: result.data,
+      error: result.error,
+      required: Boolean(check.required),
+    };
+  }
+
+  await Promise.all([
+    checks.s3Buckets?.ok ? collectS3LifecycleSignals(checks, runtimeOptions) : null,
+    checks.rdsInstances?.ok ? collectRdsMetricSignals(checks, runtimeOptions, context) : null,
+    checks.loadBalancers?.ok ? collectLoadBalancerMetricSignals(checks, runtimeOptions, context) : null,
+    checks.natGateways?.ok ? collectNatMetricSignals(checks, runtimeOptions, context) : null,
+  ]);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    region: options.region,
+    days: options.days,
+    concurrency: options.concurrency,
+    maxResources: options.maxResources,
+    profile: options.profile || null,
+    checks,
+  };
+}
+
+function dollars(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function costByService(check) {
+  if (!check?.ok) return [];
+  const groups = check.data?.ResultsByTime?.flatMap((period) => period.Groups || []) || [];
+  const byService = new Map();
+  for (const group of groups) {
+    const service = group.Keys?.[0] || "Unknown";
+    const unit = group.Metrics?.UnblendedCost?.Unit || "USD";
+    const key = `${service}\0${unit}`;
+    const current = byService.get(key) || { service, amount: 0, unit };
+    current.amount += dollars(group.Metrics?.UnblendedCost?.Amount);
+    byService.set(key, current);
+  }
+  return Array.from(byService.values())
+    .map((item) => ({ ...item, amount: dollars(item.amount) }))
+    .filter((item) => item.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+}
+
+function flattenInstances(check) {
+  if (!check?.ok) return [];
+  return (check.data?.Reservations || []).flatMap((reservation) => reservation.Instances || []);
+}
+
+function estimatedSavingsFromSavingsPlans(check) {
+  if (!check?.ok) return null;
+  const detail = check.data?.SavingsPlansPurchaseRecommendation?.SavingsPlansPurchaseRecommendationDetails?.[0];
+  const amount = dollars(detail?.EstimatedMonthlySavingsAmount || check.data?.SavingsPlansPurchaseRecommendation?.EstimatedMonthlySavingsAmount || 0);
+  return amount > 0 ? amount : null;
+}
+
+function resourceSample(items, key, limit = 20) {
+  return items.slice(0, limit).map((item) => (typeof key === "function" ? key(item) : item[key])).filter(Boolean);
+}
+
+function addFinding(findings, finding) {
+  findings.push({
+    confidence: "medium",
+    executionMode: "assisted",
+    validationWindow: "Monitor service health, error rate, latency, utilization, and spend for 24-72 hours after change.",
+    ...finding,
+  });
+}
+
+function buildFindings(assessment) {
+  const findings = [];
+  const checks = assessment.checks || {};
+  const costs = costByService(checks.costByService);
+  const totalCost = costs.reduce((total, item) => total + item.amount, 0);
+  const instances = flattenInstances(checks.ec2Instances);
+  const stoppedInstances = instances.filter((instance) => instance.State?.Name === "stopped");
+  const volumes = checks.ebsVolumes?.ok ? checks.ebsVolumes.data?.Volumes || [] : [];
+  const unattachedVolumes = volumes.filter((volume) => volume.State === "available");
+  const addresses = checks.elasticIps?.ok ? checks.elasticIps.data?.Addresses || [] : [];
+  const unassociatedAddresses = addresses.filter((address) => !address.AssociationId);
+  const logGroups = checks.logGroups?.ok ? checks.logGroups.data?.logGroups || [] : [];
+  const infiniteLogGroups = logGroups.filter((group) => !group.retentionInDays);
+  const s3LifecycleBuckets = checks.s3Lifecycle?.ok ? checks.s3Lifecycle.data?.buckets || [] : [];
+  const bucketsWithoutLifecycle = s3LifecycleBuckets.filter((bucket) => bucket.lifecycleStatus === "missing");
+  const optimizerRecommendations = checks.computeOptimizerEc2?.ok ? checks.computeOptimizerEc2.data?.instanceRecommendations || [] : [];
+  const notOptimized = optimizerRecommendations.filter((item) => {
+    const finding = String(item.finding || "").toLowerCase().replace(/[^a-z]/g, "");
+    return finding && finding !== "optimized";
+  });
+  const rdsMetrics = checks.rdsMetrics?.ok ? checks.rdsMetrics.data?.instances || [] : [];
+  const lowUseRds = rdsMetrics.filter((instance) => instance.status === "available" && instance.averageCpu != null && instance.averageCpu < 10 && (instance.averageConnections == null || instance.averageConnections < 5));
+  const loadBalancerMetrics = checks.loadBalancerMetrics?.ok ? checks.loadBalancerMetrics.data?.loadBalancers || [] : [];
+  const idleLoadBalancers = loadBalancerMetrics.filter((loadBalancer) => loadBalancer.state === "active" && (loadBalancer.metricSum === 0 || loadBalancer.metricStatus === "no-data"));
+  const natGateways = checks.natGateways?.ok ? checks.natGateways.data?.NatGateways || [] : [];
+  const activeNatGateways = natGateways.filter((gateway) => gateway.State === "available");
+  const natMetrics = checks.natGatewayMetrics?.ok ? checks.natGatewayMetrics.data?.natGateways || [] : [];
+  const highTrafficNatGateways = natMetrics.filter((gateway) => gateway.state === "available" && Number(gateway.bytesOutToDestination || 0) > 1024 ** 3);
+  const ec2Cost = costs.find((item) => /Elastic Compute Cloud|EC2/i.test(item.service))?.amount || 0;
+  const s3Cost = costs.find((item) => /Simple Storage Service|S3/i.test(item.service))?.amount || 0;
+  const savingsPlanSavings = estimatedSavingsFromSavingsPlans(checks.savingsPlansRecommendation);
+
+  if (unattachedVolumes.length) {
+    const monthlyEstimate = unattachedVolumes.reduce((total, volume) => {
+      const size = Number(volume.Size || 0);
+      const rate = volume.VolumeType === "gp3" ? 0.08 : 0.10;
+      return total + size * rate;
+    }, 0);
+    addFinding(findings, {
+      id: "idle-ebs-volumes",
+      strategy: "Idle resource cleanup",
+      title: `Review ${unattachedVolumes.length} unattached EBS volume${unattachedVolumes.length === 1 ? "" : "s"}`,
+      estimatedMonthlySavings: dollars(monthlyEstimate),
+      confidence: "high",
+      blastRadius: "Per-volume; no running workload is currently attached.",
+      operationalRisk: "low",
+      downtimeRisk: "none if volumes are truly detached",
+      impactAnalysis: "Deleting a detached volume has no compute downtime, but data is permanently removed unless a snapshot exists.",
+      minimizeImpact: "Snapshot first, retain the snapshot for an agreed rollback window, require owner approval for production-tagged volumes, then delete in small batches.",
+      rollbackPath: "Create a new EBS volume from the retained snapshot and attach it to the original instance or replacement instance.",
+      resources: resourceSample(unattachedVolumes, "VolumeId"),
+    });
+  }
+
+  if (unassociatedAddresses.length) {
+    addFinding(findings, {
+      id: "idle-elastic-ips",
+      strategy: "Idle resource cleanup",
+      title: `Release ${unassociatedAddresses.length} unassociated Elastic IP address${unassociatedAddresses.length === 1 ? "" : "es"}`,
+      estimatedMonthlySavings: dollars(unassociatedAddresses.length * 3.6),
+      confidence: "high",
+      blastRadius: "Per-address; no active ENI or instance association is present.",
+      operationalRisk: "low",
+      downtimeRisk: "none for unassociated addresses",
+      impactAnalysis: "Releasing an unassociated Elastic IP has no workload downtime, but the exact public IP may not be recoverable later.",
+      minimizeImpact: "Confirm DNS, firewall allowlists, and owner intent before release; quarantine production-tagged addresses for a review window.",
+      rollbackPath: "Allocate a new Elastic IP and update DNS/firewall references if the old address cannot be recovered.",
+      resources: resourceSample(unassociatedAddresses, "PublicIp"),
+    });
+  }
+
+  if (stoppedInstances.length) {
+    addFinding(findings, {
+      id: "stopped-ec2-instances",
+      strategy: "Idle resource cleanup",
+      title: `Validate ${stoppedInstances.length} stopped EC2 instance${stoppedInstances.length === 1 ? "" : "s"} and attached storage`,
+      estimatedMonthlySavings: 0,
+      confidence: "medium",
+      blastRadius: "Per-instance plus attached EBS volumes and Elastic IPs.",
+      operationalRisk: "low",
+      downtimeRisk: "none for already stopped instances",
+      impactAnalysis: "Stopped instances do not incur compute charges, but attached EBS volumes, snapshots, and Elastic IPs can continue to cost money.",
+      minimizeImpact: "Confirm owner and last-use intent, snapshot required data, release unused Elastic IPs, then remove instances and dependent storage only after approval.",
+      rollbackPath: "Restore from AMI/snapshot or recreate from infrastructure-as-code if available.",
+      resources: resourceSample(stoppedInstances, "InstanceId"),
+    });
+  }
+
+  if (idleLoadBalancers.length) {
+    addFinding(findings, {
+      id: "idle-load-balancers",
+      strategy: "Idle resource cleanup",
+      title: `Investigate ${idleLoadBalancers.length} load balancer${idleLoadBalancers.length === 1 ? "" : "s"} with no observed traffic`,
+      estimatedMonthlySavings: null,
+      confidence: "medium",
+      blastRadius: "Per-load-balancer and any DNS names, target groups, listeners, and security groups attached to it.",
+      operationalRisk: "medium",
+      downtimeRisk: "possible if DNS or clients still depend on it",
+      impactAnalysis: "A load balancer with no sampled requests may still be used by rare jobs, health checks, allowlists, or disaster-recovery flows.",
+      minimizeImpact: "Extend the metric lookback, verify DNS records and access logs, disable listeners before deletion, and watch for failed requests during a quarantine window.",
+      rollbackPath: "Recreate the load balancer from infrastructure-as-code or retained configuration and restore DNS.",
+      resources: resourceSample(idleLoadBalancers, "name"),
+    });
+  }
+
+  if (notOptimized.length) {
+    addFinding(findings, {
+      id: "ec2-rightsizing",
+      strategy: "Rightsizing",
+      title: `Evaluate ${notOptimized.length} EC2 Compute Optimizer recommendation${notOptimized.length === 1 ? "" : "s"}`,
+      estimatedMonthlySavings: null,
+      confidence: "high",
+      blastRadius: "Per-instance or Auto Scaling group depending on ownership.",
+      operationalRisk: "medium",
+      downtimeRisk: "restart or rolling replacement",
+      impactAnalysis: "Instance type changes usually require stop/start or rolling replacement. Performance risk depends on CPU, memory, network, and disk headroom.",
+      minimizeImpact: "Apply one size step at a time, use Auto Scaling rolling replacement where possible, avoid peak windows, and monitor p95 CPU, memory, latency, and error rate.",
+      rollbackPath: "Revert to the prior instance type or previous launch template version.",
+      resources: resourceSample(notOptimized, (item) => item.instanceArn || item.instanceName || item.instanceId),
+    });
+  }
+
+  if (lowUseRds.length) {
+    addFinding(findings, {
+      id: "rds-rightsizing",
+      strategy: "Rightsizing",
+      title: `Review ${lowUseRds.length} low-utilization RDS instance${lowUseRds.length === 1 ? "" : "s"}`,
+      estimatedMonthlySavings: null,
+      confidence: "medium",
+      blastRadius: "Per-database instance; application impact depends on connection handling and failover topology.",
+      operationalRisk: "medium",
+      downtimeRisk: "maintenance window, restart, or Multi-AZ failover",
+      impactAnalysis: "RDS class changes can cause failover or downtime. Under-provisioning can increase query latency or exhaust memory/IO.",
+      minimizeImpact: "Use a maintenance window, verify freeable memory/IOPS/storage headroom, test one class step down, and prioritize Multi-AZ failover paths.",
+      rollbackPath: "Scale back to the previous DB instance class during the next approved window or fail back if Multi-AZ behavior is unhealthy.",
+      resources: resourceSample(lowUseRds, "id"),
+    });
+  }
+
+  if ((savingsPlanSavings && savingsPlanSavings > 0) || ec2Cost > Math.max(100, totalCost * 0.2)) {
+    const hasNativeSavingsPlanRecommendation = Boolean(savingsPlanSavings);
+    addFinding(findings, {
+      id: "compute-commitments",
+      strategy: "Commitment optimization",
+      title: hasNativeSavingsPlanRecommendation ? "Review AWS Savings Plans purchase recommendation" : "Estimate whether compute spend merits Savings Plans analysis",
+      estimatedMonthlySavings: hasNativeSavingsPlanRecommendation ? savingsPlanSavings : null,
+      confidence: hasNativeSavingsPlanRecommendation ? "high" : "low",
+      blastRadius: "Financial commitment across eligible compute usage.",
+      operationalRisk: "low",
+      downtimeRisk: "none",
+      impactAnalysis: hasNativeSavingsPlanRecommendation
+        ? "Savings Plans do not change running infrastructure, but they create financial lock-in if usage drops or shifts."
+        : "This is a heuristic signal based on EC2 service spend, not a purchase recommendation. It should only trigger deeper hourly-usage analysis.",
+      minimizeImpact: "Commit only to a conservative baseline, start with partial coverage, exclude new or volatile accounts, generate native AWS recommendations first, and review hourly usage stability before purchase.",
+      rollbackPath: "No technical rollback; mitigate by buying smaller commitments and letting them expire naturally.",
+    });
+  }
+
+  if (infiniteLogGroups.length || bucketsWithoutLifecycle.length || s3Cost > Math.max(50, totalCost * 0.1)) {
+    addFinding(findings, {
+      id: "storage-lifecycle",
+      strategy: "Storage lifecycle optimization",
+      title: `Add retention/lifecycle policies for ${infiniteLogGroups.length + bucketsWithoutLifecycle.length || "candidate"} storage target${infiniteLogGroups.length + bucketsWithoutLifecycle.length === 1 ? "" : "s"}`,
+      estimatedMonthlySavings: s3Cost ? dollars(s3Cost * 0.1) : null,
+      confidence: infiniteLogGroups.length || bucketsWithoutLifecycle.length ? "high" : "medium",
+      blastRadius: "Log groups and storage buckets selected for lifecycle policy.",
+      operationalRisk: "low",
+      downtimeRisk: "none, but retrieval latency can increase for archive tiers",
+      impactAnalysis: "Retention changes can remove historical logs or move objects to slower retrieval classes, affecting incident response and analytics.",
+      minimizeImpact: "Start with transition policies before deletion, preserve compliance-tagged data, use longer retention for production logs, and avoid Deep Archive without explicit restore-time approval.",
+      rollbackPath: "Increase retention going forward; restore archived objects when needed, subject to storage class restore latency.",
+      resources: [
+        ...resourceSample(infiniteLogGroups, "logGroupName", 10),
+        ...resourceSample(bucketsWithoutLifecycle, (bucket) => `s3://${bucket.name}`, 10),
+      ],
+    });
+  }
+
+  if (activeNatGateways.length) {
+    addFinding(findings, {
+      id: "network-egress-review",
+      strategy: "Network and data transfer waste",
+      title: `Review ${highTrafficNatGateways.length || activeNatGateways.length} NAT gateway${(highTrafficNatGateways.length || activeNatGateways.length) === 1 ? "" : "s"} for endpoint opportunities`,
+      estimatedMonthlySavings: null,
+      confidence: highTrafficNatGateways.length ? "medium" : "low",
+      blastRadius: "Per-VPC, subnet, and routed workload.",
+      operationalRisk: "medium",
+      downtimeRisk: "routing or DNS impact if changed incorrectly",
+      impactAnalysis: "Changing NAT, route tables, or endpoints can interrupt egress paths for private workloads.",
+      minimizeImpact: "Analyze traffic first, add gateway/interface endpoints before removing NAT paths, test per subnet, and keep rollback route table changes ready.",
+      rollbackPath: "Restore previous route table entries and endpoint policies.",
+      resources: highTrafficNatGateways.length ? resourceSample(highTrafficNatGateways, "id") : resourceSample(activeNatGateways, "NatGatewayId"),
+    });
+  }
+
+  return findings.sort((a, b) => {
+    const riskRank = { low: 0, medium: 1, high: 2 };
+    const riskDelta = riskRank[a.operationalRisk] - riskRank[b.operationalRisk];
+    if (riskDelta) return riskDelta;
+    return (b.estimatedMonthlySavings || 0) - (a.estimatedMonthlySavings || 0);
+  });
+}
+
+function buildPermissionSummary(assessment) {
+  return Object.entries(assessment.checks || {}).map(([id, check]) => ({
+    id,
+    service: check.service,
+    ok: Boolean(check.ok),
+    required: Boolean(check.required),
+    error: check.ok ? null : check.error,
+  }));
+}
+
+function markdownText(value) {
+  return String(value ?? "").replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function markdownTableCell(value) {
+  return markdownText(value).replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+}
+
+function markdownInlineCodeList(values) {
+  return values.map((value) => `\`${String(value).replace(/`/g, "\\`")}\``).join(", ");
+}
+
+function renderMarkdown(report) {
+  const account = markdownText(report.identity?.Account || "unknown");
+  const lines = [
+    "# CloudPrune AWS Assessment",
+    "",
+    `Generated: ${markdownText(report.generatedAt)}`,
+    `Account: ${account}`,
+    `Region: ${markdownText(report.region)}`,
+    `Lookback: ${markdownText(report.days)} days`,
+    `Resource sample limit: ${markdownText(report.maxResources)}`,
+    `AWS CLI concurrency: ${markdownText(report.concurrency || DEFAULT_CONCURRENCY)}`,
+    "",
+    "## Permission Check",
+    "",
+    "| Check | Service | Status | Notes |",
+    "| --- | --- | --- | --- |",
+    ...report.permissions.map((item) => `| ${markdownTableCell(item.id)} | ${markdownTableCell(item.service)} | ${item.ok ? "OK" : "Missing"} | ${markdownTableCell(item.error || "")} |`),
+    "",
+    "## Findings",
+    "",
+  ];
+
+  if (!report.findings.length) {
+    lines.push("No actionable findings were detected from the available read-only signals.", "");
+  }
+
+  for (const finding of report.findings) {
+    lines.push(
+      `### ${markdownText(finding.title)}`,
+      "",
+      `- Strategy: ${markdownText(finding.strategy)}`,
+      `- Estimated monthly savings: ${finding.estimatedMonthlySavings == null ? "Needs deeper usage data" : `$${finding.estimatedMonthlySavings.toLocaleString()}`}`,
+      `- Confidence: ${markdownText(finding.confidence)}`,
+      `- Blast radius: ${markdownText(finding.blastRadius)}`,
+      `- Operational risk: ${markdownText(finding.operationalRisk)}`,
+      `- Downtime risk: ${markdownText(finding.downtimeRisk)}`,
+      `- Impact analysis: ${markdownText(finding.impactAnalysis)}`,
+      `- Minimize impact: ${markdownText(finding.minimizeImpact)}`,
+      `- Rollback path: ${markdownText(finding.rollbackPath)}`,
+      `- Validation window: ${markdownText(finding.validationWindow)}`,
+      ""
+    );
+    if (finding.resources?.length) {
+      lines.push(`Resources sampled: ${markdownInlineCodeList(finding.resources)}`, "");
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function buildReport(assessment) {
+  return {
+    generatedAt: assessment.generatedAt,
+    account: assessment.checks?.identity?.data?.Account || null,
+    identity: assessment.checks?.identity?.data || null,
+    region: assessment.region,
+    days: assessment.days,
+    concurrency: assessment.concurrency || null,
+    maxResources: assessment.maxResources || null,
+    permissions: buildPermissionSummary(assessment),
+    costs: costByService(assessment.checks?.costByService).slice(0, 20),
+    findings: buildFindings(assessment),
+  };
+}
+
+function writeReport(report, options) {
+  fs.mkdirSync(options.outDir, { recursive: true });
+  const stamp = report.generatedAt.replace(/[:.]/g, "-");
+  const baseName = `cloudprune-aws-assessment-${report.account || "unknown"}-${stamp}`;
+  const written = [];
+
+  if (options.format === "json" || options.format === "both") {
+    const jsonPath = path.join(options.outDir, `${baseName}.json`);
+    fs.writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`);
+    written.push(jsonPath);
+  }
+
+  if (options.format === "markdown" || options.format === "both") {
+    const markdownPath = path.join(options.outDir, `${baseName}.md`);
+    fs.writeFileSync(markdownPath, renderMarkdown(report));
+    written.push(markdownPath);
+  }
+
+  return written;
+}
+
+function printHelp() {
+  console.log(`CloudPrune AWS read-only assessment
+
+Usage:
+  npm run assess:aws -- [options]
+
+Options:
+  --profile <name>     AWS profile to use
+  --region <region>    AWS region to inspect (default: ${DEFAULT_REGION})
+  --concurrency <n>    Concurrent AWS CLI calls for sampled resource checks, 1-20 (default: ${DEFAULT_CONCURRENCY})
+  --days <number>      Cost lookback window, 1-366 (default: ${DEFAULT_DAYS})
+  --format <value>     json, markdown, or both (default: both)
+  --max-resources <n>  Max resources sampled for per-resource metric checks (default: 25)
+  --timeout-ms <n>     Timeout per AWS CLI command, 1000-300000 (default: ${DEFAULT_AWS_TIMEOUT_MS})
+  --out-dir <path>     Report output directory (default: ./reports)
+
+Required AWS CLI credentials should be read-only. Missing optional permissions are reported, not treated as fatal.`);
+}
+
+async function main() {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (options.help) {
+      printHelp();
+      return;
+    }
+
+    const assessment = await collectAwsSignals(options);
+    const report = buildReport(assessment);
+    const written = writeReport(report, options);
+    const missingRequired = report.permissions.filter((item) => item.required && !item.ok);
+
+    console.log(`CloudPrune AWS assessment complete. Findings: ${report.findings.length}.`);
+    for (const filePath of written) console.log(`Wrote ${filePath}`);
+    if (missingRequired.length) {
+      console.error(`Missing required permission: ${missingRequired.map((item) => item.id).join(", ")}`);
+      process.exitCode = 2;
+    }
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}
+
+if (require.main === module) main();
+
+module.exports = {
+  buildFindings,
+  buildPermissionSummary,
+  buildReport,
+  awsExecutionOptions,
+  costByService,
+  createLimiter,
+  markdownTableCell,
+  markdownText,
+  metricSummary,
+  parseArgs,
+  renderMarkdown,
+};

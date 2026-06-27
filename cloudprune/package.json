@@ -4,8 +4,9 @@
   "private": true,
   "description": "CloudPrune cloud cost monitoring and savings workspace.",
   "scripts": {
+    "assess:aws": "node scripts/aws-assessment.js",
     "start": "node server.js",
-    "check": "node --check server.js && node --check cloudprune/app.js && node --test"
+    "check": "node --check server.js && node --check cloudprune/app.js && node --check scripts/aws-assessment.js && node --test"
   },
   "engines": {
     "node": ">=20"
