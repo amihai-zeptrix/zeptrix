@@ -87,8 +87,24 @@ function signSession(user) {
 }
 
 function cloudpruneOAuthState(prefix) {
-  const body = Buffer.from(JSON.stringify({ prefix, nonce: crypto.randomBytes(18).toString("base64url") })).toString("base64url");
-  return `cloudprune.${body}`;
+  const body = Buffer.from(JSON.stringify({
+    prefix,
+    nonce: crypto.randomBytes(18).toString("base64url"),
+    exp: Date.now() + 10 * 60 * 1000,
+  })).toString("base64url");
+  const sig = crypto.createHmac("sha256", tokenSecret).update(body).digest("base64url");
+  return `cloudprune.${body}.${sig}`;
+}
+
+function verifyCloudpruneOAuthState(state) {
+  const parts = String(state || "").split(".");
+  if (parts.length !== 3 || parts[0] !== "cloudprune") return null;
+  const expected = crypto.createHmac("sha256", tokenSecret).update(parts[1]).digest("base64url");
+  if (!crypto.timingSafeEqual(Buffer.from(parts[2]), Buffer.from(expected))) return null;
+  const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  if (payload.exp && Number(payload.exp) < Date.now()) return null;
+  if (payload.prefix !== "/cp" && payload.prefix !== "/cloudprune") return null;
+  return payload;
 }
 
 function cloudpruneOAuthCookie(value, prefix, extra = "") {
@@ -258,8 +274,8 @@ async function handleApi(req, res, requestUrl) {
       return;
     }
     if (req.method === "GET" && apiPath === "/api/auth/google/callback") {
-      const expectedState = /(?:^|;\s*)cloudprune_oauth_state=([^;]+)/.exec(req.headers.cookie || "")?.[1];
-      if (!expectedState || expectedState !== requestUrl.searchParams.get("state")) throw new Error("Google sign-in state did not match.");
+      const state = verifyCloudpruneOAuthState(requestUrl.searchParams.get("state"));
+      if (!state || state.prefix !== prefix) throw new Error("Google sign-in state did not match.");
       const profile = await googleProfileFromCode(requestUrl.searchParams.get("code"));
       const user = await upsertGoogleUser(profile);
       res.writeHead(302, {
@@ -338,4 +354,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { googleRedirectUri, hashPassword, initDatabase, registerUser, server, staticFilePathForUrlPath, verifyPassword };
+module.exports = { cloudpruneOAuthState, googleRedirectUri, hashPassword, initDatabase, registerUser, server, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyPassword };

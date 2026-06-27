@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { once } = require("node:events");
 const test = require("node:test");
-const { googleRedirectUri, server, staticFilePathForUrlPath } = require("../server");
+const { cloudpruneOAuthState, googleRedirectUri, server, staticFilePathForUrlPath, verifyCloudpruneOAuthState } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -83,6 +83,13 @@ test("auth API reports missing database instead of dropping requests", async () 
 
 test("Google SSO uses the canonical shared callback", () => {
   assert.equal(googleRedirectUri, "https://www.zeptrix.io/api/auth/google/callback");
+});
+
+test("Google SSO state is signed and self-contained", () => {
+  const state = cloudpruneOAuthState("/cp");
+  assert.match(state, /^cloudprune\.[^.]+\.[^.]+$/);
+  assert.equal(verifyCloudpruneOAuthState(state).prefix, "/cp");
+  assert.equal(verifyCloudpruneOAuthState(`${state.slice(0, -1)}x`), null);
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {
