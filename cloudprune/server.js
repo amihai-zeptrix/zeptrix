@@ -8,6 +8,7 @@ const port = Number(process.env.PORT || 4321);
 const root = __dirname;
 const publicRoot = path.join(root, "cloudprune");
 const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "https://zeptrix.io").replace(/\/$/, "");
+const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || `${publicBaseUrl}/api/auth/google/callback`;
 const googleClientId = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
 const googleClientSecret = process.env.CLOUDPRUNE_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
 const tokenSecret = process.env.CLOUDPRUNE_TOKEN_SECRET || process.env.CRM_TOKEN_SECRET || "local-cloudprune-token-secret";
@@ -81,6 +82,11 @@ function signSession(user) {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = crypto.createHmac("sha256", tokenSecret).update(body).digest("base64url");
   return `${body}.${sig}`;
+}
+
+function cloudpruneOAuthState(prefix) {
+  const body = Buffer.from(JSON.stringify({ prefix, nonce: crypto.randomBytes(18).toString("base64url") })).toString("base64url");
+  return `cloudprune.${body}`;
 }
 
 async function initDatabase() {
@@ -175,8 +181,7 @@ async function loginUser(payload) {
   return user;
 }
 
-async function googleProfileFromCode(code, prefix) {
-  const redirectUri = `${publicBaseUrl}${prefix}/api/auth/google/callback`;
+async function googleProfileFromCode(code) {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -184,7 +189,7 @@ async function googleProfileFromCode(code, prefix) {
       code,
       client_id: googleClientId,
       client_secret: googleClientSecret,
-      redirect_uri: redirectUri,
+      redirect_uri: googleRedirectUri,
       grant_type: "authorization_code",
     }),
   });
@@ -233,13 +238,13 @@ async function handleApi(req, res, requestUrl) {
         res.end();
         return;
       }
-      const state = crypto.randomBytes(18).toString("base64url");
-      const redirectUri = `${publicBaseUrl}${prefix}/api/auth/google/callback`;
+      const state = cloudpruneOAuthState(prefix);
       const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
       url.searchParams.set("client_id", googleClientId);
-      url.searchParams.set("redirect_uri", redirectUri);
+      url.searchParams.set("redirect_uri", googleRedirectUri);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("scope", "openid email profile");
+      url.searchParams.set("prompt", "select_account");
       url.searchParams.set("state", state);
       res.writeHead(302, { location: url.toString(), "set-cookie": `cloudprune_oauth_state=${state}; Path=${prefix}; HttpOnly; SameSite=Lax; Secure` });
       res.end();
@@ -248,7 +253,7 @@ async function handleApi(req, res, requestUrl) {
     if (req.method === "GET" && apiPath === "/api/auth/google/callback") {
       const expectedState = /(?:^|;\s*)cloudprune_oauth_state=([^;]+)/.exec(req.headers.cookie || "")?.[1];
       if (!expectedState || expectedState !== requestUrl.searchParams.get("state")) throw new Error("Google sign-in state did not match.");
-      const profile = await googleProfileFromCode(requestUrl.searchParams.get("code"), prefix);
+      const profile = await googleProfileFromCode(requestUrl.searchParams.get("code"));
       const user = await upsertGoogleUser(profile);
       res.writeHead(302, {
         location: `${prefix}/?token=${encodeURIComponent(signSession(user))}`,
@@ -326,4 +331,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { hashPassword, initDatabase, registerUser, server, staticFilePathForUrlPath, verifyPassword };
+module.exports = { googleRedirectUri, hashPassword, initDatabase, registerUser, server, staticFilePathForUrlPath, verifyPassword };

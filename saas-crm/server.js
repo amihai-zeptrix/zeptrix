@@ -3107,6 +3107,17 @@ function googleSsoConfigured() {
   return Boolean(googleClientId && googleClientSecret);
 }
 
+function cloudpruneOAuthPrefix(state) {
+  if (!String(state || "").startsWith("cloudprune.")) return "";
+  try {
+    const encoded = String(state).split(".")[1] || "";
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    return payload.prefix === "/cp" ? "/cp" : payload.prefix === "/cloudprune" ? "/cloudprune" : "";
+  } catch {
+    return "";
+  }
+}
+
 async function exchangeGoogleAuthCode(code, redirectUri = GOOGLE_SSO_REDIRECT_URI) {
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -3646,6 +3657,16 @@ async function handleApi(req, res) {
   }
 
   if (req.method === "GET" && pathname === "/api/auth/google/callback") {
+    const cloudprunePrefix = cloudpruneOAuthPrefix(requestUrl.searchParams.get("state"));
+    if (cloudprunePrefix) {
+      const redirect = new URL(`${cloudprunePrefix}/api/auth/google/callback`, publicBaseUrl);
+      for (const key of ["code", "state", "error", "error_description"]) {
+        const value = requestUrl.searchParams.get(key);
+        if (value) redirect.searchParams.set(key, value);
+      }
+      res.writeHead(302, { location: redirect.toString() });
+      return res.end();
+    }
     const redirect = new URL("/crm/", publicBaseUrl);
     try {
       if (!pool) throw new Error("DATABASE_URL is not configured.");
@@ -4602,6 +4623,7 @@ module.exports = {
   validateTenant,
   verifyGoogleAuthState,
   consumeGoogleAuthResult,
+  cloudpruneOAuthPrefix,
   verifyMfaRecoveryToken,
   verifyPreAuthToken,
   verifySignedPayload,

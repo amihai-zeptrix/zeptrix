@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { once } = require("node:events");
 const test = require("node:test");
-const { server, staticFilePathForUrlPath } = require("../server");
+const { googleRedirectUri, server, staticFilePathForUrlPath } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -79,6 +79,10 @@ test("auth API reports missing database instead of dropping requests", async () 
     assert.equal(shortResponse.status, 400);
     assert.match(await shortResponse.text(), /database is not configured/i);
   });
+});
+
+test("Google SSO uses the canonical shared callback", () => {
+  assert.equal(googleRedirectUri, "https://zeptrix.io/api/auth/google/callback");
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {
