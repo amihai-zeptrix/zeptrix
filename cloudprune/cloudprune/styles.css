@@ -675,6 +675,28 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   font-size: 14px;
 }
 
+.launch-stack-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  margin: 10px 0 12px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #fff;
+  background: #ff9900;
+  font-size: 13px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.launch-stack-button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
 .connect-form label {
   display: grid;
   gap: 6px;

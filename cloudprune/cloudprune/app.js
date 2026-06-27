@@ -248,6 +248,24 @@ function captureAwsConnectDraft(form) {
   return state.awsConnectDraft;
 }
 
+function absoluteAppUrl(pathname) {
+  return new URL(pathname, location.href).toString();
+}
+
+function cloudFormationLaunchUrl(externalId, principalArn) {
+  const templateUrl = absoluteAppUrl(`${basePath()}/aws-readonly-role-template.yaml`);
+  const params = new URLSearchParams({
+    templateURL: templateUrl,
+    stackName: "CloudPruneReadOnlyRole",
+    param_ExternalId: externalId,
+    param_CloudPrunePrincipalArn: principalArn,
+    param_RoleName: "CloudPruneReadOnlyRole",
+  });
+  const url = new URL("https://console.aws.amazon.com/cloudformation/home");
+  url.hash = `/stacks/quickcreate?${params.toString()}`;
+  return url.toString();
+}
+
 async function loadWorkspace() {
   if (!hasSession() || state.workspaceLoadStarted || typeof fetch !== "function") return;
   state.workspaceLoadStarted = true;
@@ -402,10 +420,7 @@ function renderMainPanel() {
 function renderEmptyWorkspace() {
   const awsConnection = state.workspace?.connections?.aws || null;
   const externalIdValue = state.awsConnectDraft.externalId || state.workspace?.awsSetup?.externalId || `cloudprune-${sessionAccountId()}`;
-  const externalId = escapeHtml(externalIdValue);
-  const principalArn = state.workspace?.awsSetup?.principalArn
-    ? escapeHtml(state.workspace.awsSetup.principalArn)
-    : "CloudPrune AWS principal ARN";
+  const principalArnValue = state.workspace?.awsSetup?.principalArn || "CloudPrune AWS principal ARN";
   if (awsConnection) {
     return `
       <div class="workspace empty-workspace">
@@ -423,7 +438,7 @@ function renderEmptyWorkspace() {
             <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Update role</button>
             <a href="${basePath()}/demo">View demo data</a>
           </div>
-          ${state.connectFormVisible ? renderAwsConnectForm(externalId, principalArn, awsConnection.roleArn) : ""}
+          ${state.connectFormVisible ? renderAwsConnectForm(externalIdValue, principalArnValue, awsConnection.roleArn) : ""}
         </section>
         <aside class="right-rail">
           <section class="panel compact empty-side-panel">
@@ -449,7 +464,7 @@ function renderEmptyWorkspace() {
           <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Connect AWS</button>
           <a href="${basePath()}/demo">View demo data</a>
         </div>
-        ${state.connectFormVisible ? renderAwsConnectForm(externalId, principalArn) : ""}
+        ${state.connectFormVisible ? renderAwsConnectForm(externalIdValue, principalArnValue) : ""}
       </section>
       <aside class="right-rail">
         <section class="panel compact empty-side-panel">
@@ -468,6 +483,10 @@ function renderEmptyWorkspace() {
 function renderAwsConnectForm(externalId, principalArn, roleArn = "") {
   const draftRoleArn = escapeHtml(state.awsConnectDraft.roleArn || roleArn);
   const draftExternalId = escapeHtml(state.awsConnectDraft.externalId || externalId);
+  const escapedExternalId = escapeHtml(externalId);
+  const escapedPrincipalArn = escapeHtml(principalArn);
+  const launchUrl = cloudFormationLaunchUrl(externalId, principalArn);
+  const hasPrincipal = /^arn:aws[a-z-]*:iam::\d{12}:/.test(principalArn);
   const canSave = Boolean((state.awsConnectDraft.roleArn || roleArn || "").trim());
   return `
     <form class="connect-form" data-connect-form="aws">
@@ -482,12 +501,15 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "") {
           <span>1</span>
           <div>
             <strong>Create read-only AWS role</strong>
-            <p>Use these generated values in the AWS trust policy.</p>
+            <p>Launch the AWS stack, then copy the Role ARN from its outputs.</p>
+            ${hasPrincipal
+              ? `<a class="launch-stack-button" href="${escapeHtml(launchUrl)}" target="_blank" rel="noopener">Launch CloudFormation</a>`
+              : `<button class="launch-stack-button" type="button" disabled>Launch CloudFormation</button>`}
             <div class="trust-policy">
               <span>CloudPrune principal</span>
-              <code>${principalArn}</code>
+              <code>${escapedPrincipalArn}</code>
               <span>External ID</span>
-              <code>${externalId}</code>
+              <code>${escapedExternalId}</code>
               <span>Permissions</span>
               <code>Read-only cost, inventory, and utilization signals</code>
             </div>

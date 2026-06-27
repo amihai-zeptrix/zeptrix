@@ -29,6 +29,7 @@ function renderCloudPruneApp(pathname, session = null, interact = null) {
   const script = fs.readFileSync(path.join(__dirname, "../cloudprune/app.js"), "utf8");
   const context = {
     URL,
+    URLSearchParams,
     atob: (value) => Buffer.from(value, "base64").toString("binary"),
     fetch: async (url, options = {}) => {
       fetchCalls.push({ url, options });
@@ -104,6 +105,11 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
     assert.equal(shortScript.status, 200);
     assert.match(shortScript.headers.get("content-type"), /application\/javascript/);
 
+    const template = await fetch(`${baseUrl}/cloudprune/aws-readonly-role-template.yaml`);
+    assert.equal(template.status, 200);
+    assert.match(template.headers.get("content-type"), /text\/yaml/);
+    assert.match(await template.text(), /CloudPruneReadOnlyRole/);
+
     const fallback = await fetch(`${baseUrl}/cloudprune/recommendations`);
     assert.equal(fallback.status, 200);
     assert.match(await fallback.text(), /<div id="app"><\/div>/);
@@ -162,6 +168,7 @@ test("CloudPrune empty workspace opens AWS assume-role setup", () => {
   assert.match(workspace, /Connect AWS with one field/);
   assert.match(workspace, /<button data-action="connect" disabled>Connect AWS<\/button>/);
   assert.match(workspace, /<button data-action="connect" disabled>Connect cloud<\/button>/);
+  assert.match(workspace, /Launch CloudFormation/);
   assert.match(workspace, /name="externalId" type="hidden" value="cloudprune-account-1"/);
   assert.match(workspace, /CloudPrune principal/);
   assert.match(workspace, /External ID/);

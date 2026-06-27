@@ -26,6 +26,8 @@ const mimeTypes = {
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".yaml": "text/yaml; charset=utf-8",
+  ".yml": "text/yaml; charset=utf-8",
 };
 
 const cloudpruneOauthCookieDomain = process.env.CLOUDPRUNE_OAUTH_COOKIE_DOMAIN || "zeptrix.io";
