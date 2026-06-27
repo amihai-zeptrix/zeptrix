@@ -4503,7 +4503,7 @@ async function handleApi(req, res) {
 }
 
 function staticFilePathForUrlPath(urlPath) {
-  if (urlPath === "/cloudprune" || urlPath === "/cloudprune/" || /^\/cloudprune\/[^/.]+\/?$/.test(urlPath)) return path.join(root, "cloudprune/index.html");
+  if (urlPath === "/cloudprune" || urlPath === "/cloudprune/" || (urlPath.startsWith("/cloudprune/") && !path.basename(urlPath).includes("."))) return path.join(root, "cloudprune/index.html");
   if (urlPath === "/crm/demo" || urlPath === "/crm/demo/" || urlPath.startsWith("/crm/demo/")) return path.join(root, "crm/index.html");
   if (/^\/crm\/[^/.]+\/?$/.test(urlPath)) return path.join(root, "crm/index.html");
   return path.join(root, urlPath === "/" ? "index.html" : urlPath);

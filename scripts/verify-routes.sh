@@ -102,12 +102,27 @@ assert_contains "$tmp_dir/cloudprune.html" '<div id="app"></div>'
 assert_contains "$tmp_dir/cloudprune.html" 'href="/cloudprune/styles.css"'
 assert_contains "$tmp_dir/cloudprune.html" 'src="/cloudprune/app.js"'
 
+fetch "/cloudprune/demo" "$tmp_dir/cloudprune-demo.html"
+assert_contains "$tmp_dir/cloudprune-demo.html" "<title>CloudPrune | Cloud Cost Workspace</title>"
+assert_contains "$tmp_dir/cloudprune-demo.html" '<div id="app"></div>'
+assert_contains "$tmp_dir/cloudprune-demo.html" 'href="/cloudprune/styles.css"'
+
+fetch "/cp/" "$tmp_dir/cp.html"
+assert_contains "$tmp_dir/cp.html" "<title>CloudPrune | Cloud Cost Workspace</title>"
+assert_contains "$tmp_dir/cp.html" '<div id="app"></div>'
+assert_contains "$tmp_dir/cp.html" 'href="/cloudprune/styles.css"'
+
+fetch "/cp/demo" "$tmp_dir/cp-demo.html"
+assert_contains "$tmp_dir/cp-demo.html" "<title>CloudPrune | Cloud Cost Workspace</title>"
+assert_contains "$tmp_dir/cp-demo.html" '<div id="app"></div>'
+
 assert_content_type "/mbh/styles.css" "text/css"
 assert_content_type "/mbh/script.js" "application/javascript" "text/javascript"
 assert_content_type "/your-new-crm/styles.css" "text/css"
 assert_content_type "/your-new-crm/app.js" "application/javascript" "text/javascript"
 assert_content_type "/cloudprune/styles.css" "text/css"
 assert_content_type "/cloudprune/app.js" "application/javascript" "text/javascript"
+assert_content_type "/cp/app.js" "application/javascript" "text/javascript"
 
 old_location="$(curl -fsSI --max-time 20 "$base_url/wordpress-to-modern-websites/" | awk 'tolower($1) == "location:" {print $2}' | tr -d '\r')"
 if [[ "$old_location" != "$base_url/siteops" ]]; then

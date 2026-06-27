@@ -71,6 +71,8 @@ let state = {
   cloud: "all",
   view: "recommendations",
   automation: false,
+  authMode: "register",
+  authMessage: "",
 };
 
 function money(value) {
@@ -95,6 +97,14 @@ function providerLabel(provider) {
 
 function vendorBadge(provider, label = providerLabel(provider)) {
   return `<span class="vendor-badge ${provider}">${ICONS[provider] || ICONS.all}<span>${label}</span></span>`;
+}
+
+function appRoute(path = location.pathname) {
+  return path.startsWith(`${basePath()}/demo`) ? "demo" : "auth";
+}
+
+function basePath(path = location.pathname) {
+  return path === "/cp" || path.startsWith("/cp/") ? "/cp" : "/cloudprune";
 }
 
 function renderProviderFilter() {
@@ -205,16 +215,80 @@ function renderMainPanel() {
 
 function render() {
   const app = document.querySelector("#app");
+  if (appRoute() === "auth") {
+    renderAuth(app);
+    return;
+  }
+  renderDemo(app);
+}
+
+function renderAuth(app) {
+  const base = basePath();
+  const url = new URL(location.href);
+  const sso = url.searchParams.get("sso");
+  const token = url.searchParams.get("token");
+  if (token) {
+    localStorage.setItem("cloudprune.session", token);
+    history.replaceState({}, "", `${base}/demo`);
+    location.href = `${base}/demo`;
+    return;
+  }
+  const ssoMessage = sso === "not_configured" ? "Google SSO is ready in the UI, but OAuth credentials are not configured on this server yet." : "";
+  const isRegister = state.authMode === "register";
+  app.innerHTML = `
+    <main class="auth-page">
+      <section class="auth-visual">
+        <a class="auth-brand" href="${base}/" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
+        <div class="auth-hero">
+          <span class="eyebrow">Cloud cost saving platform</span>
+          <h1>Prune cloud waste before it reaches the bill.</h1>
+          <p>Connect AWS first, inspect the savings plan, and move from dry-run analysis to controlled automation when the impact is clear.</p>
+        </div>
+        <div class="auth-signal-grid" aria-label="CloudPrune preview metrics">
+          <article><span>Verified waste</span><strong>$89K</strong><em>monthly demo signal</em></article>
+          <article><span>Risk scored</span><strong>42</strong><em>actions ready</em></article>
+          <article><span>Guardrails</span><strong>Dry run</strong><em>default mode</em></article>
+        </div>
+      </section>
+      <section class="auth-panel" aria-label="CloudPrune sign in">
+        <div class="auth-panel-head">
+          <span class="eyebrow">${isRegister ? "Create workspace" : "Welcome back"}</span>
+          <h2>${isRegister ? "Start with read-only savings analysis" : "Sign in to CloudPrune"}</h2>
+        </div>
+        <div class="auth-tabs" role="tablist">
+          <button class="${isRegister ? "active" : ""}" data-auth-mode="register" type="button">Register</button>
+          <button class="${!isRegister ? "active" : ""}" data-auth-mode="login" type="button">Login</button>
+        </div>
+        <a class="google-button" href="${base}/api/auth/google/start">${ICONS.gcp}<span>Continue with Google</span></a>
+        <div class="auth-divider"><span>or</span></div>
+        <form class="auth-form" data-auth-form="${state.authMode}">
+          ${isRegister ? `
+            <label>Full name<input name="name" autocomplete="name" required /></label>
+            <label>Company<input name="company" autocomplete="organization" required /></label>
+          ` : ""}
+          <label>Email<input name="email" type="email" autocomplete="email" required /></label>
+          <label>Password<input name="password" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" minlength="10" required /></label>
+          <button type="submit">${isRegister ? "Create CloudPrune workspace" : "Login"}</button>
+        </form>
+        <a class="demo-link" href="${base}/demo">View live demo</a>
+        <p class="auth-message">${state.authMessage || ssoMessage}</p>
+      </section>
+    </main>
+  `;
+}
+
+function renderDemo(app) {
+  const base = basePath();
   app.innerHTML = `
     <div class="shell">
       <aside class="sidebar">
-        <a class="brand" href="/cloudprune/" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
+        <a class="brand" href="${base}/demo" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
         <nav>
-          <a class="active" href="/cloudprune/">${ICONS.dashboard}<span>Dashboard</span></a>
-          <a href="/cloudprune/recommendations">${ICONS.recs}<span>Recommendations</span></a>
-          <a href="/cloudprune/anomalies">${ICONS.alert}<span>Anomalies</span></a>
-          <a href="/cloudprune/automation">${ICONS.automation}<span>Automation</span></a>
-          <a href="/cloudprune/settings">${ICONS.settings}<span>Settings</span></a>
+          <a class="active" href="${base}/demo">${ICONS.dashboard}<span>Dashboard</span></a>
+          <a href="${base}/demo/recommendations">${ICONS.recs}<span>Recommendations</span></a>
+          <a href="${base}/demo/anomalies">${ICONS.alert}<span>Anomalies</span></a>
+          <a href="${base}/demo/automation">${ICONS.automation}<span>Automation</span></a>
+          <a href="${base}/demo/settings">${ICONS.settings}<span>Settings</span></a>
         </nav>
         <div class="connector-card">
           <span class="aws">${vendorBadge("aws", "AWS")}</span><span class="gcp">${vendorBadge("gcp", "GCP")}</span><span class="azure">${vendorBadge("azure", "Azure")}</span><span class="kubernetes">${vendorBadge("kubernetes", "K8s")}</span>
@@ -271,6 +345,38 @@ document.addEventListener("change", (event) => {
     state.automation = event.target.checked;
     render();
   }
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-auth-form]");
+  if (!form) return;
+  event.preventDefault();
+  const mode = form.dataset.authForm;
+  const payload = Object.fromEntries(new FormData(form).entries());
+  state.authMessage = mode === "register" ? "Creating workspace..." : "Signing in...";
+  render();
+  try {
+    const response = await fetch(`${basePath()}/api/${mode === "register" ? "register" : "login"}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "CloudPrune authentication failed.");
+    localStorage.setItem("cloudprune.session", body.token);
+    location.href = `${basePath()}/demo`;
+  } catch (error) {
+    state.authMessage = error.message;
+    render();
+  }
+});
+
+document.addEventListener("click", (event) => {
+  const authMode = event.target.closest("[data-auth-mode]");
+  if (!authMode) return;
+  state.authMode = authMode.dataset.authMode;
+  state.authMessage = "";
+  render();
 });
 
 render();

@@ -729,6 +729,7 @@ test("CloudPrune route serves the CloudPrune app shell", () => {
 
   assert.equal(staticFilePathForUrlPath("/cloudprune"), cloudpruneIndex);
   assert.equal(staticFilePathForUrlPath("/cloudprune/"), cloudpruneIndex);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/demo/recommendations"), cloudpruneIndex);
   assert.equal(staticFilePathForUrlPath("/cloudprune/recommendations"), cloudpruneIndex);
   assert.equal(staticFilePathForUrlPath("/cloudprune/settings"), cloudpruneIndex);
   assert.notEqual(staticFilePathForUrlPath("/cloudprune/app.js"), cloudpruneIndex);
