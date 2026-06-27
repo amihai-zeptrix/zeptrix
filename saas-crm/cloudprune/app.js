@@ -78,6 +78,7 @@ let state = {
   workspaceLoadStarted: false,
   connectFormVisible: false,
   connectMessage: "",
+  awsConnectDraft: { roleArn: "", externalId: "" },
 };
 
 const registerDraftKey = "cloudprune.registerDraft";
@@ -383,7 +384,8 @@ function renderMainPanel() {
 
 function renderEmptyWorkspace() {
   const awsConnection = state.workspace?.connections?.aws || null;
-  const externalId = escapeHtml(state.workspace?.awsSetup?.externalId || `cloudprune-${sessionAccountId()}`);
+  const externalIdValue = state.awsConnectDraft.externalId || state.workspace?.awsSetup?.externalId || `cloudprune-${sessionAccountId()}`;
+  const externalId = escapeHtml(externalIdValue);
   const principalArn = state.workspace?.awsSetup?.principalArn
     ? escapeHtml(state.workspace.awsSetup.principalArn)
     : "CloudPrune AWS principal ARN";
@@ -401,7 +403,7 @@ function renderEmptyWorkspace() {
             <span>External ID</span><code>${escapeHtml(awsConnection.externalId)}</code>
           </div>
           <div class="empty-actions">
-            <button data-action="connect">Update role</button>
+            <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Update role</button>
             <a href="${basePath()}/demo">View demo data</a>
           </div>
           ${state.connectFormVisible ? renderAwsConnectForm(externalId, principalArn, awsConnection.roleArn) : ""}
@@ -427,7 +429,7 @@ function renderEmptyWorkspace() {
         <h2>Connect AWS to start your first cost assessment.</h2>
         <p>CloudPrune will use read-only access to inspect spend, inventory, utilization signals, and safe optimization opportunities before it recommends any action.</p>
         <div class="empty-actions">
-          <button data-action="connect">Connect AWS</button>
+          <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Connect AWS</button>
           <a href="${basePath()}/demo">View demo data</a>
         </div>
         ${state.connectFormVisible ? renderAwsConnectForm(externalId, principalArn) : ""}
@@ -447,14 +449,16 @@ function renderEmptyWorkspace() {
 }
 
 function renderAwsConnectForm(externalId, principalArn, roleArn = "") {
+  const draftRoleArn = escapeHtml(state.awsConnectDraft.roleArn || roleArn);
+  const draftExternalId = escapeHtml(state.awsConnectDraft.externalId || externalId);
   return `
     <form class="connect-form" data-connect-form="aws">
       <div>
         <span class="eyebrow">Assume role setup</span>
         <h3>AWS read-only access</h3>
       </div>
-      <label>External ID<input name="externalId" value="${externalId}" readonly /></label>
-      <label>Role ARN<input name="roleArn" value="${escapeHtml(roleArn)}" placeholder="arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole" required /></label>
+      <label>External ID<input name="externalId" value="${draftExternalId}" readonly /></label>
+      <label>Role ARN<input name="roleArn" value="${draftRoleArn}" placeholder="arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole" required /></label>
       <div class="trust-policy">
         <span>Trust policy values</span>
         <code>Principal: ${principalArn}</code>
@@ -633,8 +637,13 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
 document.addEventListener("click", (event) => {
   const connectButton = event.target.closest("[data-action='connect']");
   if (connectButton) {
+    if (connectButton.disabled) return;
     state.connectFormVisible = true;
     state.connectMessage = "";
+    state.awsConnectDraft = {
+      roleArn: state.workspace?.connections?.aws?.roleArn || state.awsConnectDraft.roleArn || "",
+      externalId: state.workspace?.connections?.aws?.externalId || state.workspace?.awsSetup?.externalId || state.awsConnectDraft.externalId || `cloudprune-${sessionAccountId()}`,
+    };
     render();
     return;
   }
@@ -686,6 +695,14 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  const connectForm = event.target.closest("[data-connect-form='aws']");
+  if (connectForm) {
+    state.awsConnectDraft = {
+      roleArn: connectForm.querySelector("[name='roleArn']")?.value || "",
+      externalId: connectForm.querySelector("[name='externalId']")?.value || "",
+    };
+    return;
+  }
   const form = event.target.closest("[data-auth-form='register']");
   if (form) refreshGoogleStart(form);
 });
@@ -694,7 +711,16 @@ document.addEventListener("submit", async (event) => {
   const connectForm = event.target.closest("[data-connect-form='aws']");
   if (connectForm) {
     event.preventDefault();
-    const payload = Object.fromEntries(new FormData(connectForm).entries());
+    const payload = {
+      roleArn: connectForm.querySelector("[name='roleArn']")?.value?.trim() || state.awsConnectDraft.roleArn,
+      externalId: connectForm.querySelector("[name='externalId']")?.value?.trim() || state.awsConnectDraft.externalId,
+    };
+    if (!payload.roleArn) {
+      state.connectMessage = "Role ARN is required.";
+      render();
+      return;
+    }
+    state.awsConnectDraft = payload;
     state.connectMessage = "Saving AWS role...";
     render();
     try {
@@ -709,6 +735,7 @@ document.addEventListener("submit", async (event) => {
         ...(state.workspace || {}),
         connections: { ...((state.workspace || {}).connections || {}), aws: body.connection },
       };
+      state.awsConnectDraft = { roleArn: body.connection.roleArn, externalId: body.connection.externalId };
       state.connectFormVisible = false;
       state.connectMessage = "";
       render();
