@@ -107,6 +107,16 @@ function basePath(path = location.pathname) {
   return path === "/cp" || path.startsWith("/cp/") ? "/cp" : "/cloudprune";
 }
 
+function hasSession() {
+  return Boolean(localStorage.getItem("cloudprune.session"));
+}
+
+function signOut() {
+  localStorage.removeItem("cloudprune.session");
+  state.authMessage = "Signed out.";
+  location.href = `${basePath()}/`;
+}
+
 function renderProviderFilter() {
   return CLOUDS.map((cloud) => `
     <button class="segmented-button ${state.cloud === cloud.id ? "active" : ""}" data-cloud="${cloud.id}">
@@ -216,6 +226,10 @@ function renderMainPanel() {
 function render() {
   const app = document.querySelector("#app");
   if (appRoute() === "auth") {
+    if (hasSession()) {
+      renderDemo(app);
+      return;
+    }
     renderAuth(app);
     return;
   }
@@ -229,8 +243,8 @@ function renderAuth(app) {
   const token = url.searchParams.get("token");
   if (token) {
     localStorage.setItem("cloudprune.session", token);
-    history.replaceState({}, "", `${base}/demo`);
-    location.href = `${base}/demo`;
+    history.replaceState({}, "", `${base}/`);
+    location.href = `${base}/`;
     return;
   }
   const ssoMessage = sso === "not_configured" ? "Google SSO is ready in the UI, but OAuth credentials are not configured on this server yet." : "";
@@ -279,16 +293,22 @@ function renderAuth(app) {
 
 function renderDemo(app) {
   const base = basePath();
+  const isDemo = appRoute() === "demo";
+  const dashboardPath = isDemo ? `${base}/demo` : `${base}/`;
+  const navPath = isDemo ? `${base}/demo/` : `${base}/`;
+  const authAction = hasSession()
+    ? `<button class="secondary-action" data-action="logout" type="button">Logout</button>`
+    : `<a class="top-link" href="${base}/">Login</a>`;
   app.innerHTML = `
     <div class="shell">
       <aside class="sidebar">
-        <a class="brand" href="${base}/demo" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
+        <a class="brand" href="${dashboardPath}" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
         <nav>
-          <a class="active" href="${base}/demo">${ICONS.dashboard}<span>Dashboard</span></a>
-          <a href="${base}/demo/recommendations">${ICONS.recs}<span>Recommendations</span></a>
-          <a href="${base}/demo/anomalies">${ICONS.alert}<span>Anomalies</span></a>
-          <a href="${base}/demo/automation">${ICONS.automation}<span>Automation</span></a>
-          <a href="${base}/demo/settings">${ICONS.settings}<span>Settings</span></a>
+          <a class="active" href="${dashboardPath}">${ICONS.dashboard}<span>Dashboard</span></a>
+          <a href="${navPath}recommendations">${ICONS.recs}<span>Recommendations</span></a>
+          <a href="${navPath}anomalies">${ICONS.alert}<span>Anomalies</span></a>
+          <a href="${navPath}automation">${ICONS.automation}<span>Automation</span></a>
+          <a href="${navPath}settings">${ICONS.settings}<span>Settings</span></a>
         </nav>
         <div class="connector-card">
           <span class="aws">${vendorBadge("aws", "AWS")}</span><span class="gcp">${vendorBadge("gcp", "GCP")}</span><span class="azure">${vendorBadge("azure", "Azure")}</span><span class="kubernetes">${vendorBadge("kubernetes", "K8s")}</span>
@@ -304,6 +324,7 @@ function renderDemo(app) {
           <div class="top-actions">
             <label class="toggle"><input type="checkbox" ${state.automation ? "checked" : ""} data-action="toggle-automation" /><span></span>Autopilot</label>
             <button data-action="connect">Connect cloud</button>
+            ${authAction}
           </div>
         </header>
         <div class="filters" role="group" aria-label="Cloud provider filter">${renderProviderFilter()}</div>
@@ -327,6 +348,11 @@ function renderDemo(app) {
 }
 
 document.addEventListener("click", (event) => {
+  const logoutButton = event.target.closest("[data-action='logout']");
+  if (logoutButton) {
+    signOut();
+    return;
+  }
   const cloudButton = event.target.closest("[data-cloud]");
   if (cloudButton) {
     state.cloud = cloudButton.dataset.cloud;
@@ -364,7 +390,7 @@ document.addEventListener("submit", async (event) => {
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "CloudPrune authentication failed.");
     localStorage.setItem("cloudprune.session", body.token);
-    location.href = `${basePath()}/demo`;
+    location.href = `${basePath()}/`;
   } catch (error) {
     state.authMessage = error.message;
     render();
