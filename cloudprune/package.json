@@ -1,0 +1,13 @@
+{
+  "name": "cloudprune",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CloudPrune cloud cost monitoring and savings workspace.",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check cloudprune/app.js && node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

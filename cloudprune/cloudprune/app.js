@@ -1,0 +1,276 @@
+const CLOUDS = [
+  { id: "all", label: "All clouds" },
+  { id: "aws", label: "AWS" },
+  { id: "gcp", label: "GCP" },
+  { id: "azure", label: "Azure" },
+  { id: "kubernetes", label: "Kubernetes" },
+  { id: "data", label: "Data platforms" },
+];
+
+const SERVICES = [
+  { provider: "aws", name: "EC2 Compute", owner: "Platform", month: 124800, forecast: 137400, waste: 18400, trend: 11, score: 76 },
+  { provider: "aws", name: "RDS", owner: "Core Apps", month: 39200, forecast: 41150, waste: 6200, trend: 5, score: 68 },
+  { provider: "gcp", name: "BigQuery", owner: "Analytics", month: 53800, forecast: 66400, waste: 14300, trend: 24, score: 81 },
+  { provider: "gcp", name: "GKE", owner: "Platform", month: 46250, forecast: 43900, waste: 9700, trend: -4, score: 72 },
+  { provider: "azure", name: "AKS", owner: "Customer Apps", month: 31900, forecast: 36650, waste: 8200, trend: 15, score: 64 },
+  { provider: "kubernetes", name: "Production clusters", owner: "SRE", month: 77400, forecast: 80100, waste: 21500, trend: 8, score: 83 },
+  { provider: "data", name: "Snowflake", owner: "Data", month: 28800, forecast: 37100, waste: 9100, trend: 31, score: 79 },
+];
+
+const RECOMMENDATIONS = [
+  { cloud: "kubernetes", title: "Right-size production namespace requests", impact: 14200, effort: "Medium", risk: "Low", owner: "SRE", status: "Ready", detail: "CPU requests exceed p95 usage by 48% across 31 deployments." },
+  { cloud: "aws", title: "Move steady EC2 baseline into Savings Plans", impact: 11800, effort: "Low", risk: "Low", owner: "Platform", status: "Approve", detail: "62% of compute has stable hourly usage for the last 45 days." },
+  { cloud: "gcp", title: "Partition high-scan BigQuery tables", impact: 9300, effort: "Medium", risk: "Medium", owner: "Analytics", status: "Plan", detail: "Three tables account for 41% of query spend and repeat full scans." },
+  { cloud: "data", title: "Suspend idle Snowflake warehouses faster", impact: 7600, effort: "Low", risk: "Low", owner: "Data", status: "Ready", detail: "Warehouse idle windows average 22 minutes after query completion." },
+  { cloud: "azure", title: "Consolidate underused AKS node pools", impact: 6100, effort: "Medium", risk: "Medium", owner: "Customer Apps", status: "Review", detail: "Four node pools run below 34% memory utilization during business hours." },
+  { cloud: "aws", title: "Expire unattached EBS volumes", impact: 3900, effort: "Low", risk: "Low", owner: "Core Apps", status: "Ready", detail: "128 volumes have no attachment and no snapshot activity in 30 days." },
+];
+
+const ANOMALIES = [
+  { label: "BigQuery query scans", value: "+38%", note: "Analytics workspace", severity: "high" },
+  { label: "NAT Gateway data transfer", value: "+19%", note: "us-east-1 shared VPC", severity: "medium" },
+  { label: "AKS burst nodes", value: "+14%", note: "checkout workloads", severity: "medium" },
+];
+
+const ICONS = {
+  logo: `
+    <svg class="brand-icon" viewBox="0 0 64 64" aria-hidden="true">
+      <defs>
+        <linearGradient id="logoCloud" x1="9" x2="55" y1="18" y2="46" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#7dd3fc" />
+          <stop offset=".52" stop-color="#42d392" />
+          <stop offset="1" stop-color="#f5b642" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="16" fill="#12332d" />
+      <path d="M19 42h25.5c6.4 0 10.5-3.9 10.5-9.2 0-4.6-3.3-8.4-8-9.1C44.9 17.9 39.8 14 33.6 14c-7 0-12.8 4.9-14.1 11.5C13.5 26 9 30.8 9 36.7 9 40.1 12.2 42 19 42Z" fill="url(#logoCloud)" />
+      <path d="M24 47c8.9-8.8 17.9-12 29-12" fill="none" stroke="#eafff1" stroke-width="4.8" stroke-linecap="round" />
+      <path d="M21 47c5.8.5 10.6-1.2 14.2-5.2-5.7-2.1-10.7-.7-14.2 5.2Z" fill="#eafff1" />
+      <path d="M41 19l-6 6m0-6 6 6" stroke="#12332d" stroke-width="3.2" stroke-linecap="round" />
+    </svg>
+  `,
+  dashboard: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm10 7h6V4h-6v16ZM4 20h6v-5H4v5Z"/></svg>`,
+  recs: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.2l-5.2 2.7 1-5.8L3.6 9l5.8-.8L12 3Z"/></svg>`,
+  alert: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20L12 3Zm1 14h-2v-2h2v2Zm0-4h-2V8h2v5Z"/></svg>`,
+  automation: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 10-13h-7l1-7Z"/></svg>`,
+  settings: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.4-2.4 1a7.8 7.8 0 0 0-2.6-1.5L14 2h-4l-.4 3.1A7.8 7.8 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5c-.1.5-.1 1-.1 1.5s0 1 .1 1.5l-2 1.5 2 3.4 2.4-1a7.8 7.8 0 0 0 2.6 1.5L10 22h4l.4-3.1a7.8 7.8 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"/></svg>`,
+  spend: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c4.4 0 8 1.6 8 3.5S16.4 10 12 10 4 8.4 4 6.5 7.6 3 12 3Zm8 6v3c0 1.9-3.6 3.5-8 3.5S4 13.9 4 12V9c1.5 1.7 4.8 2.5 8 2.5s6.5-.8 8-2.5Zm0 5.5v3c0 1.9-3.6 3.5-8 3.5s-8-1.6-8-3.5v-3c1.5 1.7 4.8 2.5 8 2.5s6.5-.8 8-2.5Z"/></svg>`,
+  waste: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8l1 3h4v2h-2l-1 12H6L5 9H3V7h4l1-3Zm1.7 15h4.6l.7-10H9l.7 10Z"/></svg>`,
+  savings: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c5 0 9 3.4 9 7.5 0 3-2.1 5.7-5.2 6.8L15 21h-3l-.6-2.6h-1.8L9 21H6l-.8-3.6C2.6 16.1 1 13.6 1 10.5 1 6.4 5 3 10 3h2Zm2.5 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg>`,
+  score: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5.1 3.4 9.7 8 11 4.6-1.3 8-5.9 8-11V5l-8-3Zm4.4 7.4-5.2 5.2-2.6-2.6L7.2 13.4l4 4 6.6-6.6-1.4-1.4Z"/></svg>`,
+  prune: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20c7.1-1.2 11.8-6.5 14-16-7.5 1.6-12 6-13.4 13.2L4 15.5 3 17l3 3Zm5.4-6.1c1.3-2.4 3.1-4.2 5.4-5.5-1.1 2.6-2.9 4.5-5.4 5.5Z"/></svg>`,
+  all: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17h10.4c2.6 0 4.6-1.8 4.6-4.2 0-2.2-1.7-4-3.9-4.2C17.2 5.8 14.8 4 12 4 8.8 4 6.1 6.2 5.5 9.2 2.9 9.4 1 11.5 1 14.1 1 16.2 3 17 7 17Z"/></svg>`,
+  aws: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 10.5c0-1.7 1.4-2.8 3.5-2.8 1.1 0 2.1.2 3 .7v2c-.9-.5-1.8-.8-2.8-.8-.8 0-1.3.3-1.3.8 0 .6.7.8 1.7 1.1 1.6.5 3 1.1 3 3 0 1.8-1.5 2.9-3.8 2.9-1.2 0-2.5-.3-3.4-.9v-2.1c1 .7 2.2 1.1 3.3 1.1.9 0 1.4-.3 1.4-.8 0-.6-.7-.8-1.8-1.2-1.5-.4-2.8-1-2.8-3Zm9.5-2.6h2.3l2.4 9.3h-2.2l-.4-1.9h-2.3l-.4 1.9h-2.1l2.7-9.3Zm.2 5.6h1.5l-.7-3.2-.8 3.2ZM3.8 7.9h2.1L4.3 17.2H2.1L3.8 7.9Z"/><path d="M5.1 19.1c4.5 1.8 9.3 1.7 13.6-.5.6-.3 1.1.5.5.9-4.3 3.1-10.4 3.4-14.7.6-.5-.3 0-1.2.6-1Z"/><path d="M18.8 17.8c.9-.1 2.2.2 2.5.6.3.4-.3 1.8-1 2.5-.2.2-.5.1-.4-.2l.4-1.3-1.4-.2c-.3 0-.4-.4-.1-.5Z"/></svg>`,
+  gcp: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.6 7.5h1.1l3-3C16.9 2.9 14.5 2 12 2 8 2 4.7 4.3 3.1 7.7l3.6 2.8c.8-1.8 2.6-3 4.7-3h3.2Z" fill="#ea4335"/><path d="M20.9 7.7 17.3 10c.5.6.8 1.4.8 2.3 0 .8-.2 1.5-.7 2.1l3.5 2.8c1.4-1.5 2.1-3.2 2.1-5 0-1.6-.8-3.3-2.1-4.5Z" fill="#4285f4"/><path d="M11.4 22c2.7 0 5.1-1 6.9-2.7l-3.5-2.8c-.9.6-2 .9-3.4.9-2 0-3.8-1.2-4.6-3l-3.6 2.8C4.7 20.5 8 22 11.4 22Z" fill="#34a853"/><path d="M6.8 14.4c-.2-.6-.3-1.2-.3-1.9s.1-1.3.3-1.9L3.1 7.7C2.4 9.1 2 10.7 2 12.5s.4 3.4 1.2 4.8l3.6-2.9Z" fill="#fbbc05"/></svg>`,
+  azure: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.4 3h5.4L9.2 19.5c-.1.3-.4.5-.8.5H4.2c-.6 0-1-.6-.8-1.1L8.6 3.6c.1-.4.4-.6.8-.6Z" fill="#0078d4"/><path d="M16.2 14.1H8.5l7.1-11c.2-.3.5-.1.6.1l4.4 15.5c.2.6-.2 1.2-.8 1.2h-5.5l1.9-5.8Z" fill="#50a7f0"/><path d="m8.5 14.1 5.8 5.8h-6l.2-5.8Z" fill="#005ba1"/></svg>`,
+  kubernetes: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 8.7 5v10L12 22l-8.7-5V7L12 2Z" fill="#326ce5"/><path d="m12 5 1 3.4 3-2-1.7 3.2 3.6.3-3.3 1.5 2.8 2.4-3.5-.6.5 3.6L12 14l-2.4 2.8.5-3.6-3.5.6 2.8-2.4-3.3-1.5 3.6-.3L8 6.4l3 2 1-3.4Z" fill="#fff"/></svg>`,
+  data: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c4.4 0 8 1.4 8 3.2v11.6c0 1.8-3.6 3.2-8 3.2s-8-1.4-8-3.2V6.2C4 4.4 7.6 3 12 3Zm0 2c-3.3 0-5.8.7-5.8 1.2S8.7 7.4 12 7.4s5.8-.7 5.8-1.2S15.3 5 12 5Zm5.8 4.2c-1.5.8-3.6 1.2-5.8 1.2s-4.3-.4-5.8-1.2v2.3c0 .5 2.5 1.2 5.8 1.2s5.8-.7 5.8-1.2V9.2Zm0 5.3c-1.5.8-3.6 1.2-5.8 1.2s-4.3-.4-5.8-1.2v2.6c0 .5 2.5 1.2 5.8 1.2s5.8-.7 5.8-1.2v-2.6Z"/></svg>`,
+};
+
+let state = {
+  cloud: "all",
+  view: "recommendations",
+  automation: false,
+};
+
+function money(value) {
+  return `$${Math.round(value).toLocaleString()}`;
+}
+
+function filteredServices() {
+  return state.cloud === "all" ? SERVICES : SERVICES.filter((service) => service.provider === state.cloud);
+}
+
+function filteredRecommendations() {
+  return state.cloud === "all" ? RECOMMENDATIONS : RECOMMENDATIONS.filter((item) => item.cloud === state.cloud);
+}
+
+function sum(items, key) {
+  return items.reduce((total, item) => total + item[key], 0);
+}
+
+function providerLabel(provider) {
+  return CLOUDS.find((cloud) => cloud.id === provider)?.label || provider;
+}
+
+function vendorBadge(provider, label = providerLabel(provider)) {
+  return `<span class="vendor-badge ${provider}">${ICONS[provider] || ICONS.all}<span>${label}</span></span>`;
+}
+
+function renderProviderFilter() {
+  return CLOUDS.map((cloud) => `
+    <button class="segmented-button ${state.cloud === cloud.id ? "active" : ""}" data-cloud="${cloud.id}">
+      ${vendorBadge(cloud.id, cloud.label)}
+    </button>
+  `).join("");
+}
+
+function renderKpis() {
+  const services = filteredServices();
+  const spend = sum(services, "month");
+  const forecast = sum(services, "forecast");
+  const waste = sum(services, "waste");
+  const score = Math.round(sum(services, "score") / services.length);
+  return `
+    <section class="kpi-grid" aria-label="Cloud cost summary">
+      <article class="kpi spend"><div class="kpi-icon">${ICONS.spend}</div><span>Month spend</span><strong>${money(spend)}</strong><em>${forecast > spend ? `${money(forecast - spend)} forecast overrun` : `${money(spend - forecast)} below forecast`}</em></article>
+      <article class="kpi waste"><div class="kpi-icon">${ICONS.waste}</div><span>Verified waste</span><strong>${money(waste)}</strong><em>${Math.round((waste / spend) * 100)}% of monitored spend</em></article>
+      <article class="kpi savings"><div class="kpi-icon">${ICONS.savings}</div><span>Potential annual saving</span><strong>${money(waste * 12)}</strong><em>Before implementation risk scoring</em></article>
+      <article class="kpi score"><div class="kpi-icon">${ICONS.score}</div><span>Optimization score</span><strong>${score}</strong><em>${score >= 75 ? "Healthy with focused actions" : "Needs review this week"}</em></article>
+    </section>
+  `;
+}
+
+function renderSpendBars() {
+  const services = filteredServices();
+  const max = Math.max(...services.map((service) => service.forecast));
+  return services.map((service) => `
+    <tr>
+      <td><strong>${service.name}</strong><span>${vendorBadge(service.provider)} / ${service.owner}</span></td>
+      <td>${money(service.month)}</td>
+      <td>
+        <div class="bar-track"><i style="width:${Math.max(8, (service.forecast / max) * 100)}%"></i></div>
+      </td>
+      <td class="${service.trend > 12 ? "danger" : service.trend < 0 ? "good" : ""}">${service.trend > 0 ? "+" : ""}${service.trend}%</td>
+      <td>${money(service.waste)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderRecommendations() {
+  const recommendations = filteredRecommendations();
+  return recommendations.map((item) => `
+    <article class="recommendation">
+      <div class="rec-icon ${item.cloud}">${ICONS.prune}</div>
+      <div class="rec-main">
+        <span class="cloud-pill">${vendorBadge(item.cloud)}</span>
+        <h3>${item.title}</h3>
+        <p>${item.detail}</p>
+      </div>
+      <div class="rec-meta">
+        <strong>${money(item.impact)}</strong>
+        <span>${item.owner}</span>
+        <span>${item.effort} effort</span>
+        <button data-action="stage" aria-label="Stage ${item.title}">${item.status}</button>
+      </div>
+    </article>
+  `).join("") || `<div class="empty">No recommendations match this cloud.</div>`;
+}
+
+function renderAnomalies() {
+  return ANOMALIES.map((item) => `
+    <article class="anomaly ${item.severity}">
+      <div class="anomaly-copy">${ICONS.alert}<div><strong>${item.label}</strong><span>${item.note}</span></div></div>
+      <em>${item.value}</em>
+    </article>
+  `).join("");
+}
+
+function renderAutomationQueue() {
+  const queue = filteredRecommendations().filter((item) => item.risk === "Low").slice(0, 4);
+  return queue.map((item, index) => `
+    <li>
+      <span>${index + 1}</span>
+      <div><strong>${item.title}</strong><small>${money(item.impact)} monthly impact / ${item.owner}</small></div>
+      <button data-action="approve">Approve</button>
+    </li>
+  `).join("") || `<li class="muted-row">Select all clouds to see the automation queue.</li>`;
+}
+
+function renderMainPanel() {
+  if (state.view === "services") {
+    return `
+      <section class="panel table-panel">
+        <div class="panel-head">
+          <div><span class="eyebrow">Spend monitor</span><h2>Forecast, trend, and waste by service</h2></div>
+          <button data-view="recommendations">View actions</button>
+        </div>
+        <table>
+          <thead><tr><th>Service</th><th>MTD</th><th>Forecast</th><th>Trend</th><th>Waste</th></tr></thead>
+          <tbody>${renderSpendBars()}</tbody>
+        </table>
+      </section>
+    `;
+  }
+  return `
+    <section class="panel">
+      <div class="panel-head">
+        <div><span class="eyebrow">Savings inbox</span><h2>Prioritized recommendations</h2></div>
+        <button data-view="services">View services</button>
+      </div>
+      <div class="recommendation-list">${renderRecommendations()}</div>
+    </section>
+  `;
+}
+
+function render() {
+  const app = document.querySelector("#app");
+  app.innerHTML = `
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="/cloudprune/" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
+        <nav>
+          <a class="active" href="/cloudprune/">${ICONS.dashboard}<span>Dashboard</span></a>
+          <a href="/cloudprune/recommendations">${ICONS.recs}<span>Recommendations</span></a>
+          <a href="/cloudprune/anomalies">${ICONS.alert}<span>Anomalies</span></a>
+          <a href="/cloudprune/automation">${ICONS.automation}<span>Automation</span></a>
+          <a href="/cloudprune/settings">${ICONS.settings}<span>Settings</span></a>
+        </nav>
+        <div class="connector-card">
+          <span class="aws">${vendorBadge("aws", "AWS")}</span><span class="gcp">${vendorBadge("gcp", "GCP")}</span><span class="azure">${vendorBadge("azure", "Azure")}</span><span class="kubernetes">${vendorBadge("kubernetes", "K8s")}</span>
+        </div>
+      </aside>
+      <main>
+        <header class="topbar">
+          <div>
+            <span class="eyebrow">Cloud cost saving platform</span>
+            <h1>Monitor spend and prune waste before it ships to the bill.</h1>
+          </div>
+          <div class="hero-mark">${ICONS.logo}</div>
+          <div class="top-actions">
+            <label class="toggle"><input type="checkbox" ${state.automation ? "checked" : ""} data-action="toggle-automation" /><span></span>Autopilot</label>
+            <button data-action="connect">Connect cloud</button>
+          </div>
+        </header>
+        <div class="filters" role="group" aria-label="Cloud provider filter">${renderProviderFilter()}</div>
+        ${renderKpis()}
+        <div class="workspace">
+          ${renderMainPanel()}
+          <aside class="right-rail">
+            <section class="panel compact">
+              <div class="panel-head"><div><span class="eyebrow">Anomalies</span><h2>Today</h2></div></div>
+              <div class="anomaly-list">${renderAnomalies()}</div>
+            </section>
+            <section class="panel compact">
+              <div class="panel-head"><div><span class="eyebrow">Automation queue</span><h2>${state.automation ? "Active" : "Dry run"}</h2></div></div>
+              <ol class="queue">${renderAutomationQueue()}</ol>
+            </section>
+          </aside>
+        </div>
+      </main>
+    </div>
+  `;
+}
+
+document.addEventListener("click", (event) => {
+  const cloudButton = event.target.closest("[data-cloud]");
+  if (cloudButton) {
+    state.cloud = cloudButton.dataset.cloud;
+    render();
+    return;
+  }
+  const viewButton = event.target.closest("[data-view]");
+  if (viewButton) {
+    state.view = viewButton.dataset.view;
+    render();
+  }
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target.matches("[data-action='toggle-automation']")) {
+    state.automation = event.target.checked;
+    render();
+  }
+});
+
+render();
