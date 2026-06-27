@@ -525,8 +525,12 @@ function repairClientDemoTenant() {
   data.tenants = data.tenants.map((tenant) => {
     if (tenant.slug !== "demo" && tenant.id !== "demo") return tenant;
     const template = data.tenants.find((item) => item.slug === "admin") || tenantSeed[0];
-    const sourceDeals = tenant.deals?.length ? tenant.deals : structuredClone(template.deals);
-    const deals = sourceDeals.map((deal, index) => ({ ...deal, value: Number(deal.value) > 0 ? Number(deal.value) : demoDealValue(deal, index) }));
+    const seededDeals = structuredClone(template.deals).map((deal, index) => ({ ...deal, value: Number(deal.value) > 0 ? Number(deal.value) : demoDealValue(deal, index) }));
+    const seededKeys = new Set(seededDeals.flatMap((deal) => [deal.email, deal.account, deal.name].filter(Boolean)));
+    const customDeals = (tenant.deals || [])
+      .filter((deal) => Number(deal.value) > 0)
+      .filter((deal) => ![deal.email, deal.account, deal.name].some((key) => key && seededKeys.has(key)));
+    const deals = [...seededDeals, ...customDeals];
     return { ...tenant, deals, supportTickets: normalizeSupportTickets({ ...tenant, deals }) };
   });
 }

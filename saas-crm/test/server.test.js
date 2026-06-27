@@ -743,7 +743,10 @@ test("CRM named demo routes use the demo tenant instead of admin", () => {
   assert.match(app, /function ensureClientDemoTenant/);
   assert.match(app, /function repairClientDemoTenant/);
   assert.match(app, /repairClientDemoTenant\(\)/);
-  assert.match(app, /Number\(deal\.value\) > 0 \? Number\(deal\.value\) : demoDealValue\(deal, index\)/);
+  assert.match(app, /const seededDeals = structuredClone\(template\.deals\)/);
+  assert.match(app, /const customDeals = \(tenant\.deals \|\| \[\]\)/);
+  assert.match(app, /\.filter\(\(deal\) => Number\(deal\.value\) > 0\)/);
+  assert.match(app, /const deals = \[...seededDeals, ...customDeals\]/);
   assert.match(app, /saveData\(\)/);
   assert.match(app, /name: "CRM Demo"/);
   assert.match(app, /tenantId: demoTenant\?\.id \|\| "demo"/);
