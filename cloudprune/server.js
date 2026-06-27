@@ -9,17 +9,20 @@ const port = Number(process.env.PORT || 4321);
 const root = __dirname;
 const publicRoot = path.join(root, "cloudprune");
 const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "https://zeptrix.io").replace(/\/$/, "");
-const cloudFormationTemplateUrl = process.env.CLOUDPRUNE_AWS_CLOUDFORMATION_TEMPLATE_URL || "https://s3.amazonaws.com/elasticbeanstalk-us-east-1-339494983469/cloudprune/aws-readonly-role-template.yaml";
+const isProduction = process.env.NODE_ENV === "production";
+const databaseUrl = process.env.CLOUDPRUNE_DATABASE_URL || process.env.DATABASE_URL || "";
+const cloudFormationTemplateUrl = process.env.CLOUDPRUNE_AWS_CLOUDFORMATION_TEMPLATE_URL || (isProduction ? "" : `${publicBaseUrl}/cloudprune/aws-readonly-role-template.yaml`);
 const awsScanRegion = process.env.CLOUDPRUNE_AWS_SCAN_REGION || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
 const awsCliPath = process.env.CLOUDPRUNE_AWS_CLI || "aws";
+const awsCliMaxOutputBytes = Number(process.env.CLOUDPRUNE_AWS_CLI_MAX_OUTPUT_BYTES || 5 * 1024 * 1024);
 const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || "https://www.zeptrix.io/api/auth/google/callback";
 const googleClientId = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
 const googleClientSecret = process.env.CLOUDPRUNE_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
-const tokenSecret = process.env.CLOUDPRUNE_TOKEN_SECRET || process.env.CRM_TOKEN_SECRET || "local-cloudprune-token-secret";
+const tokenSecret = process.env.CLOUDPRUNE_TOKEN_SECRET || process.env.CRM_TOKEN_SECRET || (databaseUrl || isProduction ? "" : "local-cloudprune-token-secret");
 const awsPrincipalArn = process.env.CLOUDPRUNE_AWS_PRINCIPAL_ARN || "";
-const pool = process.env.CLOUDPRUNE_DATABASE_URL || process.env.DATABASE_URL
+const pool = databaseUrl
   ? new Pool({
-      connectionString: process.env.CLOUDPRUNE_DATABASE_URL || process.env.DATABASE_URL,
+      connectionString: databaseUrl,
       ssl: process.env.CLOUDPRUNE_DATABASE_SSL === "true" || process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
     })
   : null;
@@ -81,6 +84,11 @@ function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
 }
 
+function validateRuntimeConfig() {
+  if ((databaseUrl || isProduction) && !tokenSecret) throw new Error("CLOUDPRUNE_TOKEN_SECRET or CRM_TOKEN_SECRET is required when persistence is enabled.");
+  if (isProduction && !cloudFormationTemplateUrl) throw new Error("CLOUDPRUNE_AWS_CLOUDFORMATION_TEMPLATE_URL is required in production.");
+}
+
 function secureEqual(actual, expected) {
   const actualBuffer = Buffer.from(String(actual || ""));
   const expectedBuffer = Buffer.from(String(expected || ""));
@@ -117,6 +125,7 @@ function publicCloudConnection(row) {
 function publicAwsScan(row) {
   if (!row) return null;
   return {
+    id: row.id,
     status: row.status,
     awsAccountId: row.provider_account_id,
     monthlyCost: Number(row.monthly_cost || 0),
@@ -124,6 +133,7 @@ function publicAwsScan(row) {
     counts: row.counts || {},
     errors: row.errors || [],
     scannedAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -193,6 +203,12 @@ function verifyGoogleRegistration(token) {
   const payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
   if (!payload.sub || !payload.email || (payload.exp && Number(payload.exp) < Date.now())) return null;
   return payload;
+}
+
+function validateGoogleProfile(profile) {
+  if (profile.aud !== googleClientId || !profile.email) throw new Error("Google identity is not valid for this client.");
+  if (profile.email_verified !== true && profile.email_verified !== "true") throw new Error("Google email must be verified.");
+  return profile;
 }
 
 function cloudpruneOAuthState(prefix) {
@@ -283,6 +299,7 @@ async function initDatabase() {
       created_at timestamptz not null default now()
     )
   `);
+  await pool.query(`alter table cloudprune_aws_scans add column if not exists updated_at timestamptz not null default now()`);
 }
 
 async function recordAuthEvent({ userId = null, email = null, eventType, detail = null }) {
@@ -384,7 +401,7 @@ async function workspaceForRequest(req) {
   );
   const byProvider = Object.fromEntries(connections.rows.map((row) => [row.provider, publicCloudConnection(row)]));
   const latestScan = await pool.query(
-    `select provider_account_id, status, monthly_cost, currency, counts, errors, created_at
+    `select id, provider_account_id, status, monthly_cost, currency, counts, errors, created_at, updated_at
      from cloudprune_aws_scans
      where account_id=$1
      order by created_at desc
@@ -425,25 +442,42 @@ async function saveAwsConnection(req, payload) {
   return publicCloudConnection(result.rows[0]);
 }
 
-function runAwsCli(args, { env = {}, timeoutMs = 60000 } = {}) {
+function runAwsCli(args, { env = {}, timeoutMs = 60000, maxOutputBytes = awsCliMaxOutputBytes } = {}) {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const child = spawn(awsCliPath, args, {
       env: { ...process.env, ...env, AWS_PAGER: "" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error(`AWS CLI timed out while running aws ${args.join(" ")}`));
-    }, timeoutMs);
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
-    child.on("error", (error) => {
+    let outputBytes = 0;
+    function fail(error) {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      child.kill("SIGTERM");
       reject(error);
+    }
+    const timer = setTimeout(() => {
+      fail(new Error(`AWS CLI timed out while running aws ${args.join(" ")}`));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > maxOutputBytes) return fail(new Error(`AWS CLI output exceeded ${maxOutputBytes} bytes for aws ${args.join(" ")}`));
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > maxOutputBytes) return fail(new Error(`AWS CLI output exceeded ${maxOutputBytes} bytes for aws ${args.join(" ")}`));
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      fail(error);
     });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       if (code === 0) resolve(stdout);
       else reject(new Error((stderr || stdout || `aws ${args.join(" ")} exited with ${code}`).trim()));
@@ -474,25 +508,26 @@ function costFromCostExplorer(data) {
   };
 }
 
+function scanCountValue(value, collectionKey) {
+  if (typeof value === "number") return value;
+  if (Array.isArray(value)) return value.reduce((total, item) => total + scanCountValue(item, collectionKey), 0);
+  if (!value) return 0;
+  if (collectionKey === "Reservations") return (value.Reservations || []).reduce((total, reservation) => total + (reservation.Instances || []).length, 0);
+  return (value[collectionKey] || []).length;
+}
+
 function awsScanCounts(results) {
-  const ec2Payloads = Array.isArray(results.ec2Instances) ? results.ec2Instances : [results.ec2Instances || {}];
-  const lambdaPayloads = Array.isArray(results.lambdas) ? results.lambdas : [results.lambdas || {}];
-  const rdsPayloads = Array.isArray(results.rdsInstances) ? results.rdsInstances : [results.rdsInstances || {}];
-  const ebsPayloads = Array.isArray(results.ebsVolumes) ? results.ebsVolumes : [results.ebsVolumes || {}];
-  const loadBalancerPayloads = Array.isArray(results.loadBalancers) ? results.loadBalancers : [results.loadBalancers || {}];
-  const reservations = ec2Payloads.flatMap((payload) => payload.Reservations || []);
-  const ec2Instances = reservations.reduce((total, reservation) => total + (reservation.Instances || []).length, 0);
   return {
-    ec2Instances,
-    lambdas: lambdaPayloads.reduce((total, payload) => total + (payload.Functions || []).length, 0),
-    rdsInstances: rdsPayloads.reduce((total, payload) => total + (payload.DBInstances || []).length, 0),
-    s3Buckets: (results.s3Buckets?.Buckets || []).length,
-    ebsVolumes: ebsPayloads.reduce((total, payload) => total + (payload.Volumes || []).length, 0),
-    loadBalancers: loadBalancerPayloads.reduce((total, payload) => total + (payload.LoadBalancers || []).length, 0),
+    ec2Instances: scanCountValue(results.ec2Instances, "Reservations"),
+    lambdas: scanCountValue(results.lambdas, "Functions"),
+    rdsInstances: scanCountValue(results.rdsInstances, "DBInstances"),
+    s3Buckets: scanCountValue(results.s3Buckets, "Buckets"),
+    ebsVolumes: scanCountValue(results.ebsVolumes, "Volumes"),
+    loadBalancers: scanCountValue(results.loadBalancers, "LoadBalancers"),
   };
 }
 
-async function scanAwsConnection(req) {
+async function startAwsScan(req) {
   const user = await userFromSession(req);
   const connection = await pool.query(
     `select provider_account_id, role_arn, external_id
@@ -503,83 +538,121 @@ async function scanAwsConnection(req) {
   const aws = connection.rows[0];
   if (!aws) throw new Error("Connect AWS before scanning.");
 
+  const started = await pool.query(
+    `insert into cloudprune_aws_scans (account_id, provider_account_id, status)
+     values ($1,$2,'running')
+     returning id, provider_account_id, status, monthly_cost, currency, counts, errors, created_at, updated_at`,
+    [user.account_id, aws.provider_account_id]
+  );
+  setImmediate(() => {
+    performAwsScan(started.rows[0].id, user, aws).catch((error) => {
+      console.error("CloudPrune AWS scan failed", error);
+    });
+  });
+  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_started", detail: aws.provider_account_id });
+  return publicAwsScan(started.rows[0]);
+}
+
+async function getAwsScan(req, scanId) {
+  const user = await userFromSession(req);
+  const result = await pool.query(
+    `select id, provider_account_id, status, monthly_cost, currency, counts, errors, created_at, updated_at
+     from cloudprune_aws_scans
+     where id=$1 and account_id=$2`,
+    [scanId, user.account_id]
+  );
+  if (!result.rows[0]) throw new Error("AWS scan was not found.");
+  return publicAwsScan(result.rows[0]);
+}
+
+async function performAwsScan(scanId, user, aws) {
   const sessionName = `CloudPruneScan-${Date.now()}`;
-  const assumed = await runAwsJson([
-    "sts", "assume-role",
-    "--role-arn", aws.role_arn,
-    "--role-session-name", sessionName,
-    "--external-id", aws.external_id,
-  ], { timeoutMs: 60000 });
-  const credentials = assumed.Credentials;
-  if (!credentials?.AccessKeyId || !credentials?.SecretAccessKey || !credentials?.SessionToken) {
-    throw new Error("AWS assume-role did not return temporary credentials.");
-  }
-  const scanEnv = {
-    AWS_ACCESS_KEY_ID: credentials.AccessKeyId,
-    AWS_SECRET_ACCESS_KEY: credentials.SecretAccessKey,
-    AWS_SESSION_TOKEN: credentials.SessionToken,
-    AWS_DEFAULT_REGION: awsScanRegion,
-  };
-  const { start, end } = monthStartEnd();
   const results = {};
   const errors = [];
-  let regions = [awsScanRegion];
   try {
-    const regionResult = await runAwsJson(["ec2", "describe-regions", "--all-regions", "--region", awsScanRegion], { env: scanEnv, timeoutMs: 60000 });
-    regions = (regionResult.Regions || [])
-      .filter((region) => !region.OptInStatus || region.OptInStatus === "opt-in-not-required" || region.OptInStatus === "opted-in")
-      .map((region) => region.RegionName)
-      .filter(Boolean);
-    if (!regions.length) regions = [awsScanRegion];
-  } catch (error) {
-    errors.push({ check: "regions", message: error.message });
-  }
-
-  const globalChecks = [
-    ["s3Buckets", ["s3api", "list-buckets"]],
-    ["cost", [
-      "ce", "get-cost-and-usage",
-      "--time-period", `Start=${start},End=${end}`,
-      "--granularity", "MONTHLY",
-      "--metrics", "UnblendedCost",
-      "--region", "us-east-1",
-    ]],
-  ];
-  for (const [id, args] of globalChecks) {
-    try {
-      results[id] = await runAwsJson(args, { env: scanEnv, timeoutMs: 90000 });
-    } catch (error) {
-      errors.push({ check: id, message: error.message });
+    const assumed = await runAwsJson([
+      "sts", "assume-role",
+      "--role-arn", aws.role_arn,
+      "--role-session-name", sessionName,
+      "--external-id", aws.external_id,
+    ], { timeoutMs: 60000 });
+    const credentials = assumed.Credentials;
+    if (!credentials?.AccessKeyId || !credentials?.SecretAccessKey || !credentials?.SessionToken) {
+      throw new Error("AWS assume-role did not return temporary credentials.");
     }
-  }
+    const scanEnv = {
+      AWS_ACCESS_KEY_ID: credentials.AccessKeyId,
+      AWS_SECRET_ACCESS_KEY: credentials.SecretAccessKey,
+      AWS_SESSION_TOKEN: credentials.SessionToken,
+      AWS_DEFAULT_REGION: awsScanRegion,
+    };
+    const { start, end } = monthStartEnd();
+    let regions = [awsScanRegion];
+    try {
+      const regionResult = await runAwsJson(["ec2", "describe-regions", "--all-regions", "--region", awsScanRegion], { env: scanEnv, timeoutMs: 45000 });
+      regions = (regionResult.Regions || [])
+        .filter((region) => !region.OptInStatus || region.OptInStatus === "opt-in-not-required" || region.OptInStatus === "opted-in")
+        .map((region) => region.RegionName)
+        .filter(Boolean);
+      if (!regions.length) regions = [awsScanRegion];
+    } catch (error) {
+      errors.push({ check: "regions", message: error.message });
+    }
 
-  const regionalChecks = [
-    ["ec2Instances", (region) => ["ec2", "describe-instances", "--region", region]],
-    ["ebsVolumes", (region) => ["ec2", "describe-volumes", "--region", region]],
-    ["lambdas", (region) => ["lambda", "list-functions", "--region", region]],
-    ["rdsInstances", (region) => ["rds", "describe-db-instances", "--region", region]],
-    ["loadBalancers", (region) => ["elbv2", "describe-load-balancers", "--region", region]],
-  ];
-  for (const region of regions) {
-    for (const [id, command] of regionalChecks) {
+    const globalChecks = [
+      ["s3Buckets", ["s3api", "list-buckets", "--query", "length(Buckets)"]],
+      ["cost", [
+        "ce", "get-cost-and-usage",
+        "--time-period", `Start=${start},End=${end}`,
+        "--granularity", "MONTHLY",
+        "--metrics", "UnblendedCost",
+        "--region", "us-east-1",
+      ]],
+    ];
+    for (const [id, args] of globalChecks) {
       try {
-        results[id] = [...(results[id] || []), await runAwsJson(command(region), { env: scanEnv, timeoutMs: 90000 })];
+        results[id] = await runAwsJson(args, { env: scanEnv, timeoutMs: 60000 });
       } catch (error) {
-        errors.push({ check: `${id}:${region}`, message: error.message });
+        errors.push({ check: id, message: error.message });
       }
     }
+
+    const regionalChecks = [
+      ["ec2Instances", (region) => ["ec2", "describe-instances", "--region", region, "--query", "length(Reservations[].Instances[])"]],
+      ["ebsVolumes", (region) => ["ec2", "describe-volumes", "--region", region, "--query", "length(Volumes)"]],
+      ["lambdas", (region) => ["lambda", "list-functions", "--region", region, "--query", "length(Functions)"]],
+      ["rdsInstances", (region) => ["rds", "describe-db-instances", "--region", region, "--query", "length(DBInstances)"]],
+      ["loadBalancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--query", "length(LoadBalancers)"]],
+    ];
+    const jobs = regions.flatMap((region) => regionalChecks.map(([id, command]) => ({ region, id, command })));
+    const concurrency = 5;
+    for (let index = 0; index < jobs.length; index += concurrency) {
+      const batch = jobs.slice(index, index + concurrency);
+      await Promise.all(batch.map(async ({ region, id, command }) => {
+        try {
+          results[id] = [...(results[id] || []), await runAwsJson(command(region), { env: scanEnv, timeoutMs: 45000 })];
+        } catch (error) {
+          errors.push({ check: `${id}:${region}`, message: error.message });
+        }
+      }));
+    }
+    const cost = costFromCostExplorer(results.cost);
+    const counts = awsScanCounts(results);
+    const status = errors.length ? "completed_with_errors" : "completed";
+    await pool.query(
+      `update cloudprune_aws_scans
+       set status=$2, monthly_cost=$3, currency=$4, counts=$5, errors=$6, scan_json=$7, updated_at=now()
+       where id=$1`,
+      [scanId, status, cost.amount, cost.currency, counts, errors, { regions, checks: Object.keys(results) }]
+    );
+    await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
+  } catch (error) {
+    await pool.query(
+      `update cloudprune_aws_scans set status='failed', errors=$2, updated_at=now() where id=$1`,
+      [scanId, [{ check: "scan", message: error.message }]]
+    );
+    await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_failed", detail: aws.provider_account_id });
   }
-  const cost = costFromCostExplorer(results.cost);
-  const counts = awsScanCounts(results);
-  const status = errors.length ? "completed_with_errors" : "completed";
-  const saved = await pool.query(
-    `insert into cloudprune_aws_scans (account_id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json)
-     values ($1,$2,$3,$4,$5,$6,$7,$8)
-     returning provider_account_id, status, monthly_cost, currency, counts, errors, created_at`,
-    [user.account_id, aws.provider_account_id, status, cost.amount, cost.currency, counts, errors, { regions, checks: Object.keys(results) }]
-  );
-  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
-  return publicAwsScan(saved.rows[0]);
 }
 
 async function googleProfileFromCode(code) {
@@ -599,8 +672,7 @@ async function googleProfileFromCode(code) {
   const profileResponse = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token.id_token || "")}`);
   if (!profileResponse.ok) throw new Error("Google identity verification failed.");
   const profile = await profileResponse.json();
-  if (profile.aud !== googleClientId || !profile.email) throw new Error("Google identity is not valid for this client.");
-  return profile;
+  return validateGoogleProfile(profile);
 }
 
 async function googleUserFromProfile(profile) {
@@ -653,7 +725,11 @@ async function handleApi(req, res, requestUrl) {
       return json(res, 200, { connection: await saveAwsConnection(req, await readJson(req)) });
     }
     if (req.method === "POST" && apiPath === "/api/cloud-connections/aws/scan") {
-      return json(res, 200, { scan: await scanAwsConnection(req) });
+      return json(res, 202, { scan: await startAwsScan(req) });
+    }
+    const scanMatch = apiPath.match(/^\/api\/cloud-connections\/aws\/scan\/([0-9a-f-]{36})$/i);
+    if (req.method === "GET" && scanMatch) {
+      return json(res, 200, { scan: await getAwsScan(req, scanMatch[1]) });
     }
     if (req.method === "GET" && apiPath === "/api/auth/google/start") {
       if (!googleClientId || !googleClientSecret) {
@@ -743,7 +819,9 @@ function serveStatic(req, res) {
 const server = http.createServer(serveStatic);
 
 if (require.main === module) {
-  initDatabase()
+  Promise.resolve()
+    .then(validateRuntimeConfig)
+    .then(initDatabase)
     .then(() => {
       server.listen(port, () => {
         console.log(`CloudPrune listening on http://localhost:${port}/cloudprune/`);
@@ -757,4 +835,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { awsScanCounts, cloudpruneOAuthState, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
+module.exports = { awsScanCounts, cloudpruneOAuthState, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };

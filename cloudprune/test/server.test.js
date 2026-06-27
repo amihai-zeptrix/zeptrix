@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { awsScanCounts, cloudpruneOAuthState, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
+const { awsScanCounts, cloudpruneOAuthState, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -268,6 +268,19 @@ test("Google SSO creates a signed pending registration for new users", () => {
   assert.equal(verifyGoogleRegistration(`${token.slice(0, -1)}x`), null);
 });
 
+test("Google SSO requires verified Google email", () => {
+  assert.equal(validateGoogleProfile({
+    aud: "",
+    email: "ami@example.com",
+    email_verified: true,
+  }).email, "ami@example.com");
+  assert.throws(() => validateGoogleProfile({
+    aud: "",
+    email: "ami@example.com",
+    email_verified: false,
+  }), /email must be verified/i);
+});
+
 test("CloudPrune sessions carry the account company name", () => {
   const token = signSession({
     id: "user-1",
@@ -294,15 +307,12 @@ test("AWS assume-role onboarding validates role ARNs and derives external IDs", 
 
 test("AWS scan summary counts entities and monthly cost", () => {
   assert.deepEqual(awsScanCounts({
-    ec2Instances: [
-      { Reservations: [{ Instances: [{}, {}] }] },
-      { Reservations: [{ Instances: [{}] }] },
-    ],
-    lambdas: [{ Functions: [{}, {}] }, { Functions: [{}] }],
-    rdsInstances: [{ DBInstances: [{}] }],
-    s3Buckets: { Buckets: [{}, {}, {}, {}] },
-    ebsVolumes: [{ Volumes: [{}, {}] }, { Volumes: [{}] }],
-    loadBalancers: [{ LoadBalancers: [{}] }],
+    ec2Instances: [2, 1],
+    lambdas: [2, 1],
+    rdsInstances: [1],
+    s3Buckets: 4,
+    ebsVolumes: [2, 1],
+    loadBalancers: [1],
   }), {
     ec2Instances: 3,
     lambdas: 3,

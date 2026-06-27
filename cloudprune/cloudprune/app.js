@@ -133,14 +133,50 @@ async function scanAws() {
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "AWS scan failed.");
-    stopScanProgress();
-    state.awsScan = { status: "done", progress: 100, message: "AWS scan complete.", result: body.scan };
-    state.workspace = { ...(state.workspace || {}), awsScan: body.scan };
+    if (body.scan?.status === "running") {
+      state.awsScan = { ...state.awsScan, result: body.scan };
+      await pollAwsScan(body.scan.id);
+      return;
+    }
+    completeAwsScan(body.scan);
   } catch (error) {
     stopScanProgress();
     state.awsScan = { status: "error", progress: 100, message: error.message };
   }
   render();
+}
+
+function completeAwsScan(scan) {
+  stopScanProgress();
+  state.awsScan = {
+    status: scan.status === "failed" ? "error" : "done",
+    progress: 100,
+    message: scan.status === "failed" ? "AWS scan failed." : "AWS scan complete.",
+    result: scan,
+  };
+  state.workspace = { ...(state.workspace || {}), awsScan: scan };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollAwsScan(scanId) {
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    await delay(2000);
+    const response = await fetch(`${basePath()}/api/cloud-connections/aws/scan/${encodeURIComponent(scanId)}`, {
+      headers: authHeaders(),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "AWS scan status failed.");
+    state.awsScan.result = body.scan;
+    if (body.scan.status !== "running") {
+      completeAwsScan(body.scan);
+      render();
+      return;
+    }
+  }
+  throw new Error("AWS scan is still running. Refresh the page to check status.");
 }
 
 function filteredServices() {
@@ -350,6 +386,15 @@ async function loadWorkspace() {
     if (!response.ok) throw new Error(body.error || "CloudPrune workspace load failed.");
     state.workspace = body;
     render();
+    if (body.awsScan?.status === "running" && state.awsScan.result?.id !== body.awsScan.id) {
+      startScanProgress();
+      state.awsScan.result = body.awsScan;
+      pollAwsScan(body.awsScan.id).catch((error) => {
+        stopScanProgress();
+        state.awsScan = { status: "error", progress: 100, message: error.message };
+        render();
+      });
+    }
   } catch {
     state.workspaceLoadStarted = false;
   }
@@ -468,10 +513,10 @@ function renderAutomationQueue() {
 }
 
 function renderAwsScanPanel(awsConnection) {
-  const active = state.awsScan.status === "scanning";
   const scan = scanResult();
+  const active = state.awsScan.status === "scanning" || scan?.status === "running";
   const counts = scan?.counts || {};
-  const progress = active ? state.awsScan.progress : scan ? 100 : 0;
+  const progress = active ? (state.awsScan.progress || 20) : scan ? 100 : 0;
   const countRows = [
     ["EC2 instances", counts.ec2Instances],
     ["Lambda functions", counts.lambdas],
@@ -487,8 +532,8 @@ function renderAwsScanPanel(awsConnection) {
     <div class="scan-panel">
       <div>
         <span class="eyebrow">AWS scan</span>
-        <h3>${active ? "Scanning account..." : scan ? "Latest scan complete" : "Run first inventory scan"}</h3>
-        <p>${active ? state.awsScan.message : scan ? `Read ${scanTotalEntities(scan).toLocaleString()} entities from AWS account ${escapeHtml(scan.awsAccountId || awsConnection.awsAccountId)}.` : "Collect inventory counts and current-month spend using the saved read-only role."}</p>
+        <h3>${active ? "Scanning account..." : scan ? scan.status === "failed" ? "Latest scan failed" : "Latest scan complete" : "Run first inventory scan"}</h3>
+        <p>${active ? state.awsScan.message || "AWS scan is running." : scan ? `Read ${scanTotalEntities(scan).toLocaleString()} entities from AWS account ${escapeHtml(scan.awsAccountId || awsConnection.awsAccountId)}.` : "Collect inventory counts and current-month spend using the saved read-only role."}</p>
       </div>
       <div class="scan-progress" aria-label="AWS scan progress">
         <span style="width:${Math.max(0, Math.min(100, progress))}%"></span>
@@ -497,7 +542,7 @@ function renderAwsScanPanel(awsConnection) {
         <button data-action="scan-aws" ${active ? "disabled" : ""}>${scan ? "Scan again" : "Scan AWS"}</button>
         <strong>${scan ? money(scan.monthlyCost) : "$0"} <small>month spend</small></strong>
       </div>
-      ${scan ? `<ul class="scan-counts">${countRows}</ul>${errors}` : ""}
+      ${scan && !active ? `<ul class="scan-counts">${countRows}</ul>${errors}` : ""}
     </div>
   `;
 }
