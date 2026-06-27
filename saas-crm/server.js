@@ -4503,6 +4503,7 @@ async function handleApi(req, res) {
 }
 
 function staticFilePathForUrlPath(urlPath) {
+  if (urlPath === "/cloudprune" || urlPath === "/cloudprune/" || /^\/cloudprune\/[^/.]+\/?$/.test(urlPath)) return path.join(root, "cloudprune/index.html");
   if (urlPath === "/crm/demo" || urlPath === "/crm/demo/" || urlPath.startsWith("/crm/demo/")) return path.join(root, "crm/index.html");
   if (/^\/crm\/[^/.]+\/?$/.test(urlPath)) return path.join(root, "crm/index.html");
   return path.join(root, urlPath === "/" ? "index.html" : urlPath);
@@ -4528,7 +4529,7 @@ function serveStatic(req, res) {
     if (stat.isDirectory()) filePath = path.join(filePath, "index.html");
     const ext = path.extname(filePath);
     const headers = { "content-type": mimeTypes[ext] || "application/octet-stream" };
-    if (urlPath === "/crm" || urlPath.startsWith("/crm/")) headers["cache-control"] = "no-store";
+    if (urlPath === "/crm" || urlPath.startsWith("/crm/") || urlPath === "/cloudprune" || urlPath.startsWith("/cloudprune/")) headers["cache-control"] = "no-store";
     res.writeHead(200, headers);
     fs.createReadStream(filePath).pipe(res);
   } catch {

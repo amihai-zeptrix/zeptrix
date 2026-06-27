@@ -723,6 +723,18 @@ test("CRM demo route serves the CRM app shell", () => {
   assert.doesNotMatch(server, /gagig/i);
 });
 
+test("CloudPrune route serves the CloudPrune app shell", () => {
+  const server = serverSource();
+  const cloudpruneIndex = path.join(__dirname, "..", "cloudprune", "index.html");
+
+  assert.equal(staticFilePathForUrlPath("/cloudprune"), cloudpruneIndex);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/"), cloudpruneIndex);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/recommendations"), cloudpruneIndex);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/settings"), cloudpruneIndex);
+  assert.notEqual(staticFilePathForUrlPath("/cloudprune/app.js"), cloudpruneIndex);
+  assert.match(server, /urlPath === "\/cloudprune" \|\| urlPath\.startsWith\("\/cloudprune\/"\)/);
+});
+
 test("CRM named demo routes use the demo tenant instead of admin", () => {
   const app = crmAppSource();
 
