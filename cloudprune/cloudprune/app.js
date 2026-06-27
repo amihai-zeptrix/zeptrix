@@ -252,10 +252,10 @@ function absoluteAppUrl(pathname) {
   return new URL(pathname, location.href).toString();
 }
 
-function cloudFormationLaunchUrl(externalId, principalArn) {
-  const templateUrl = absoluteAppUrl(`${basePath()}/aws-readonly-role-template.yaml`);
+function cloudFormationLaunchUrl(externalId, principalArn, templateUrl = "") {
+  const resolvedTemplateUrl = templateUrl || absoluteAppUrl(`${basePath()}/aws-readonly-role-template.yaml`);
   const params = new URLSearchParams({
-    templateURL: templateUrl,
+    templateURL: resolvedTemplateUrl,
     stackName: "CloudPruneReadOnlyRole",
     param_ExternalId: externalId,
     param_CloudPrunePrincipalArn: principalArn,
@@ -421,6 +421,7 @@ function renderEmptyWorkspace() {
   const awsConnection = state.workspace?.connections?.aws || null;
   const externalIdValue = state.awsConnectDraft.externalId || state.workspace?.awsSetup?.externalId || `cloudprune-${sessionAccountId()}`;
   const principalArnValue = state.workspace?.awsSetup?.principalArn || "CloudPrune AWS principal ARN";
+  const templateUrlValue = state.workspace?.awsSetup?.cloudFormationTemplateUrl || "";
   if (awsConnection) {
     return `
       <div class="workspace empty-workspace">
@@ -438,7 +439,7 @@ function renderEmptyWorkspace() {
             <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Update role</button>
             <a href="${basePath()}/demo">View demo data</a>
           </div>
-          ${state.connectFormVisible ? renderAwsConnectForm(externalIdValue, principalArnValue, awsConnection.roleArn) : ""}
+          ${state.connectFormVisible ? renderAwsConnectForm(externalIdValue, principalArnValue, awsConnection.roleArn, templateUrlValue) : ""}
         </section>
         <aside class="right-rail">
           <section class="panel compact empty-side-panel">
@@ -464,7 +465,7 @@ function renderEmptyWorkspace() {
           <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Connect AWS</button>
           <a href="${basePath()}/demo">View demo data</a>
         </div>
-        ${state.connectFormVisible ? renderAwsConnectForm(externalIdValue, principalArnValue) : ""}
+        ${state.connectFormVisible ? renderAwsConnectForm(externalIdValue, principalArnValue, "", templateUrlValue) : ""}
       </section>
       <aside class="right-rail">
         <section class="panel compact empty-side-panel">
@@ -480,12 +481,12 @@ function renderEmptyWorkspace() {
   `;
 }
 
-function renderAwsConnectForm(externalId, principalArn, roleArn = "") {
+function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUrl = "") {
   const draftRoleArn = escapeHtml(state.awsConnectDraft.roleArn || roleArn);
   const draftExternalId = escapeHtml(state.awsConnectDraft.externalId || externalId);
   const escapedExternalId = escapeHtml(externalId);
   const escapedPrincipalArn = escapeHtml(principalArn);
-  const launchUrl = cloudFormationLaunchUrl(externalId, principalArn);
+  const launchUrl = cloudFormationLaunchUrl(externalId, principalArn, templateUrl);
   const hasPrincipal = /^arn:aws[a-z-]*:iam::\d{12}:/.test(principalArn);
   const canSave = Boolean((state.awsConnectDraft.roleArn || roleArn || "").trim());
   return `

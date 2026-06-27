@@ -8,6 +8,7 @@ const port = Number(process.env.PORT || 4321);
 const root = __dirname;
 const publicRoot = path.join(root, "cloudprune");
 const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "https://zeptrix.io").replace(/\/$/, "");
+const cloudFormationTemplateUrl = process.env.CLOUDPRUNE_AWS_CLOUDFORMATION_TEMPLATE_URL || "https://s3.amazonaws.com/elasticbeanstalk-us-east-1-339494983469/cloudprune/aws-readonly-role-template.yaml";
 const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || "https://www.zeptrix.io/api/auth/google/callback";
 const googleClientId = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
 const googleClientSecret = process.env.CLOUDPRUNE_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
@@ -360,6 +361,7 @@ async function workspaceForRequest(req) {
     awsSetup: {
       externalId: byProvider.aws?.externalId || externalIdForAccount(user.account_id),
       principalArn: awsPrincipalArn,
+      cloudFormationTemplateUrl,
     },
   };
 }
