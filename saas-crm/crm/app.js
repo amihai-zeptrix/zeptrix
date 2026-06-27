@@ -1833,15 +1833,17 @@ function renderSummary(deals = currentTenant().deals) {
   const due = openTasks(tenant).filter((task) => dealIds.has(task.dealId) && task.due <= today());
   return `
     <div class="summary-grid">
-      ${summaryCard("↗", "var(--blue-soft)", "var(--blue)", "Pipeline value", money(total(open)), "+12.4%")}
+      ${summaryCard("↗", "var(--blue-soft)", "var(--blue)", "Pipeline value", money(total(open)), "+12.4%", "open-pipeline")}
       ${summaryCard("◎", "var(--mint-soft)", "var(--mint)", "Won this month", money(total(won)), "+18.2%")}
       ${summaryCard("▦", "var(--purple-soft)", "var(--purple)", "Open deals", open.length, "+5.1%")}
       ${summaryCard("◴", "var(--orange-soft)", "var(--orange)", "Tasks due", due.length, "needs action")}
     </div>`;
 }
 
-function summaryCard(icon, bg, color, label, value, trend) {
-  return `<article class="summary-card"><span class="summary-icon" style="background:${bg};color:${color}">${icon}</span><div><small>${label}</small><strong>${value}</strong></div><span class="summary-trend">${trend}</span></article>`;
+function summaryCard(icon, bg, color, label, value, trend, action = "") {
+  const tag = action ? "button" : "article";
+  const attrs = action ? ` type="button" data-action="${escapeHtml(action)}"` : "";
+  return `<${tag} class="summary-card"${attrs}><span class="summary-icon" style="background:${bg};color:${color}">${icon}</span><div><small>${label}</small><strong>${value}</strong></div><span class="summary-trend">${trend}</span></${tag}>`;
 }
 
 function uniqueBy(field) {
@@ -3473,6 +3475,12 @@ document.addEventListener("click", async (event) => {
     if (action === "back-login") { ui.authStep = "password"; ui.authError = ""; ui.authNotice = ""; ui.pendingUser = null; }
     if (action === "logout") { session = null; saveSession(); ui.authStep = "password"; }
     if (action === "open-tenant") { ui.tenantId = id; ui.section = "pipeline"; session.tenantId = id; saveSession(); }
+    if (action === "open-pipeline") {
+      ui.section = "pipeline";
+      ui.view = "table";
+      ui.modal = null;
+      ui.selected = null;
+    }
     if (action === "add-tenant") { ui.editingTenant = null; ui.authError = ""; ui.adminNotice = ""; ui.modal = "tenant"; }
     if (action === "add-deal") {
       ui.section = "pipeline";

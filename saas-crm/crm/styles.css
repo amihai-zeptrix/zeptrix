@@ -648,7 +648,12 @@ h3 { font-size: 14px; }
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+  color: inherit;
+  text-align: left;
 }
+button.summary-card { width: 100%; cursor: pointer; font: inherit; }
+button.summary-card:hover { border-color: #c8dcff; background: #f8fbff; }
+button.summary-card:focus-visible { outline: 3px solid #bfd6ff; outline-offset: 2px; }
 .summary-card.focus-card {
   width: 100%;
   border: 1px solid var(--line);

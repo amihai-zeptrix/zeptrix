@@ -863,6 +863,8 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   const isOpenDealSource = functionSource(app, "isOpenDeal", "accountAttentionReasons");
   const focusHomeCorrespondenceSource = functionSource(app, "focusHomeCorrespondenceAccount", "homeEvents");
   const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+  const renderSummarySource = functionSource(app, "renderSummary", "summaryCard");
+  const summaryCardSource = functionSource(app, "summaryCard", "uniqueBy");
   const renderHomeEventSource = functionSource(app, "renderHomeEvent", "birthdayDate");
 
   assert.match(renderHomeSource, /israelGreeting\(\)/);
@@ -871,6 +873,9 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(israelGreetingSource, /timeZone: "Asia\/Jerusalem"/);
   assert.match(renderHomeSource, /Accounts that need attention/);
   assert.match(renderHomeSource, /attentionAccounts\.map\(renderHomeAttentionAccount\)/);
+  assert.match(renderSummarySource, /"Pipeline value", money\(total\(open\)\), "\+12\.4%", "open-pipeline"/);
+  assert.match(summaryCardSource, /const tag = action \? "button" : "article"/);
+  assert.match(summaryCardSource, /data-action="\$\{escapeHtml\(action\)\}"/);
   assert.match(renderHomeSource, /Today's focus/);
   assert.match(homeAttentionPanelSource, /Correspondence needing attention/);
   assert.match(renderHomeSource, /Relationship events/);
@@ -915,6 +920,9 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(clickHandlerSource, /openHomeCorrespondenceEmail\(actionElement\.dataset\.threadId\)/);
   assert.match(clickHandlerSource, /action === "focus-home-correspondence-account"/);
   assert.match(clickHandlerSource, /focusHomeCorrespondenceAccount\(actionElement\.dataset\.account/);
+  assert.match(clickHandlerSource, /action === "open-pipeline"/);
+  assert.match(clickHandlerSource, /ui\.section = "pipeline"/);
+  assert.match(clickHandlerSource, /ui\.view = "table"/);
   assert.match(renderHomeEventSource, /class="event-account" data-open-account/);
   assert.match(styles, /\.home-thread-list \{\s+display: grid;\s+grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(styles, /\.home-attention-section/);
