@@ -231,6 +231,15 @@ function authHeaders(extra = {}) {
   return { ...extra, authorization: `Bearer ${localStorage.getItem("cloudprune.session") || ""}` };
 }
 
+function formValue(form, name) {
+  return String(
+    form?.elements?.[name]?.value ??
+    form?.querySelector?.(`[name='${name}']`)?.value ??
+    new FormData(form).get(name) ??
+    ""
+  ).trim();
+}
+
 async function loadWorkspace() {
   if (!hasSession() || state.workspaceLoadStarted || typeof fetch !== "function") return;
   state.workspaceLoadStarted = true;
@@ -692,14 +701,21 @@ document.addEventListener("change", (event) => {
     state.automation = event.target.checked;
     render();
   }
+  const connectForm = event.target.closest("[data-connect-form='aws']");
+  if (connectForm) {
+    state.awsConnectDraft = {
+      roleArn: formValue(connectForm, "roleArn"),
+      externalId: formValue(connectForm, "externalId"),
+    };
+  }
 });
 
 document.addEventListener("input", (event) => {
   const connectForm = event.target.closest("[data-connect-form='aws']");
   if (connectForm) {
     state.awsConnectDraft = {
-      roleArn: connectForm.querySelector("[name='roleArn']")?.value || "",
-      externalId: connectForm.querySelector("[name='externalId']")?.value || "",
+      roleArn: formValue(connectForm, "roleArn"),
+      externalId: formValue(connectForm, "externalId"),
     };
     return;
   }
@@ -712,8 +728,8 @@ document.addEventListener("submit", async (event) => {
   if (connectForm) {
     event.preventDefault();
     const payload = {
-      roleArn: connectForm.querySelector("[name='roleArn']")?.value?.trim() || state.awsConnectDraft.roleArn,
-      externalId: connectForm.querySelector("[name='externalId']")?.value?.trim() || state.awsConnectDraft.externalId,
+      roleArn: formValue(connectForm, "roleArn") || state.awsConnectDraft.roleArn,
+      externalId: formValue(connectForm, "externalId") || state.awsConnectDraft.externalId,
     };
     if (!payload.roleArn) {
       state.connectMessage = "Role ARN is required.";

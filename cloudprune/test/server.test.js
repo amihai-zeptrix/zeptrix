@@ -25,10 +25,26 @@ function renderCloudPruneApp(pathname, session = null, interact = null) {
   const app = { innerHTML: "" };
   const listeners = {};
   const store = new Map(session ? [["cloudprune.session", session]] : []);
+  const fetchCalls = [];
   const script = fs.readFileSync(path.join(__dirname, "../cloudprune/app.js"), "utf8");
   const context = {
     URL,
     atob: (value) => Buffer.from(value, "base64").toString("binary"),
+    fetch: async (url, options = {}) => {
+      fetchCalls.push({ url, options });
+      return {
+        ok: true,
+        json: async () => ({
+          connection: {
+            provider: "aws",
+            awsAccountId: "123456789012",
+            roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+            externalId: "cloudprune-account-1",
+            status: "configured",
+          },
+        }),
+      };
+    },
     document: {
       addEventListener(type, handler) {
         listeners[type] = [...(listeners[type] || []), handler];
@@ -51,7 +67,7 @@ function renderCloudPruneApp(pathname, session = null, interact = null) {
     },
   };
   vm.runInNewContext(script, context, { filename: "cloudprune/app.js" });
-  if (interact) interact({ app, listeners, store });
+  if (interact) interact({ app, fetchCalls, listeners, store });
   return app.innerHTML;
 }
 
@@ -148,6 +164,45 @@ test("CloudPrune empty workspace opens AWS assume-role setup", () => {
   assert.match(workspace, /arn:aws:iam::123456789012:role\/CloudPruneReadOnlyRole/);
   assert.doesNotMatch(workspace, /name="roleArn"[^>]*required/);
   assert.match(workspace, /cloudprune-account-1/);
+});
+
+test("CloudPrune AWS role submit sends the typed role ARN", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  let calls;
+  renderCloudPruneApp("/cloudprune/", session, ({ fetchCalls, listeners }) => {
+    calls = fetchCalls;
+    const roleArn = "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole";
+    const form = {
+      dataset: { connectForm: "aws" },
+      elements: {
+        roleArn: { value: roleArn },
+        externalId: { value: "cloudprune-account-1" },
+      },
+      querySelector(selector) {
+        if (selector === "[name='roleArn']") return this.elements.roleArn;
+        if (selector === "[name='externalId']") return this.elements.externalId;
+        return null;
+      },
+    };
+    for (const handler of listeners.submit || []) handler({
+      preventDefault() {},
+      target: {
+        closest(selector) {
+          return selector === "[data-connect-form='aws']" ? form : null;
+        },
+      },
+    });
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const saveCall = calls.find((call) => String(call.url).endsWith("/api/cloud-connections/aws"));
+  assert.ok(saveCall);
+  assert.equal(JSON.parse(saveCall.options.body).roleArn, "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole");
 });
 
 test("auth API reports missing database instead of dropping requests", async () => {
