@@ -144,7 +144,9 @@ test("CloudPrune empty workspace opens AWS assume-role setup", () => {
   });
   assert.match(workspace, /Assume role setup/);
   assert.match(workspace, /<button data-action="connect" disabled>Connect AWS<\/button>/);
+  assert.match(workspace, /<button data-action="connect" disabled>Connect cloud<\/button>/);
   assert.match(workspace, /arn:aws:iam::123456789012:role\/CloudPruneReadOnlyRole/);
+  assert.doesNotMatch(workspace, /name="roleArn"[^>]*required/);
   assert.match(workspace, /cloudprune-account-1/);
 });
 

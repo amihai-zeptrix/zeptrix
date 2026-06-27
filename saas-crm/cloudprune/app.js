@@ -458,7 +458,7 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "") {
         <h3>AWS read-only access</h3>
       </div>
       <label>External ID<input name="externalId" value="${draftExternalId}" readonly /></label>
-      <label>Role ARN<input name="roleArn" value="${draftRoleArn}" placeholder="arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole" required /></label>
+      <label>Role ARN<input name="roleArn" value="${draftRoleArn}" placeholder="arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole" /></label>
       <div class="trust-policy">
         <span>Trust policy values</span>
         <code>Principal: ${principalArn}</code>
@@ -611,7 +611,7 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
           <div class="hero-mark">${ICONS.logo}</div>
           <div class="top-actions">
             <label class="toggle"><input type="checkbox" ${state.automation ? "checked" : ""} data-action="toggle-automation" /><span></span>Autopilot</label>
-            <button data-action="connect">Connect cloud</button>
+            <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Connect cloud</button>
           </div>
         </header>
         ${showDemoData ? `<div class="filters" role="group" aria-label="Cloud provider filter">${renderProviderFilter()}</div>
