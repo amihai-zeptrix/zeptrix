@@ -78,7 +78,7 @@ let state = {
   workspaceLoadStarted: false,
   connectFormVisible: false,
   connectMessage: "",
-  awsConnectDraft: { roleArn: "", externalId: "" },
+  awsConnectDraft: { awsAccountId: "", roleArn: "", externalId: "" },
 };
 
 const registerDraftKey = "cloudprune.registerDraft";
@@ -240,9 +240,26 @@ function formValue(form, name) {
   ).trim();
 }
 
+function normalizeAwsAccountId(value) {
+  return String(value || "").replace(/\D/g, "").slice(0, 12);
+}
+
+function awsRoleArnForAccount(accountId) {
+  const normalized = normalizeAwsAccountId(accountId);
+  return normalized.length === 12 ? `arn:aws:iam::${normalized}:role/CloudPruneReadOnlyRole` : "";
+}
+
+function awsAccountIdFromRoleArn(roleArn) {
+  const match = String(roleArn || "").match(/^arn:aws[a-z-]*:iam::(\d{12}):role\/CloudPruneReadOnlyRole$/);
+  return match ? match[1] : "";
+}
+
 function captureAwsConnectDraft(form) {
+  const accountId = normalizeAwsAccountId(formValue(form, "awsAccountId"));
+  const roleArn = formValue(form, "roleArn") || awsRoleArnForAccount(accountId);
   state.awsConnectDraft = {
-    roleArn: formValue(form, "roleArn"),
+    awsAccountId: accountId,
+    roleArn,
     externalId: formValue(form, "externalId"),
   };
   return state.awsConnectDraft;
@@ -482,27 +499,31 @@ function renderEmptyWorkspace() {
 }
 
 function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUrl = "") {
-  const draftRoleArn = escapeHtml(state.awsConnectDraft.roleArn || roleArn);
+  const accountId = state.awsConnectDraft.awsAccountId || awsAccountIdFromRoleArn(state.awsConnectDraft.roleArn || roleArn);
+  const derivedRoleArn = state.awsConnectDraft.roleArn || roleArn || awsRoleArnForAccount(accountId);
+  const draftAccountId = escapeHtml(accountId);
+  const draftRoleArn = escapeHtml(derivedRoleArn);
   const draftExternalId = escapeHtml(state.awsConnectDraft.externalId || externalId);
   const escapedExternalId = escapeHtml(externalId);
   const escapedPrincipalArn = escapeHtml(principalArn);
   const launchUrl = cloudFormationLaunchUrl(externalId, principalArn, templateUrl);
   const hasPrincipal = /^arn:aws[a-z-]*:iam::\d{12}:/.test(principalArn);
-  const canSave = Boolean((state.awsConnectDraft.roleArn || roleArn || "").trim());
+  const canSave = Boolean(awsRoleArnForAccount(accountId));
   return `
     <form class="connect-form" data-connect-form="aws">
       <div>
         <span class="eyebrow">Assume role setup</span>
         <h3>Connect AWS with one field</h3>
-        <p>CloudPrune generates the setup values. After the read-only role exists in AWS, paste only the Role ARN.</p>
+        <p>CloudPrune generates the setup values. After the read-only role exists in AWS, enter the 12-digit AWS account ID.</p>
       </div>
       <input name="externalId" type="hidden" value="${draftExternalId}" />
+      <input name="roleArn" type="hidden" value="${draftRoleArn}" />
       <div class="setup-steps">
         <section class="setup-step">
           <span>1</span>
           <div>
             <strong>Create read-only AWS role</strong>
-            <p>Launch the AWS stack, then copy the Role ARN from its outputs.</p>
+            <p>Launch the AWS stack. CloudPrune uses a fixed role name, so you only need the account ID afterward.</p>
             ${hasPrincipal
               ? `<a class="launch-stack-button" href="${escapeHtml(launchUrl)}" target="_blank" rel="noopener">Launch CloudFormation</a>`
               : `<button class="launch-stack-button" type="button" disabled>Launch CloudFormation</button>`}
@@ -519,12 +540,13 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUr
         <section class="setup-step">
           <span>2</span>
           <div>
-            <strong>Paste the AWS Role ARN</strong>
-            <label>Role ARN<input name="roleArn" value="${draftRoleArn}" placeholder="Paste the IAM role ARN from AWS" /></label>
+            <strong>Enter AWS account ID</strong>
+            <label>AWS account ID<input name="awsAccountId" value="${draftAccountId}" inputmode="numeric" maxlength="12" placeholder="123456789012" /></label>
+            <p class="derived-role" data-derived-role>${draftRoleArn || "Role ARN will be derived automatically."}</p>
           </div>
         </section>
       </div>
-      <p class="field-help">Example: <code>arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole</code></p>
+      <p class="field-help">CloudPrune will save <code>arn:aws:iam::ACCOUNT_ID:role/CloudPruneReadOnlyRole</code>.</p>
       <div class="connect-actions">
         <button data-action="save-role" type="submit" ${canSave ? "" : "disabled"}>Save role</button>
         <button class="secondary-connect" data-action="cancel-connect" type="button">Cancel</button>
@@ -761,6 +783,12 @@ function handleTextInput(event) {
   const connectForm = event.target.closest("[data-connect-form='aws']");
   if (connectForm) {
     const draft = captureAwsConnectDraft(connectForm);
+    const roleInput = connectForm.querySelector("[name='roleArn']");
+    if (roleInput) roleInput.value = draft.roleArn;
+    const accountInput = connectForm.querySelector("[name='awsAccountId']");
+    if (accountInput && accountInput.value !== draft.awsAccountId) accountInput.value = draft.awsAccountId;
+    const derivedRole = connectForm.querySelector("[data-derived-role]");
+    if (derivedRole) derivedRole.textContent = draft.roleArn || "Role ARN will be derived automatically.";
     const saveButton = connectForm.querySelector("[data-action='save-role']");
     if (saveButton) saveButton.disabled = !draft.roleArn;
     return;

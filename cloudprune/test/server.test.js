@@ -170,17 +170,20 @@ test("CloudPrune empty workspace opens AWS assume-role setup", () => {
   assert.match(workspace, /<button data-action="connect" disabled>Connect cloud<\/button>/);
   assert.match(workspace, /Launch CloudFormation/);
   assert.match(workspace, /name="externalId" type="hidden" value="cloudprune-account-1"/);
+  assert.match(workspace, /name="roleArn" type="hidden" value=""/);
   assert.match(workspace, /CloudPrune principal/);
   assert.match(workspace, /External ID/);
   assert.match(workspace, /Read-only cost, inventory, and utilization signals/);
-  assert.match(workspace, /placeholder="Paste the IAM role ARN from AWS"/);
-  assert.match(workspace, /Example: <code>arn:aws:iam::123456789012:role\/CloudPruneReadOnlyRole<\/code>/);
+  assert.match(workspace, /AWS account ID/);
+  assert.match(workspace, /placeholder="123456789012"/);
+  assert.match(workspace, /Role ARN will be derived automatically/);
+  assert.match(workspace, /arn:aws:iam::ACCOUNT_ID:role\/CloudPruneReadOnlyRole/);
   assert.match(workspace, /<button data-action="save-role" type="submit" disabled>Save role<\/button>/);
   assert.doesNotMatch(workspace, /name="roleArn"[^>]*required/);
   assert.match(workspace, /cloudprune-account-1/);
 });
 
-test("CloudPrune AWS role submit sends the typed role ARN", async () => {
+test("CloudPrune AWS role submit derives role ARN from account ID", async () => {
   const session = sessionToken({
     sub: "user-1",
     email: "ami@example.com",
@@ -191,14 +194,15 @@ test("CloudPrune AWS role submit sends the typed role ARN", async () => {
   let calls;
   renderCloudPruneApp("/cloudprune/", session, ({ fetchCalls, listeners }) => {
     calls = fetchCalls;
-    const roleArn = "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole";
     const form = {
       dataset: { connectForm: "aws" },
       elements: {
-        roleArn: { value: roleArn },
+        awsAccountId: { value: "123456789012" },
+        roleArn: { value: "" },
         externalId: { value: "cloudprune-account-1" },
       },
       querySelector(selector) {
+        if (selector === "[name='awsAccountId']") return this.elements.awsAccountId;
         if (selector === "[name='roleArn']") return this.elements.roleArn;
         if (selector === "[name='externalId']") return this.elements.externalId;
         return null;
