@@ -9,7 +9,7 @@ const MFA_CODE = "123456";
 const SEED_ADMIN_TEMP_PASSWORD = "Tmp-Admin-7394!";
 const SEED_AMIHAI_TEMP_PASSWORD = "Tmp-Amihai-5821!";
 const CRM_NAMED_ROUTE_MATCH = location.pathname.match(/^\/crm\/([^/.]+)\/?$/);
-const CRM_SECTION_ROUTE = CRM_NAMED_ROUTE_MATCH && ["admin", "home", "pipeline", "accounts", "campaigns", "contacts", "activities", "inbox", "reports", "settings", "templates"].includes(CRM_NAMED_ROUTE_MATCH[1]) ? CRM_NAMED_ROUTE_MATCH[1] : "";
+const CRM_SECTION_ROUTE = CRM_NAMED_ROUTE_MATCH && ["admin", "home", "pipeline", "history", "accounts", "campaigns", "contacts", "activities", "inbox", "reports", "settings", "templates"].includes(CRM_NAMED_ROUTE_MATCH[1]) ? CRM_NAMED_ROUTE_MATCH[1] : "";
 const DEMO_ROUTE_MATCH = location.pathname.match(/^\/crm\/demo(?:\/([^/]+))?\/?$/) || (!CRM_SECTION_ROUTE ? CRM_NAMED_ROUTE_MATCH : null);
 const IS_DEMO_ROUTE = !!DEMO_ROUTE_MATCH;
 const DEMO_NAMES = { gadig: "Gadi Glikberg" };
@@ -92,7 +92,7 @@ const tenantSeed = [
       { id: 1, name: "Enterprise rollout", account: "Orbital Systems", contact: "Liam Brooks", email: "liam@orbitalsystems.com", owner: "Noa Levi", stage: "Negotiation", value: 72000, close: "2026-06-18", priority: "High", group: "active", tags: ["Enterprise", "Renewal"], note: "Security review complete. Waiting on procurement.", updated: "Today, 09:42" },
       { id: 2, name: "Q3 expansion plan", account: "Nimbus Labs", contact: "Sophie Green", email: "sophie@nimbuslabs.io", owner: "Daniel Cohen", stage: "Proposal", value: 48500, close: "2026-06-30", priority: "Medium", group: "active", tags: ["Expansion"], note: "Proposal shared after product workshop.", updated: "Yesterday" },
       { id: 3, name: "Operations package", account: "Acme Studios", contact: "Ethan Hall", email: "ethan@acmestudios.co", owner: "Maya Bar", stage: "Qualified", value: 24000, close: "2026-07-11", priority: "Medium", group: "active", tags: ["Pilot"], note: "Needs a migration timeline.", updated: "May 29" },
-      { id: 4, name: "Global account migration", account: "Atlas Freight", contact: "Lucas Martin", email: "lucas@atlasfreight.com", owner: "Avi Stein", stage: "Won", value: 96000, close: "2026-05-24", priority: "High", group: "closed", tags: ["Enterprise"], note: "Closed after successful pilot.", updated: "May 24" },
+      { id: 4, name: "Global account migration", account: "Atlas Freight", contact: "Lucas Martin", email: "lucas@atlasfreight.com", owner: "Avi Stein", stage: "Won", value: 96000, close: "2026-06-06", priority: "High", group: "closed", tags: ["Enterprise"], note: "Closed after successful pilot.", updated: "Jun 6" },
     ],
     tasks: [
       { id: 1, dealId: 1, title: "Confirm procurement timeline", type: "Follow-up", owner: "Noa Levi", due: "2026-06-13", priority: "High", completed: false },
@@ -234,6 +234,7 @@ let ui = {
   tenantId: session?.tenantId || "admin",
   section: CRM_SECTION_ROUTE || "admin",
   view: "table",
+  historyFilter: "all",
   savedView: "All deals",
   search: "",
   contactSearch: "",
@@ -1320,7 +1321,7 @@ function renderToasts() {
 
 const navGroups = [
   { id: "home", label: "Home", icon: "home", items: [{ section: "home", label: "Today" }] },
-  { id: "workspace", label: "Workspace", icon: "workspace", items: [{ section: "pipeline", label: "Sales pipeline" }, { section: "accounts", label: "Accounts" }, { section: "contacts", label: "Contacts" }, { section: "activities", label: "Activities" }, { section: "inbox", label: "Inbox" }] },
+  { id: "workspace", label: "Workspace", icon: "workspace", items: [{ section: "pipeline", label: "Sales pipeline" }, { section: "history", label: "Sales history" }, { section: "accounts", label: "Accounts" }, { section: "contacts", label: "Contacts" }, { section: "activities", label: "Activities" }, { section: "inbox", label: "Inbox" }] },
   { id: "engage", label: "Engage", icon: "send", items: [{ section: "campaigns", label: "Campaigns" }, { section: "templates", label: "Email templates" }, { section: "reports", label: "Reports" }] },
   {
     id: "connectivity",
@@ -1341,7 +1342,7 @@ function activeNavGroup() {
   if (ui.section === "settings" && ["gmail", "linkedin", "instagram", "zoom", "wechat"].includes(ui.settingsTab)) return "connectivity";
   if (ui.section === "settings") return "settings";
   if (["campaigns", "templates", "reports"].includes(ui.section)) return "engage";
-  if (["pipeline", "accounts", "contacts", "activities", "inbox"].includes(ui.section)) return "workspace";
+  if (["pipeline", "history", "accounts", "contacts", "activities", "inbox"].includes(ui.section)) return "workspace";
   if (ui.section === "admin" && isPlatformAdmin()) return "admin";
   return "home";
 }
@@ -1440,6 +1441,7 @@ function renderSection() {
   if (ui.section === "admin" && isPlatformAdmin()) return renderAdmin();
   if (ui.section === "home") return renderHome();
   if (ui.section === "pipeline") return `${renderPageHeader()}${renderSummary()}${renderTabs()}${ui.view === "dashboard" ? renderDashboard() : `${renderToolbar()}${ui.view === "table" ? renderBoard() : renderKanban()}`}`;
+  if (ui.section === "history") return renderSalesHistory();
   if (ui.section === "contacts") return renderContacts();
   if (ui.section === "accounts") return renderAccounts();
   if (ui.section === "campaigns") return renderCampaigns();
@@ -1461,7 +1463,7 @@ function renderPageHeader(title = "Sales pipeline", copy = "Manage deals, track 
 }
 
 function helpTopicForSection(section = ui.section) {
-  const map = { admin: "admin", home: "home", pipeline: "pipeline", accounts: "accounts", campaigns: "campaigns", contacts: "contacts", activities: "activities", inbox: "inbox", reports: "reports", settings: "email-integration", templates: "email-templates" };
+  const map = { admin: "admin", home: "home", pipeline: "pipeline", history: "reports", accounts: "accounts", campaigns: "campaigns", contacts: "contacts", activities: "activities", inbox: "inbox", reports: "reports", settings: "email-integration", templates: "email-templates" };
   return map[section] || "home";
 }
 
@@ -1828,13 +1830,13 @@ function accountSupportHealth(account, tenant = currentTenant()) {
 function renderSummary(deals = currentTenant().deals) {
   const tenant = currentTenant();
   const open = deals.filter((deal) => !["Won", "Lost"].includes(deal.stage));
-  const won = deals.filter((deal) => deal.stage === "Won");
+  const won = deals.filter((deal) => deal.stage === "Won" && isCurrentMonth(deal.close));
   const dealIds = new Set(deals.map((deal) => deal.id));
   const due = openTasks(tenant).filter((task) => dealIds.has(task.dealId) && task.due <= today());
   return `
     <div class="summary-grid">
       ${summaryCard("↗", "var(--blue-soft)", "var(--blue)", "Pipeline value", money(total(open)), "+12.4%", "open-pipeline")}
-      ${summaryCard("◎", "var(--mint-soft)", "var(--mint)", "Won this month", money(total(won)), "+18.2%")}
+      ${summaryCard("◎", "var(--mint-soft)", "var(--mint)", "Won this month", money(total(won)), "+18.2%", "open-sales-history")}
       ${summaryCard("▦", "var(--purple-soft)", "var(--purple)", "Open deals", open.length, "+5.1%")}
       ${summaryCard("◴", "var(--orange-soft)", "var(--orange)", "Tasks due", due.length, "needs action")}
     </div>`;
@@ -1844,6 +1846,53 @@ function summaryCard(icon, bg, color, label, value, trend, action = "") {
   const tag = action ? "button" : "article";
   const attrs = action ? ` type="button" data-action="${escapeHtml(action)}"` : "";
   return `<${tag} class="summary-card"${attrs}><span class="summary-icon" style="background:${bg};color:${color}">${icon}</span><div><small>${label}</small><strong>${value}</strong></div><span class="summary-trend">${trend}</span></${tag}>`;
+}
+
+function isCurrentMonth(value) {
+  return String(value || "").slice(0, 7) === today().slice(0, 7);
+}
+
+function closedSalesDeals(tenant = currentTenant()) {
+  return [...tenant.deals]
+    .filter((deal) => ["Won", "Lost"].includes(deal.stage))
+    .sort((a, b) => String(b.close || "").localeCompare(String(a.close || "")));
+}
+
+function wonThisMonthDeals(tenant = currentTenant()) {
+  return closedSalesDeals(tenant).filter((deal) => deal.stage === "Won" && isCurrentMonth(deal.close));
+}
+
+function filteredSalesHistoryDeals(tenant = currentTenant()) {
+  const closed = closedSalesDeals(tenant);
+  if (ui.historyFilter === "won-this-month") return wonThisMonthDeals(tenant);
+  if (ui.historyFilter === "won") return closed.filter((deal) => deal.stage === "Won");
+  if (ui.historyFilter === "lost") return closed.filter((deal) => deal.stage === "Lost");
+  return closed;
+}
+
+function renderSalesHistory() {
+  const tenant = currentTenant();
+  const deals = filteredSalesHistoryDeals(tenant);
+  const wonMonth = wonThisMonthDeals(tenant);
+  const wonAll = closedSalesDeals(tenant).filter((deal) => deal.stage === "Won");
+  const lostAll = closedSalesDeals(tenant).filter((deal) => deal.stage === "Lost");
+  const filterButton = (filter, label) => `<button class="view-tab ${ui.historyFilter === filter ? "active" : ""}" data-history-filter="${filter}">${label}</button>`;
+  return `${renderPageHeader("Sales history", "Review closed opportunities, revenue won, and lost sales outside the active pipeline.")}
+    <div class="summary-grid">
+      ${summaryCard("◎", "var(--mint-soft)", "var(--mint)", "Won this month", money(total(wonMonth)), `${wonMonth.length} deals`)}
+      ${summaryCard("↗", "var(--blue-soft)", "var(--blue)", "Closed won", money(total(wonAll)), `${wonAll.length} deals`)}
+      ${summaryCard("×", "#fee2e2", "#b91c1c", "Closed lost", lostAll.length, "lost deals")}
+      ${summaryCard("▦", "var(--purple-soft)", "var(--purple)", "Closed records", closedSalesDeals(tenant).length, "history")}
+    </div>
+    <nav class="view-tabs history-tabs">${filterButton("all", "All closed")}${filterButton("won-this-month", "Won this month")}${filterButton("won", "All won")}${filterButton("lost", "Lost")}</nav>
+    <section class="group sales-history-group">
+      <header class="group-heading"><h3>Closed sales records</h3><small>${deals.length} deals</small><span class="group-total">${money(total(deals))}</span></header>
+      <table class="crm-table"><thead><tr><th class="deal-col">Deal name</th><th class="account-col">Account</th><th class="owner-col">Owner</th><th class="stage-col">Result</th><th class="value-col">Value</th><th class="date-col">Close date</th><th class="priority-col">Priority</th></tr></thead><tbody>${deals.map(renderSalesHistoryRow).join("") || `<tr><td colspan="7" class="empty-state">No closed sales match this view.</td></tr>`}</tbody></table>
+    </section>`;
+}
+
+function renderSalesHistoryRow(deal) {
+  return `<tr><td class="deal-col"><button class="deal-link" data-open-deal="${deal.id}">${escapeHtml(deal.name)}</button></td><td class="account-col">${escapeHtml(deal.account)}</td><td class="owner-col"><span class="owner-cell">${avatar(deal.owner)}<span>${escapeHtml(deal.owner.split(" ")[0])}</span></span></td><td class="stage-col"><span class="status-pill ${stageClass[deal.stage]}">${escapeHtml(deal.stage)}</span></td><td class="value-col"><strong>${money(deal.value)}</strong></td><td class="date-col">${formatDate(deal.close)}</td><td class="priority-col"><span class="priority priority-${deal.priority.toLowerCase()}">${escapeHtml(deal.priority)}</span></td></tr>`;
 }
 
 function uniqueBy(field) {
@@ -3296,6 +3345,7 @@ function escapeHtml(value) {
 document.addEventListener("click", async (event) => {
   const view = event.target.closest("[data-view]")?.dataset.view;
   const section = event.target.closest("[data-section]")?.dataset.section;
+  const historyFilter = event.target.closest("[data-history-filter]")?.dataset.historyFilter;
   const actionElement = event.target.closest("[data-action]");
   const dealId = event.target.closest("[data-open-deal]")?.dataset.openDeal;
   const account = event.target.closest("[data-open-account]")?.dataset.openAccount;
@@ -3307,11 +3357,12 @@ document.addEventListener("click", async (event) => {
   const settingsTab = event.target.closest("[data-settings-tab]")?.dataset.settingsTab;
   const adminTab = event.target.closest("[data-admin-tab]")?.dataset.adminTab;
 
-  if (!section && !view && !dealId && !account && !contactEmail && !communicationId && !campaignId && !collapse && !column && !settingsTab && !adminTab && !actionElement) return;
+  if (!section && !view && !historyFilter && !dealId && !account && !contactEmail && !communicationId && !campaignId && !collapse && !column && !settingsTab && !adminTab && !actionElement) return;
   auditClickEvent({ clickTarget: event.target, section, view, dealId, account, contactEmail, communicationId, campaignId, collapse, column, settingsTab, adminTab, actionElement });
 
   if (section) {
     ui.section = section;
+    if (section === "history") ui.historyFilter = "all";
     ui.importOpen = false;
     ui.selectedContactEmail = "";
     ui.editingContactEmail = "";
@@ -3321,6 +3372,7 @@ document.addEventListener("click", async (event) => {
     ui.accountFocus = "";
   }
   if (view) ui.view = view;
+  if (historyFilter) ui.historyFilter = historyFilter;
   if (dealId) ui.selected = dealId;
   if (account) {
     ui.section = "accounts";
@@ -3478,6 +3530,12 @@ document.addEventListener("click", async (event) => {
     if (action === "open-pipeline") {
       ui.section = "pipeline";
       ui.view = "table";
+      ui.modal = null;
+      ui.selected = null;
+    }
+    if (action === "open-sales-history") {
+      ui.section = "history";
+      ui.historyFilter = "won-this-month";
       ui.modal = null;
       ui.selected = null;
     }

@@ -727,6 +727,7 @@ test("CRM named demo routes use the demo tenant instead of admin", () => {
   const app = crmAppSource();
 
   assert.match(app, /const CRM_SECTION_ROUTE = CRM_NAMED_ROUTE_MATCH/);
+  assert.match(app, /"history"/);
   assert.match(app, /"settings", "templates"\]\.includes\(CRM_NAMED_ROUTE_MATCH\[1\]\)/);
   assert.ok(app.includes("const DEMO_ROUTE_MATCH = location.pathname.match(/^\\/crm\\/demo(?:\\/([^/]+))?\\/?$/) || (!CRM_SECTION_ROUTE ? CRM_NAMED_ROUTE_MATCH : null);"));
   assert.match(app, /const DEMO_NAMES = \{ gadig: "Gadi Glikberg" \}/);
@@ -874,6 +875,8 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(renderHomeSource, /Accounts that need attention/);
   assert.match(renderHomeSource, /attentionAccounts\.map\(renderHomeAttentionAccount\)/);
   assert.match(renderSummarySource, /"Pipeline value", money\(total\(open\)\), "\+12\.4%", "open-pipeline"/);
+  assert.match(renderSummarySource, /deal\.stage === "Won" && isCurrentMonth\(deal\.close\)/);
+  assert.match(renderSummarySource, /"Won this month", money\(total\(won\)\), "\+18\.2%", "open-sales-history"/);
   assert.match(summaryCardSource, /const tag = action \? "button" : "article"/);
   assert.match(summaryCardSource, /data-action="\$\{escapeHtml\(action\)\}"/);
   assert.match(renderHomeSource, /Today's focus/);
@@ -923,6 +926,9 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(clickHandlerSource, /action === "open-pipeline"/);
   assert.match(clickHandlerSource, /ui\.section = "pipeline"/);
   assert.match(clickHandlerSource, /ui\.view = "table"/);
+  assert.match(clickHandlerSource, /action === "open-sales-history"/);
+  assert.match(clickHandlerSource, /ui\.section = "history"/);
+  assert.match(clickHandlerSource, /ui\.historyFilter = "won-this-month"/);
   assert.match(renderHomeEventSource, /class="event-account" data-open-account/);
   assert.match(styles, /\.home-thread-list \{\s+display: grid;\s+grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(styles, /\.home-attention-section/);
@@ -931,6 +937,37 @@ test("CRM home keeps attention correspondence and relationship event panels", ()
   assert.match(styles, /\.attention-main/);
   assert.match(styles, /\.thread-card\.is-highlighted/);
   assert.match(styles, /\.message-bubble \{\s+max-width: 100%;/);
+});
+
+test("CRM sales history separates closed sales from active pipeline", () => {
+  const app = crmAppSource();
+  const renderSectionSource = functionSource(app, "renderSection", "renderPageHeader");
+  const activeNavGroupSource = functionSource(app, "activeNavGroup", "navIcon");
+  const renderSalesHistorySource = functionSource(app, "renderSalesHistory", "renderSalesHistoryRow");
+  const renderSalesHistoryRowSource = functionSource(app, "renderSalesHistoryRow", "uniqueBy");
+  const clickHandlerSource = app.slice(app.indexOf("document.addEventListener(\"click\""), app.indexOf("document.addEventListener(\"input\""));
+
+  assert.match(app, /\{ section: "history", label: "Sales history" \}/);
+  assert.match(activeNavGroupSource, /\["pipeline", "history", "accounts"/);
+  assert.match(renderSectionSource, /ui\.section === "history"/);
+  assert.match(app, /function closedSalesDeals/);
+  assert.match(app, /function wonThisMonthDeals/);
+  assert.match(app, /close: "2026-06-06"/);
+  assert.match(serverSource(), /close: "2026-06-06"/);
+  assert.match(app, /function filteredSalesHistoryDeals/);
+  assert.match(renderSalesHistorySource, /Sales history/);
+  assert.match(renderSalesHistorySource, /Review closed opportunities/);
+  assert.match(renderSalesHistorySource, /data-history-filter="\$\{filter\}"/);
+  assert.match(renderSalesHistorySource, /Won this month/);
+  assert.match(renderSalesHistorySource, /All closed/);
+  assert.match(renderSalesHistorySource, /All won/);
+  assert.match(renderSalesHistorySource, /Lost/);
+  assert.match(renderSalesHistorySource, /Closed sales records/);
+  assert.match(renderSalesHistoryRowSource, /data-open-deal="\$\{deal\.id\}"/);
+  assert.match(renderSalesHistoryRowSource, /status-pill \$\{stageClass\[deal\.stage\]\}/);
+  assert.match(clickHandlerSource, /data-history-filter/);
+  assert.match(clickHandlerSource, /if \(historyFilter\) ui\.historyFilter = historyFilter/);
+  assert.match(clickHandlerSource, /if \(section === "history"\) ui\.historyFilter = "all"/);
 });
 
 test("CRM home relationship events include birthdays and account navigation", () => {
