@@ -1,7 +1,10 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const { once } = require("node:events");
+const path = require("node:path");
 const test = require("node:test");
-const { server, staticFilePathForUrlPath } = require("../server");
+const vm = require("node:vm");
+const { cloudpruneOAuthState, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -14,10 +17,69 @@ async function withServer(callback) {
   }
 }
 
+function sessionToken(payload) {
+  return `${Buffer.from(JSON.stringify(payload)).toString("base64url")}.sig`;
+}
+
+function renderCloudPruneApp(pathname, session = null, interact = null) {
+  const app = { innerHTML: "" };
+  const listeners = {};
+  const store = new Map(session ? [["cloudprune.session", session]] : []);
+  const fetchCalls = [];
+  const script = fs.readFileSync(path.join(__dirname, "../cloudprune/app.js"), "utf8");
+  const context = {
+    URL,
+    URLSearchParams,
+    atob: (value) => Buffer.from(value, "base64").toString("binary"),
+    fetch: async (url, options = {}) => {
+      fetchCalls.push({ url, options });
+      return {
+        ok: true,
+        json: async () => ({
+          connection: {
+            provider: "aws",
+            awsAccountId: "123456789012",
+            roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+            externalId: "cloudprune-account-1",
+            status: "configured",
+          },
+        }),
+      };
+    },
+    document: {
+      addEventListener(type, handler) {
+        listeners[type] = [...(listeners[type] || []), handler];
+      },
+      querySelector(selector) {
+        return selector === "#app" ? app : null;
+      },
+    },
+    history: {
+      replaceState() {},
+    },
+    localStorage: {
+      getItem: (key) => store.get(key) || null,
+      setItem: (key, value) => store.set(key, String(value)),
+      removeItem: (key) => store.delete(key),
+    },
+    location: {
+      href: `https://zeptrix.io${pathname}`,
+      pathname,
+    },
+  };
+  vm.runInNewContext(script, context, { filename: "cloudprune/app.js" });
+  if (interact) interact({ app, fetchCalls, listeners, store });
+  return app.innerHTML;
+}
+
 test("maps CloudPrune app routes to the public index", () => {
   assert.match(staticFilePathForUrlPath("/cloudprune/"), /cloudprune[/\\]index\.html$/);
-  assert.match(staticFilePathForUrlPath("/cloudprune/recommendations"), /cloudprune[/\\]index\.html$/);
-  assert.match(staticFilePathForUrlPath("/cloudprune/settings"), /cloudprune[/\\]index\.html$/);
+  assert.match(staticFilePathForUrlPath("/cloudprune/demo"), /cloudprune[/\\]index\.html$/);
+  assert.match(staticFilePathForUrlPath("/cloudprune/demo/recommendations"), /cloudprune[/\\]index\.html$/);
+  assert.match(staticFilePathForUrlPath("/cloudprune/demo/settings"), /cloudprune[/\\]index\.html$/);
+  assert.match(staticFilePathForUrlPath("/cp/"), /cloudprune[/\\]index\.html$/);
+  assert.match(staticFilePathForUrlPath("/cp/demo"), /cloudprune[/\\]index\.html$/);
+  assert.match(staticFilePathForUrlPath("/cp/demo/recommendations"), /cloudprune[/\\]index\.html$/);
 });
 
 test("serves app shell, assets, redirect, and SPA fallback", async () => {
@@ -31,14 +93,199 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
     assert.equal(redirect.status, 301);
     assert.equal(redirect.headers.get("location"), "/cloudprune/");
 
+    const shortRedirect = await fetch(`${baseUrl}/cp`, { redirect: "manual" });
+    assert.equal(shortRedirect.status, 301);
+    assert.equal(shortRedirect.headers.get("location"), "/cp/");
+
     const script = await fetch(`${baseUrl}/cloudprune/app.js`);
     assert.equal(script.status, 200);
     assert.match(script.headers.get("content-type"), /application\/javascript/);
 
+    const shortScript = await fetch(`${baseUrl}/cp/app.js`);
+    assert.equal(shortScript.status, 200);
+    assert.match(shortScript.headers.get("content-type"), /application\/javascript/);
+
+    const template = await fetch(`${baseUrl}/cloudprune/aws-readonly-role-template.yaml`);
+    assert.equal(template.status, 200);
+    assert.match(template.headers.get("content-type"), /text\/yaml/);
+    assert.match(await template.text(), /CloudPruneReadOnlyRole/);
+
     const fallback = await fetch(`${baseUrl}/cloudprune/recommendations`);
     assert.equal(fallback.status, 200);
     assert.match(await fallback.text(), /<div id="app"><\/div>/);
+
+    const demo = await fetch(`${baseUrl}/cloudprune/demo`);
+    assert.equal(demo.status, 200);
+    assert.match(await demo.text(), /<div id="app"><\/div>/);
+
+    const shortDemo = await fetch(`${baseUrl}/cp/demo`);
+    assert.equal(shortDemo.status, 200);
+    assert.match(await shortDemo.text(), /<div id="app"><\/div>/);
   });
+});
+
+test("authenticated CloudPrune workspace starts empty while demo data remains intact", () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const workspace = renderCloudPruneApp("/cloudprune/", session);
+  assert.match(workspace, /No cloud data yet/);
+  assert.match(workspace, /Connect AWS to start your first cost assessment/);
+  assert.match(workspace, /<strong>\$0<\/strong>/);
+  assert.doesNotMatch(workspace, /EC2 Compute/);
+  assert.doesNotMatch(workspace, /Prioritized recommendations/);
+  assert.doesNotMatch(workspace, /BigQuery query scans/);
+
+  const demo = renderCloudPruneApp("/cloudprune/demo");
+  assert.match(demo, /\$402,150/);
+  assert.match(demo, /Prioritized recommendations/);
+  assert.match(demo, /Move steady EC2 baseline into Savings Plans/);
+  assert.match(demo, /BigQuery query scans/);
+  assert.doesNotMatch(demo, /No cloud data yet/);
+});
+
+test("CloudPrune empty workspace opens AWS assume-role setup", () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const workspace = renderCloudPruneApp("/cloudprune/", session, ({ listeners }) => {
+    for (const handler of listeners.click || []) handler({
+      target: {
+        closest(selector) {
+          return selector === "[data-action='connect']" ? {} : null;
+        },
+      },
+    });
+  });
+  assert.match(workspace, /Assume role setup/);
+  assert.match(workspace, /Connect AWS with one field/);
+  assert.match(workspace, /<button data-action="connect" disabled>Connect AWS<\/button>/);
+  assert.match(workspace, /<button data-action="connect" disabled>Connect cloud<\/button>/);
+  assert.match(workspace, /Launch CloudFormation/);
+  assert.match(workspace, /name="externalId" type="hidden" value="cloudprune-account-1"/);
+  assert.match(workspace, /name="roleArn" type="hidden" value=""/);
+  assert.match(workspace, /CloudPrune principal/);
+  assert.match(workspace, /External ID/);
+  assert.match(workspace, /Read-only cost, inventory, and utilization signals/);
+  assert.match(workspace, /AWS account ID/);
+  assert.match(workspace, /placeholder="123456789012"/);
+  assert.match(workspace, /Role ARN will be derived automatically/);
+  assert.match(workspace, /arn:aws:iam::ACCOUNT_ID:role\/CloudPruneReadOnlyRole/);
+  assert.match(workspace, /<button data-action="save-role" type="submit" disabled>Save role<\/button>/);
+  assert.doesNotMatch(workspace, /name="roleArn"[^>]*required/);
+  assert.match(workspace, /cloudprune-account-1/);
+});
+
+test("CloudPrune AWS role submit derives role ARN from account ID", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  let calls;
+  renderCloudPruneApp("/cloudprune/", session, ({ fetchCalls, listeners }) => {
+    calls = fetchCalls;
+    const form = {
+      dataset: { connectForm: "aws" },
+      elements: {
+        awsAccountId: { value: "123456789012" },
+        roleArn: { value: "" },
+        externalId: { value: "cloudprune-account-1" },
+      },
+      querySelector(selector) {
+        if (selector === "[name='awsAccountId']") return this.elements.awsAccountId;
+        if (selector === "[name='roleArn']") return this.elements.roleArn;
+        if (selector === "[name='externalId']") return this.elements.externalId;
+        return null;
+      },
+    };
+    for (const handler of listeners.submit || []) handler({
+      preventDefault() {},
+      target: {
+        closest(selector) {
+          return selector === "[data-connect-form='aws']" ? form : null;
+        },
+      },
+    });
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const saveCall = calls.find((call) => String(call.url).endsWith("/api/cloud-connections/aws"));
+  assert.ok(saveCall);
+  assert.equal(JSON.parse(saveCall.options.body).roleArn, "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole");
+});
+
+test("auth API reports missing database instead of dropping requests", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/cloudprune/api/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Ami", company: "Zeptrix", email: "ami@example.com", password: "long-enough-password" }),
+    });
+    assert.equal(response.status, 400);
+    assert.match(await response.text(), /database is not configured/i);
+
+    const shortResponse = await fetch(`${baseUrl}/cp/api/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Ami", company: "Zeptrix", email: "ami@example.com", password: "long-enough-password" }),
+    });
+    assert.equal(shortResponse.status, 400);
+    assert.match(await shortResponse.text(), /database is not configured/i);
+  });
+});
+
+test("Google SSO uses the canonical shared callback", () => {
+  assert.equal(googleRedirectUri, "https://www.zeptrix.io/api/auth/google/callback");
+});
+
+test("Google SSO state is signed and self-contained", () => {
+  const state = cloudpruneOAuthState("/cp");
+  assert.match(state, /^cloudprune\.[^.]+\.[^.]+$/);
+  assert.equal(verifyCloudpruneOAuthState(state).prefix, "/cp");
+  assert.equal(verifyCloudpruneOAuthState(`${state.slice(0, -1)}x`), null);
+});
+
+test("Google SSO creates a signed pending registration for new users", () => {
+  const token = signGoogleRegistration({ sub: "google-123", email: "ami@example.com", name: "Ami", hd: "Zeptrix" });
+  const payload = verifyGoogleRegistration(token);
+  assert.equal(payload.sub, "google-123");
+  assert.equal(payload.email, "ami@example.com");
+  assert.equal(payload.name, "Ami");
+  assert.equal(payload.companyName, "Zeptrix");
+  assert.equal(verifyGoogleRegistration(`${token.slice(0, -1)}x`), null);
+});
+
+test("CloudPrune sessions carry the account company name", () => {
+  const token = signSession({
+    id: "user-1",
+    email: "amihaih@gmail.com",
+    name: "Amihai Hadar",
+    account_id: "account-1",
+    company_name: "Zeptrix",
+  });
+  const payload = verifySession(token);
+  assert.equal(payload.email, "amihaih@gmail.com");
+  assert.equal(payload.companyName, "Zeptrix");
+  assert.equal(verifySession(`${token.slice(0, -1)}x`), null);
+});
+
+test("AWS assume-role onboarding validates role ARNs and derives external IDs", () => {
+  assert.deepEqual(normalizeAwsRoleArn("arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole"), {
+    roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+    awsAccountId: "123456789012",
+  });
+  assert.equal(externalIdForAccount("tenant-123"), "cloudprune-tenant-123");
+  assert.throws(() => normalizeAwsRoleArn("arn:aws:s3:::bucket"), /valid AWS IAM role ARN/);
+  assert.throws(() => normalizeAwsRoleArn("arn:aws:iam::123:role/Bad"), /valid AWS IAM role ARN/);
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {
@@ -46,6 +293,10 @@ test("rejects encoded traversal outside the public app directory", async () => {
     const response = await fetch(`${baseUrl}/cloudprune/%2e%2e/server.js`);
     assert.equal(response.status, 403);
     assert.doesNotMatch(await response.text(), /createServer/);
+
+    const shortResponse = await fetch(`${baseUrl}/cp/%2e%2e/server.js`);
+    assert.equal(shortResponse.status, 403);
+    assert.doesNotMatch(await shortResponse.text(), /createServer/);
   });
 });
 

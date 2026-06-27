@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { authChallengeForUser, authenticatorUri, consumeGoogleAuthResult, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, mfaRecoveryEmailContent, normalizeDealPayload, normalizeGmailSettings, normalizeLinkedinSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, passwordResetEmailContent, registrationNotificationContent, signAuthToken, signGoogleAuthState, signMfaRecoveryToken, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, storeGoogleAuthResult, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyMfaRecoveryToken, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
+const { authChallengeForUser, authenticatorUri, cloudpruneOAuthPrefix, consumeGoogleAuthResult, decryptToken, detectNegativeCorrespondence, duplicateTenantEmailMessage, enrichGmailContactFromSignature, extractGmailMessageText, encryptToken, gmailAuthUrl, gmailLabelQuery, inviteEmailContent, isAutomatedSenderEmail, mfaRecoveryEmailContent, normalizeDealPayload, normalizeGmailSettings, normalizeLinkedinSettings, normalizeOutgoingEmailSettings, normalizeOutgoingMailPayload, normalizeRegistrationPayload, normalizeTenantPayload, normalizeWorkflowAutomationSettings, parseEmailAddress, passwordResetEmailContent, registrationNotificationContent, signAuthToken, signGoogleAuthState, signMfaRecoveryToken, signPreAuthToken, smtpInviteMessage, staticFilePathForUrlPath, storeGoogleAuthResult, totpCode, updateTenantWithClient, verifyGoogleAuthState, verifyMfaRecoveryToken, verifyPreAuthToken, verifySignedPayload, verifyTotpCode } = require("../server");
 
 function crmAppSource() {
   return fs.readFileSync(path.join(__dirname, "..", "crm", "app.js"), "utf8");
@@ -206,6 +206,7 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   assert.ok(server.includes('pathname === "/api/auth/google/start"'));
   assert.ok(server.includes('pathname === "/api/auth/google/callback"'));
   assert.ok(server.includes('pathname === "/api/auth/google/exchange"'));
+  assert.match(server, /GOOGLE_SSO_REDIRECT_URI = process\.env\.GOOGLE_SSO_REDIRECT_URI \|\| "https:\/\/www\.zeptrix\.io\/api\/auth\/google\/callback"/);
   assert.ok(server.includes('pathname === "/api/auth/mfa/setup"'));
   assert.ok(server.includes('pathname === "/api/auth/mfa/verify"'));
   assert.match(server, /normalizeRegistrationPayload/);
@@ -316,6 +317,15 @@ test("Google SSO and authenticator MFA use signed pre-auth challenges", () => {
   assert.match(server, /consumedMfaChallenges\.has/);
   assert.match(server, /consumedMfaChallenges\.add/);
   assert.match(server, /payload\.role === "platform_admin" \? false : !!payload\.tenantMfaRequired && !!payload\.mfaEnabled/);
+});
+
+test("Google callback hands CloudPrune states back to their route prefix", () => {
+  const stateFor = (prefix) => `cloudprune.${Buffer.from(JSON.stringify({ prefix, nonce: "abc" })).toString("base64url")}`;
+
+  assert.equal(cloudpruneOAuthPrefix(stateFor("/cloudprune")), "/cloudprune");
+  assert.equal(cloudpruneOAuthPrefix(stateFor("/cp")), "/cp");
+  assert.equal(cloudpruneOAuthPrefix(stateFor("/admin")), "");
+  assert.equal(cloudpruneOAuthPrefix(signGoogleAuthState("login")), "");
 });
 
 test("login screen supports password reset and authenticator recovery", () => {
@@ -721,6 +731,19 @@ test("CRM demo route serves the CRM app shell", () => {
   assert.match(server, /urlPath === "\/crm\/demo\/gadig"/);
   assert.match(server, /urlPath === "\/crm\/gadig"/);
   assert.doesNotMatch(server, /gagig/i);
+});
+
+test("CloudPrune route serves the CloudPrune app shell", () => {
+  const server = serverSource();
+  const cloudpruneIndex = path.join(__dirname, "..", "cloudprune", "index.html");
+
+  assert.equal(staticFilePathForUrlPath("/cloudprune"), cloudpruneIndex);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/"), cloudpruneIndex);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/demo/recommendations"), cloudpruneIndex);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/recommendations"), cloudpruneIndex);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/settings"), cloudpruneIndex);
+  assert.notEqual(staticFilePathForUrlPath("/cloudprune/app.js"), cloudpruneIndex);
+  assert.match(server, /urlPath === "\/cloudprune" \|\| urlPath\.startsWith\("\/cloudprune\/"\)/);
 });
 
 test("CRM named demo routes use the demo tenant instead of admin", () => {

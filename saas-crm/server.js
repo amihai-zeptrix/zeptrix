@@ -39,7 +39,7 @@ const linkedinScansInProgress = new Set();
 const linkedinLoginSessions = new Map();
 const tokenSecret = process.env.CRM_TOKEN_SECRET || process.env.TOKEN_SECRET || process.env.DATABASE_URL || "local-dev-token-secret";
 const authTokenSecret = process.env.CRM_AUTH_SECRET || tokenSecret;
-const GOOGLE_SSO_REDIRECT_URI = `${publicBaseUrl}/api/auth/google/callback`;
+const GOOGLE_SSO_REDIRECT_URI = process.env.GOOGLE_SSO_REDIRECT_URI || "https://www.zeptrix.io/api/auth/google/callback";
 const GMAIL_NEW_CONTACT_LOOKBACK_DAYS = 30;
 const GMAIL_NEW_CONTACT_METADATA_LIMIT = 1000;
 const GMAIL_NEW_CONTACT_FULL_LIMIT = 250;
@@ -86,6 +86,8 @@ const mimeTypes = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".json": "application/json; charset=utf-8",
+  ".yaml": "text/yaml; charset=utf-8",
+  ".yml": "text/yaml; charset=utf-8",
   ".sql": "text/plain; charset=utf-8",
 };
 
@@ -3107,6 +3109,17 @@ function googleSsoConfigured() {
   return Boolean(googleClientId && googleClientSecret);
 }
 
+function cloudpruneOAuthPrefix(state) {
+  if (!String(state || "").startsWith("cloudprune.")) return "";
+  try {
+    const encoded = String(state).split(".")[1] || "";
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    return payload.prefix === "/cp" ? "/cp" : payload.prefix === "/cloudprune" ? "/cloudprune" : "";
+  } catch {
+    return "";
+  }
+}
+
 async function exchangeGoogleAuthCode(code, redirectUri = GOOGLE_SSO_REDIRECT_URI) {
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -3646,6 +3659,16 @@ async function handleApi(req, res) {
   }
 
   if (req.method === "GET" && pathname === "/api/auth/google/callback") {
+    const cloudprunePrefix = cloudpruneOAuthPrefix(requestUrl.searchParams.get("state"));
+    if (cloudprunePrefix) {
+      const redirect = new URL(`${cloudprunePrefix}/api/auth/google/callback`, publicBaseUrl);
+      for (const key of ["code", "state", "error", "error_description"]) {
+        const value = requestUrl.searchParams.get(key);
+        if (value) redirect.searchParams.set(key, value);
+      }
+      res.writeHead(302, { location: redirect.toString() });
+      return res.end();
+    }
     const redirect = new URL("/crm/", publicBaseUrl);
     try {
       if (!pool) throw new Error("DATABASE_URL is not configured.");
@@ -4503,6 +4526,7 @@ async function handleApi(req, res) {
 }
 
 function staticFilePathForUrlPath(urlPath) {
+  if (urlPath === "/cloudprune" || urlPath === "/cloudprune/" || (urlPath.startsWith("/cloudprune/") && !path.basename(urlPath).includes("."))) return path.join(root, "cloudprune/index.html");
   if (urlPath === "/crm/demo" || urlPath === "/crm/demo/" || urlPath.startsWith("/crm/demo/")) return path.join(root, "crm/index.html");
   if (/^\/crm\/[^/.]+\/?$/.test(urlPath)) return path.join(root, "crm/index.html");
   return path.join(root, urlPath === "/" ? "index.html" : urlPath);
@@ -4528,7 +4552,7 @@ function serveStatic(req, res) {
     if (stat.isDirectory()) filePath = path.join(filePath, "index.html");
     const ext = path.extname(filePath);
     const headers = { "content-type": mimeTypes[ext] || "application/octet-stream" };
-    if (urlPath === "/crm" || urlPath.startsWith("/crm/")) headers["cache-control"] = "no-store";
+    if (urlPath === "/crm" || urlPath.startsWith("/crm/") || urlPath === "/cloudprune" || urlPath.startsWith("/cloudprune/")) headers["cache-control"] = "no-store";
     res.writeHead(200, headers);
     fs.createReadStream(filePath).pipe(res);
   } catch {
@@ -4601,6 +4625,7 @@ module.exports = {
   validateTenant,
   verifyGoogleAuthState,
   consumeGoogleAuthResult,
+  cloudpruneOAuthPrefix,
   verifyMfaRecoveryToken,
   verifyPreAuthToken,
   verifySignedPayload,
