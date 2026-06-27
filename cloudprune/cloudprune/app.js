@@ -591,10 +591,9 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
           <a href="${navPath}anomalies">${ICONS.alert}<span>Anomalies</span></a>
           <a href="${navPath}automation">${ICONS.automation}<span>Automation</span></a>
           <a href="${navPath}settings">${ICONS.settings}<span>Settings</span></a>
-        </nav>
-        <div class="sidebar-footer">
+          <div class="nav-separator" aria-hidden="true"></div>
           ${sidebarAuthAction}
-        </div>
+        </nav>
         <div class="connector-card">
           <span class="aws">${vendorBadge("aws", "AWS")}</span><span class="gcp">${vendorBadge("gcp", "GCP")}</span><span class="azure">${vendorBadge("azure", "Azure")}</span><span class="kubernetes">${vendorBadge("kubernetes", "K8s")}</span>
         </div>

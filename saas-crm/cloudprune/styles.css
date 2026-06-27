@@ -113,11 +113,17 @@ nav a {
 nav svg { width: 17px; height: 17px; fill: currentColor; flex: 0 0 auto; }
 nav a.active, nav a:hover { color: #fff; background: rgba(255,255,255,.12); }
 
+.nav-separator {
+  height: 1px;
+  margin: 8px 0 4px;
+  background: rgba(234, 255, 241, .14);
+}
+
 .connector-card {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  margin-top: 0;
+  margin-top: auto;
 }
 .connector-card > span {
   display: grid;
@@ -183,29 +189,24 @@ button {
 }
 button:hover { background: #1e4d43; }
 
-.sidebar-footer {
-  margin-top: auto;
-}
-
 .sidebar-action {
   display: inline-flex;
   width: 100%;
-  min-height: 36px;
+  min-height: 38px;
   align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(234, 255, 241, .16);
+  justify-content: flex-start;
+  border: 0;
   border-radius: 8px;
-  padding: 0 13px;
-  background: rgba(234, 255, 241, .06);
-  color: #eafff1;
-  font-size: 13px;
-  font-weight: 800;
+  padding: 10px 12px;
+  background: transparent;
+  color: #bad2cb;
+  font-size: 14px;
+  font-weight: 700;
   text-decoration: none;
 }
 
 .sidebar-action:hover {
-  border-color: rgba(234, 255, 241, .32);
-  background: rgba(234, 255, 241, .12);
+  background: rgba(255,255,255,.12);
   color: #eafff1;
 }
 
