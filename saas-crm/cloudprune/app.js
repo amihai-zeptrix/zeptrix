@@ -240,6 +240,14 @@ function formValue(form, name) {
   ).trim();
 }
 
+function captureAwsConnectDraft(form) {
+  state.awsConnectDraft = {
+    roleArn: formValue(form, "roleArn"),
+    externalId: formValue(form, "externalId"),
+  };
+  return state.awsConnectDraft;
+}
+
 async function loadWorkspace() {
   if (!hasSession() || state.workspaceLoadStarted || typeof fetch !== "function") return;
   state.workspaceLoadStarted = true;
@@ -702,41 +710,30 @@ document.addEventListener("change", (event) => {
     render();
   }
   const connectForm = event.target.closest("[data-connect-form='aws']");
-  if (connectForm) {
-    state.awsConnectDraft = {
-      roleArn: formValue(connectForm, "roleArn"),
-      externalId: formValue(connectForm, "externalId"),
-    };
-  }
+  if (connectForm) captureAwsConnectDraft(connectForm);
 });
 
-document.addEventListener("input", (event) => {
+function handleTextInput(event) {
   const connectForm = event.target.closest("[data-connect-form='aws']");
   if (connectForm) {
-    state.awsConnectDraft = {
-      roleArn: formValue(connectForm, "roleArn"),
-      externalId: formValue(connectForm, "externalId"),
-    };
+    captureAwsConnectDraft(connectForm);
     return;
   }
   const form = event.target.closest("[data-auth-form='register']");
   if (form) refreshGoogleStart(form);
+}
+
+document.addEventListener("input", handleTextInput);
+document.addEventListener("keyup", handleTextInput);
+document.addEventListener("paste", (event) => {
+  setTimeout(() => handleTextInput(event), 0);
 });
 
 document.addEventListener("submit", async (event) => {
   const connectForm = event.target.closest("[data-connect-form='aws']");
   if (connectForm) {
     event.preventDefault();
-    const payload = {
-      roleArn: formValue(connectForm, "roleArn") || state.awsConnectDraft.roleArn,
-      externalId: formValue(connectForm, "externalId") || state.awsConnectDraft.externalId,
-    };
-    if (!payload.roleArn) {
-      state.connectMessage = "Role ARN is required.";
-      render();
-      return;
-    }
-    state.awsConnectDraft = payload;
+    const payload = captureAwsConnectDraft(connectForm);
     state.connectMessage = "Saving AWS role...";
     render();
     try {
