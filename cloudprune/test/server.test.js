@@ -22,6 +22,19 @@ function sessionToken(payload) {
 }
 
 function renderCloudPruneApp(pathname, session = null, interact = null) {
+  const { app, fetchCalls, listeners, store } = bootCloudPruneApp(pathname, session);
+  if (interact) interact({ app, fetchCalls, listeners, store });
+  return app.innerHTML;
+}
+
+function jsonResponse(payload, ok = true) {
+  return {
+    ok,
+    json: async () => payload,
+  };
+}
+
+function bootCloudPruneApp(pathname, session = null, fetchHandler = null) {
   const app = { innerHTML: "" };
   const listeners = {};
   const store = new Map(session ? [["cloudprune.session", session]] : []);
@@ -33,9 +46,8 @@ function renderCloudPruneApp(pathname, session = null, interact = null) {
     atob: (value) => Buffer.from(value, "base64").toString("binary"),
     fetch: async (url, options = {}) => {
       fetchCalls.push({ url, options });
-      return {
-        ok: true,
-        json: async () => ({
+      if (fetchHandler) return fetchHandler(url, options);
+      return jsonResponse({
           connection: {
             provider: "aws",
             awsAccountId: "123456789012",
@@ -43,8 +55,7 @@ function renderCloudPruneApp(pathname, session = null, interact = null) {
             externalId: "cloudprune-account-1",
             status: "configured",
           },
-        }),
-      };
+        });
     },
     document: {
       addEventListener(type, handler) {
@@ -68,8 +79,7 @@ function renderCloudPruneApp(pathname, session = null, interact = null) {
     },
   };
   vm.runInNewContext(script, context, { filename: "cloudprune/app.js" });
-  if (interact) interact({ app, fetchCalls, listeners, store });
-  return app.innerHTML;
+  return { app, fetchCalls, listeners, store };
 }
 
 test("maps CloudPrune app routes to the public index", () => {
@@ -265,6 +275,61 @@ test("CloudPrune AWS role submit refreshes derived ARN when account ID changes",
   const saveCall = calls.find((call) => String(call.url).endsWith("/api/cloud-connections/aws"));
   assert.ok(saveCall);
   assert.equal(JSON.parse(saveCall.options.body).roleArn, "arn:aws:iam::210987654321:role/CloudPruneReadOnlyRole");
+});
+
+test("CloudPrune AWS scan disables the button and shows visible in-progress state", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/", session, (url, options = {}) => {
+    if (String(url).endsWith("/api/workspace")) {
+      return jsonResponse({
+        user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
+        connections: {
+          aws: {
+            provider: "aws",
+            awsAccountId: "123456789012",
+            roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+            externalId: "cloudprune-account-1",
+            status: "configured",
+          },
+        },
+        awsScan: {
+          id: "previous-scan",
+          status: "completed",
+          awsAccountId: "123456789012",
+          monthlyCost: 12,
+          counts: { ec2Instances: 5 },
+          errors: [],
+          progress: 100,
+          message: "AWS scan complete. Read 5 entities.",
+        },
+        awsSetup: {},
+      });
+    }
+    if (String(url).endsWith("/api/cloud-connections/aws/scan") && options.method === "POST") {
+      return new Promise(() => {});
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(app.innerHTML, />Scan again<\/button>/);
+
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='scan-aws']" ? { disabled: false } : null;
+      },
+    },
+  });
+
+  assert.match(app.innerHTML, /<button data-action="scan-aws" disabled>Scanning\.\.\.<\/button>/);
+  assert.match(app.innerHTML, /style="width:3%"/);
+  assert.doesNotMatch(app.innerHTML, />Scan again<\/button>/);
 });
 
 test("auth API reports missing database instead of dropping requests", async () => {

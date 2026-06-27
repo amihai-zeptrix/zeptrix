@@ -89,6 +89,15 @@ function money(value) {
 }
 
 function scanResult() {
+  if (state.awsScan.status === "scanning") {
+    return state.awsScan.result || {
+      status: "running",
+      progress: state.awsScan.progress,
+      message: state.awsScan.message,
+      counts: {},
+      errors: [],
+    };
+  }
   return state.awsScan.result || state.workspace?.awsScan || null;
 }
 
@@ -522,6 +531,7 @@ function renderAwsScanPanel(awsConnection) {
   const active = state.awsScan.status === "scanning" || scan?.status === "running";
   const counts = scan?.counts || {};
   const progress = active ? Number(scan?.progress ?? state.awsScan.progress ?? 0) : scan ? 100 : 0;
+  const progressWidth = active ? Math.max(3, progress) : progress;
   const countRows = [
     ["EC2 instances", counts.ec2Instances],
     ["Lambda functions", counts.lambdas],
@@ -541,10 +551,10 @@ function renderAwsScanPanel(awsConnection) {
         <p>${active ? escapeHtml(scan?.message || state.awsScan.message || "AWS scan is running.") : scan ? escapeHtml(scan.message || `AWS scan complete. Read ${scanTotalEntities(scan).toLocaleString()} entities from AWS account ${scan.awsAccountId || awsConnection.awsAccountId}.`) : "Collect inventory counts and current-month spend using the saved read-only role."}</p>
       </div>
       <div class="scan-progress" aria-label="AWS scan progress">
-        <span style="width:${Math.max(0, Math.min(100, progress))}%"></span>
+        <span style="width:${Math.max(0, Math.min(100, progressWidth))}%"></span>
       </div>
       <div class="scan-actions">
-        <button data-action="scan-aws" ${active ? "disabled" : ""}>${scan ? "Scan again" : "Scan AWS"}</button>
+        <button data-action="scan-aws" ${active ? "disabled" : ""}>${active ? "Scanning..." : scan ? "Scan again" : "Scan AWS"}</button>
         <strong>${scan ? money(scan.monthlyCost) : "$0"} <small>month spend</small></strong>
       </div>
       ${scan && !active ? `<ul class="scan-counts">${countRows}</ul>${errors}` : ""}
