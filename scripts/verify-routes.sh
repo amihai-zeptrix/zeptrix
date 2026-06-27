@@ -31,6 +31,25 @@ assert_not_contains() {
   fi
 }
 
+assert_content_type() {
+  local path="$1"
+  shift
+  local headers
+  headers="$(curl -fsSI --max-time 20 "$base_url$path")"
+
+  local content_type
+  content_type="$(printf "%s" "$headers" | awk 'tolower($1) == "content-type:" {print tolower($2)}' | tr -d '\r' | cut -d ';' -f 1)"
+
+  for expected in "$@"; do
+    if [[ "$content_type" == "$expected" ]]; then
+      return 0
+    fi
+  done
+
+  echo "Expected $path to have one of these content types: $*. Got: $content_type" >&2
+  exit 1
+}
+
 fetch "/" "$tmp_dir/home.html"
 assert_contains "$tmp_dir/home.html" "<title>Zeptrix | AI AWS Cost Reduction</title>"
 assert_contains "$tmp_dir/home.html" 'href="/styles.css"'
@@ -83,12 +102,12 @@ assert_contains "$tmp_dir/cloudprune.html" '<div id="app"></div>'
 assert_contains "$tmp_dir/cloudprune.html" 'href="/cloudprune/styles.css"'
 assert_contains "$tmp_dir/cloudprune.html" 'src="/cloudprune/app.js"'
 
-curl -fsSI --max-time 20 "$base_url/mbh/styles.css" | grep -Fiq "content-type: text/css"
-curl -fsSI --max-time 20 "$base_url/mbh/script.js" | grep -Fiq "content-type: application/javascript"
-curl -fsSI --max-time 20 "$base_url/your-new-crm/styles.css" | grep -Fiq "content-type: text/css"
-curl -fsSI --max-time 20 "$base_url/your-new-crm/app.js" | grep -Fiq "content-type: application/javascript"
-curl -fsSI --max-time 20 "$base_url/cloudprune/styles.css" | grep -Fiq "content-type: text/css"
-curl -fsSI --max-time 20 "$base_url/cloudprune/app.js" | grep -Fiq "content-type: application/javascript"
+assert_content_type "/mbh/styles.css" "text/css"
+assert_content_type "/mbh/script.js" "application/javascript" "text/javascript"
+assert_content_type "/your-new-crm/styles.css" "text/css"
+assert_content_type "/your-new-crm/app.js" "application/javascript" "text/javascript"
+assert_content_type "/cloudprune/styles.css" "text/css"
+assert_content_type "/cloudprune/app.js" "application/javascript" "text/javascript"
 
 old_location="$(curl -fsSI --max-time 20 "$base_url/wordpress-to-modern-websites/" | awk 'tolower($1) == "location:" {print $2}' | tr -d '\r')"
 if [[ "$old_location" != "$base_url/siteops" ]]; then
