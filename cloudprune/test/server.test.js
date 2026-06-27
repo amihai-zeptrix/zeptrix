@@ -1,6 +1,9 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const { once } = require("node:events");
+const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 const { cloudpruneOAuthState, googleRedirectUri, server, signGoogleRegistration, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration } = require("../server");
 
 async function withServer(callback) {
@@ -12,6 +15,40 @@ async function withServer(callback) {
   } finally {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
+}
+
+function sessionToken(payload) {
+  return `${Buffer.from(JSON.stringify(payload)).toString("base64url")}.sig`;
+}
+
+function renderCloudPruneApp(pathname, session = null) {
+  const app = { innerHTML: "" };
+  const store = new Map(session ? [["cloudprune.session", session]] : []);
+  const script = fs.readFileSync(path.join(__dirname, "../cloudprune/app.js"), "utf8");
+  const context = {
+    URL,
+    atob: (value) => Buffer.from(value, "base64").toString("binary"),
+    document: {
+      addEventListener() {},
+      querySelector(selector) {
+        return selector === "#app" ? app : null;
+      },
+    },
+    history: {
+      replaceState() {},
+    },
+    localStorage: {
+      getItem: (key) => store.get(key) || null,
+      setItem: (key, value) => store.set(key, String(value)),
+      removeItem: (key) => store.delete(key),
+    },
+    location: {
+      href: `https://zeptrix.io${pathname}`,
+      pathname,
+    },
+  };
+  vm.runInNewContext(script, context, { filename: "cloudprune/app.js" });
+  return app.innerHTML;
 }
 
 test("maps CloudPrune app routes to the public index", () => {
@@ -59,6 +96,29 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
     assert.equal(shortDemo.status, 200);
     assert.match(await shortDemo.text(), /<div id="app"><\/div>/);
   });
+});
+
+test("authenticated CloudPrune workspace starts empty while demo data remains intact", () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const workspace = renderCloudPruneApp("/cloudprune/", session);
+  assert.match(workspace, /No cloud data yet/);
+  assert.match(workspace, /Connect AWS to start your first cost assessment/);
+  assert.match(workspace, /<strong>\$0<\/strong>/);
+  assert.doesNotMatch(workspace, /EC2 Compute/);
+  assert.doesNotMatch(workspace, /Prioritized recommendations/);
+  assert.doesNotMatch(workspace, /BigQuery query scans/);
+
+  const demo = renderCloudPruneApp("/cloudprune/demo");
+  assert.match(demo, /\$402,150/);
+  assert.match(demo, /Prioritized recommendations/);
+  assert.match(demo, /Move steady EC2 baseline into Savings Plans/);
+  assert.match(demo, /BigQuery query scans/);
+  assert.doesNotMatch(demo, /No cloud data yet/);
 });
 
 test("auth API reports missing database instead of dropping requests", async () => {

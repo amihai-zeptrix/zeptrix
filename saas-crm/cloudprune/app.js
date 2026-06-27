@@ -222,6 +222,17 @@ function renderKpis() {
   `;
 }
 
+function renderEmptyKpis() {
+  return `
+    <section class="kpi-grid" aria-label="Cloud cost summary">
+      <article class="kpi spend"><div class="kpi-icon">${ICONS.spend}</div><span>Month spend</span><strong>$0</strong><em>No billing data connected</em></article>
+      <article class="kpi waste"><div class="kpi-icon">${ICONS.waste}</div><span>Verified waste</span><strong>$0</strong><em>Connect AWS to start analysis</em></article>
+      <article class="kpi savings"><div class="kpi-icon">${ICONS.savings}</div><span>Potential annual saving</span><strong>$0</strong><em>Pending first assessment</em></article>
+      <article class="kpi score"><div class="kpi-icon">${ICONS.score}</div><span>Optimization score</span><strong>-</strong><em>No resources analyzed yet</em></article>
+    </section>
+  `;
+}
+
 function renderSpendBars() {
   const services = filteredServices();
   const max = Math.max(...services.map((service) => service.forecast));
@@ -304,17 +315,44 @@ function renderMainPanel() {
   `;
 }
 
+function renderEmptyWorkspace() {
+  return `
+    <div class="workspace empty-workspace">
+      <section class="panel empty-state-panel">
+        <div class="empty-state-icon">${ICONS.prune}</div>
+        <span class="eyebrow">No cloud data yet</span>
+        <h2>Connect AWS to start your first cost assessment.</h2>
+        <p>CloudPrune will use read-only access to inspect spend, inventory, utilization signals, and safe optimization opportunities before it recommends any action.</p>
+        <div class="empty-actions">
+          <button data-action="connect">Connect AWS</button>
+          <a href="${basePath()}/demo">View demo data</a>
+        </div>
+      </section>
+      <aside class="right-rail">
+        <section class="panel compact empty-side-panel">
+          <div class="panel-head"><div><span class="eyebrow">Recommendations</span><h2>Empty</h2></div></div>
+          <div class="empty">No recommendations until a cloud account is connected.</div>
+        </section>
+        <section class="panel compact empty-side-panel">
+          <div class="panel-head"><div><span class="eyebrow">Automation queue</span><h2>Disabled</h2></div></div>
+          <div class="empty">Automation stays off until real findings are reviewed.</div>
+        </section>
+      </aside>
+    </div>
+  `;
+}
+
 function render() {
   const app = document.querySelector("#app");
   if (appRoute() === "auth") {
     if (hasSession()) {
-      renderDemo(app);
+      renderDemo(app, false);
       return;
     }
     renderAuth(app);
     return;
   }
-  renderDemo(app);
+  renderDemo(app, true);
 }
 
 function renderAuth(app) {
@@ -400,9 +438,9 @@ function renderAuth(app) {
   `;
 }
 
-function renderDemo(app) {
+function renderDemo(app, showDemoData = appRoute() === "demo") {
   const base = basePath();
-  const isDemo = appRoute() === "demo";
+  const isDemo = showDemoData;
   const dashboardPath = isDemo ? `${base}/demo` : `${base}/`;
   const navPath = isDemo ? `${base}/demo/` : `${base}/`;
   const sidebarAuthAction = hasSession()
@@ -440,7 +478,7 @@ function renderDemo(app) {
             <button data-action="connect">Connect cloud</button>
           </div>
         </header>
-        <div class="filters" role="group" aria-label="Cloud provider filter">${renderProviderFilter()}</div>
+        ${showDemoData ? `<div class="filters" role="group" aria-label="Cloud provider filter">${renderProviderFilter()}</div>
         ${renderKpis()}
         <div class="workspace">
           ${renderMainPanel()}
@@ -454,7 +492,7 @@ function renderDemo(app) {
               <ol class="queue">${renderAutomationQueue()}</ol>
             </section>
           </aside>
-        </div>
+        </div>` : `${renderEmptyKpis()}${renderEmptyWorkspace()}`}
       </main>
     </div>
   `;
