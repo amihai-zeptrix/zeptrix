@@ -662,6 +662,11 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   text-decoration: none;
 }
 
+.google-button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
 .google-button svg {
   width: 20px;
   height: 20px;
@@ -719,6 +724,18 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
 .auth-form button {
   min-height: 45px;
   margin-top: 4px;
+}
+
+.auth-hint {
+  margin: -2px 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.auth-hint.hidden {
+  display: none;
 }
 
 .demo-link {

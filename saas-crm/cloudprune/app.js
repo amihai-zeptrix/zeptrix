@@ -75,6 +75,8 @@ let state = {
   authMessage: "",
 };
 
+const registerDraftKey = "cloudprune.registerDraft";
+
 function money(value) {
   return `$${Math.round(value).toLocaleString()}`;
 }
@@ -136,6 +138,34 @@ function pendingGoogleRegistration() {
   return payload ? { token, payload } : null;
 }
 
+function registerDraft() {
+  try {
+    return JSON.parse(localStorage.getItem(registerDraftKey)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveRegisterDraft(draft) {
+  localStorage.setItem(registerDraftKey, JSON.stringify({
+    name: String(draft.name || "").trim(),
+    company: String(draft.company || "").trim(),
+    email: String(draft.email || "").trim(),
+  }));
+}
+
+function saveRegisterDraftFromForm(form) {
+  saveRegisterDraft(Object.fromEntries(new FormData(form).entries()));
+}
+
+function isRegisterDraftComplete(draft) {
+  return Boolean(
+    String(draft.name || "").trim() &&
+    String(draft.company || "").trim() &&
+    /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(draft.email || "").trim())
+  );
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -153,8 +183,19 @@ function tenantName() {
 function signOut() {
   localStorage.removeItem("cloudprune.session");
   localStorage.removeItem("cloudprune.googleRegistration");
+  localStorage.removeItem(registerDraftKey);
   state.authMessage = "Signed out.";
   location.href = `${basePath()}/`;
+}
+
+function refreshGoogleStart(form) {
+  if (!form || form.dataset.authForm !== "register") return;
+  saveRegisterDraftFromForm(form);
+  const isComplete = isRegisterDraftComplete(registerDraft());
+  const googleButton = form.querySelector("[data-action='google-start']");
+  const hint = form.querySelector("[data-google-hint]");
+  if (googleButton) googleButton.disabled = !isComplete;
+  if (hint) hint.classList.toggle("hidden", isComplete);
 }
 
 function renderProviderFilter() {
@@ -298,9 +339,14 @@ function renderAuth(app) {
   const googlePending = pendingGoogleRegistration();
   const isGoogleRegister = state.authMode === "google-register" && googlePending;
   const isRegister = state.authMode === "register";
-  const googleName = escapeHtml(googlePending?.payload.name || "");
+  const draft = registerDraft();
+  const googleName = escapeHtml(draft.name || googlePending?.payload.name || "");
   const googleEmail = escapeHtml(googlePending?.payload.email || "");
-  const googleCompany = escapeHtml(googlePending?.payload.companyName || "");
+  const googleCompany = escapeHtml(draft.company || googlePending?.payload.companyName || "");
+  const draftName = escapeHtml(draft.name || "");
+  const draftCompany = escapeHtml(draft.company || "");
+  const draftEmail = escapeHtml(draft.email || "");
+  const isGoogleStartDisabled = isRegister && !isRegisterDraftComplete(draft);
   app.innerHTML = `
     <main class="auth-page">
       <section class="auth-visual">
@@ -325,8 +371,6 @@ function renderAuth(app) {
           <button class="${isRegister ? "active" : ""}" data-auth-mode="register" type="button">Register</button>
           <button class="${!isRegister ? "active" : ""}" data-auth-mode="login" type="button">Login</button>
         </div>`}
-        ${isGoogleRegister ? "" : `<a class="google-button" href="${base}/api/auth/google/start">${ICONS.gcp}<span>Continue with Google</span></a>
-        <div class="auth-divider"><span>or</span></div>`}
         <form class="auth-form" data-auth-form="${state.authMode}">
           ${isGoogleRegister ? `
             <input name="googleRegistrationToken" type="hidden" value="${escapeHtml(googlePending.token)}" />
@@ -334,11 +378,17 @@ function renderAuth(app) {
             <label>Company<input name="company" autocomplete="organization" value="${googleCompany}" required /></label>
             <label>Email<input name="email" type="email" value="${googleEmail}" readonly /></label>
           ` : isRegister ? `
-            <label>Full name<input name="name" autocomplete="name" required /></label>
-            <label>Company<input name="company" autocomplete="organization" required /></label>
+            <label>Full name<input name="name" autocomplete="name" value="${draftName}" required /></label>
+            <label>Company<input name="company" autocomplete="organization" value="${draftCompany}" required /></label>
+            <label>Email<input name="email" type="email" autocomplete="email" value="${draftEmail}" required /></label>
           ` : ""}
           ${isGoogleRegister ? "" : `
-            <label>Email<input name="email" type="email" autocomplete="email" required /></label>
+            <button class="google-button" data-action="google-start" type="button" ${isGoogleStartDisabled ? "disabled" : ""}>${ICONS.gcp}<span>Continue with Google</span></button>
+            ${isRegister ? `<p class="auth-hint ${isGoogleStartDisabled ? "" : "hidden"}" data-google-hint>Fill full name, company, and email to continue with Google.</p>` : ""}
+            <div class="auth-divider"><span>or</span></div>
+          `}
+          ${isGoogleRegister ? "" : `
+            ${isRegister ? "" : `<label>Email<input name="email" type="email" autocomplete="email" required /></label>`}
             <label>Password<input name="password" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" minlength="10" required /></label>
           `}
           <button type="submit">${isGoogleRegister ? "Create CloudPrune workspace" : isRegister ? "Create CloudPrune workspace" : "Login"}</button>
@@ -411,6 +461,21 @@ function renderDemo(app) {
 }
 
 document.addEventListener("click", (event) => {
+  const googleStartButton = event.target.closest("[data-action='google-start']");
+  if (googleStartButton) {
+    const form = googleStartButton.closest("[data-auth-form]");
+    if (form?.dataset.authForm === "register") {
+      saveRegisterDraftFromForm(form);
+      if (!isRegisterDraftComplete(registerDraft())) {
+        refreshGoogleStart(form);
+        state.authMessage = "Fill full name, company, and email before continuing with Google.";
+        render();
+        return;
+      }
+    }
+    location.href = `${basePath()}/api/auth/google/start`;
+    return;
+  }
   const logoutButton = event.target.closest("[data-action='logout']");
   if (logoutButton) {
     signOut();
@@ -436,11 +501,17 @@ document.addEventListener("change", (event) => {
   }
 });
 
+document.addEventListener("input", (event) => {
+  const form = event.target.closest("[data-auth-form='register']");
+  if (form) refreshGoogleStart(form);
+});
+
 document.addEventListener("submit", async (event) => {
   const form = event.target.closest("[data-auth-form]");
   if (!form) return;
   event.preventDefault();
   const mode = form.dataset.authForm;
+  if (mode === "register") saveRegisterDraftFromForm(form);
   const payload = Object.fromEntries(new FormData(form).entries());
   state.authMessage = mode === "login" ? "Signing in..." : "Creating workspace...";
   render();
@@ -457,6 +528,7 @@ document.addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(body.error || "CloudPrune authentication failed.");
     localStorage.setItem("cloudprune.session", body.token);
     localStorage.removeItem("cloudprune.googleRegistration");
+    localStorage.removeItem(registerDraftKey);
     location.href = `${basePath()}/`;
   } catch (error) {
     state.authMessage = error.message;
