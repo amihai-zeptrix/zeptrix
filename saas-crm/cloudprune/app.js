@@ -111,8 +111,48 @@ function hasSession() {
   return Boolean(localStorage.getItem("cloudprune.session"));
 }
 
+function decodeTokenPayload(token) {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[0];
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")));
+  } catch {
+    return null;
+  }
+}
+
+function decodeSession() {
+  return decodeTokenPayload(localStorage.getItem("cloudprune.session"));
+}
+
+function pendingGoogleRegistration() {
+  const token = localStorage.getItem("cloudprune.googleRegistration");
+  const payload = decodeTokenPayload(token);
+  if (payload?.exp && Number(payload.exp) < Date.now()) {
+    localStorage.removeItem("cloudprune.googleRegistration");
+    return null;
+  }
+  return payload ? { token, payload } : null;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function tenantName() {
+  const session = decodeSession();
+  return session?.companyName || session?.email?.split("@")[1] || "CloudPrune workspace";
+}
+
 function signOut() {
   localStorage.removeItem("cloudprune.session");
+  localStorage.removeItem("cloudprune.googleRegistration");
   state.authMessage = "Signed out.";
   location.href = `${basePath()}/`;
 }
@@ -241,14 +281,26 @@ function renderAuth(app) {
   const url = new URL(location.href);
   const sso = url.searchParams.get("sso");
   const token = url.searchParams.get("token");
+  const googleRegistration = url.searchParams.get("googleRegistration");
   if (token) {
     localStorage.setItem("cloudprune.session", token);
+    localStorage.removeItem("cloudprune.googleRegistration");
     history.replaceState({}, "", `${base}/`);
     location.href = `${base}/`;
     return;
   }
+  if (googleRegistration) {
+    localStorage.setItem("cloudprune.googleRegistration", googleRegistration);
+    state.authMode = "google-register";
+    history.replaceState({}, "", `${base}/`);
+  }
   const ssoMessage = sso === "not_configured" ? "Google SSO is ready in the UI, but OAuth credentials are not configured on this server yet." : "";
+  const googlePending = pendingGoogleRegistration();
+  const isGoogleRegister = state.authMode === "google-register" && googlePending;
   const isRegister = state.authMode === "register";
+  const googleName = escapeHtml(googlePending?.payload.name || "");
+  const googleEmail = escapeHtml(googlePending?.payload.email || "");
+  const googleCompany = escapeHtml(googlePending?.payload.companyName || "");
   app.innerHTML = `
     <main class="auth-page">
       <section class="auth-visual">
@@ -266,23 +318,30 @@ function renderAuth(app) {
       </section>
       <section class="auth-panel" aria-label="CloudPrune sign in">
         <div class="auth-panel-head">
-          <span class="eyebrow">${isRegister ? "Create workspace" : "Welcome back"}</span>
-          <h2>${isRegister ? "Start with read-only savings analysis" : "Sign in to CloudPrune"}</h2>
+          <span class="eyebrow">${isGoogleRegister ? "Complete registration" : isRegister ? "Create workspace" : "Welcome back"}</span>
+          <h2>${isGoogleRegister ? "Confirm your CloudPrune workspace" : isRegister ? "Start with read-only savings analysis" : "Sign in to CloudPrune"}</h2>
         </div>
-        <div class="auth-tabs" role="tablist">
+        ${isGoogleRegister ? "" : `<div class="auth-tabs" role="tablist">
           <button class="${isRegister ? "active" : ""}" data-auth-mode="register" type="button">Register</button>
           <button class="${!isRegister ? "active" : ""}" data-auth-mode="login" type="button">Login</button>
-        </div>
-        <a class="google-button" href="${base}/api/auth/google/start">${ICONS.gcp}<span>Continue with Google</span></a>
-        <div class="auth-divider"><span>or</span></div>
+        </div>`}
+        ${isGoogleRegister ? "" : `<a class="google-button" href="${base}/api/auth/google/start">${ICONS.gcp}<span>Continue with Google</span></a>
+        <div class="auth-divider"><span>or</span></div>`}
         <form class="auth-form" data-auth-form="${state.authMode}">
-          ${isRegister ? `
+          ${isGoogleRegister ? `
+            <input name="googleRegistrationToken" type="hidden" value="${escapeHtml(googlePending.token)}" />
+            <label>Full name<input name="name" autocomplete="name" value="${googleName}" required /></label>
+            <label>Company<input name="company" autocomplete="organization" value="${googleCompany}" required /></label>
+            <label>Email<input name="email" type="email" value="${googleEmail}" readonly /></label>
+          ` : isRegister ? `
             <label>Full name<input name="name" autocomplete="name" required /></label>
             <label>Company<input name="company" autocomplete="organization" required /></label>
           ` : ""}
-          <label>Email<input name="email" type="email" autocomplete="email" required /></label>
-          <label>Password<input name="password" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" minlength="10" required /></label>
-          <button type="submit">${isRegister ? "Create CloudPrune workspace" : "Login"}</button>
+          ${isGoogleRegister ? "" : `
+            <label>Email<input name="email" type="email" autocomplete="email" required /></label>
+            <label>Password<input name="password" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" minlength="10" required /></label>
+          `}
+          <button type="submit">${isGoogleRegister ? "Create CloudPrune workspace" : isRegister ? "Create CloudPrune workspace" : "Login"}</button>
         </form>
         <a class="demo-link" href="${base}/demo">View live demo</a>
         <p class="auth-message">${state.authMessage || ssoMessage}</p>
@@ -296,20 +355,25 @@ function renderDemo(app) {
   const isDemo = appRoute() === "demo";
   const dashboardPath = isDemo ? `${base}/demo` : `${base}/`;
   const navPath = isDemo ? `${base}/demo/` : `${base}/`;
-  const authAction = hasSession()
-    ? `<button class="secondary-action" data-action="logout" type="button">Logout</button>`
-    : `<a class="top-link" href="${base}/">Login</a>`;
+  const sidebarAuthAction = hasSession()
+    ? `<button class="sidebar-action" data-action="logout" type="button">Logout</button>`
+    : `<a class="sidebar-action" href="${base}/">Login</a>`;
+  const tenantLabel = escapeHtml(tenantName());
   app.innerHTML = `
     <div class="shell">
       <aside class="sidebar">
         <a class="brand" href="${dashboardPath}" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
         <nav>
+          <div class="tenant-label"><span>Tenant</span><strong>${tenantLabel}</strong></div>
           <a class="active" href="${dashboardPath}">${ICONS.dashboard}<span>Dashboard</span></a>
           <a href="${navPath}recommendations">${ICONS.recs}<span>Recommendations</span></a>
           <a href="${navPath}anomalies">${ICONS.alert}<span>Anomalies</span></a>
           <a href="${navPath}automation">${ICONS.automation}<span>Automation</span></a>
           <a href="${navPath}settings">${ICONS.settings}<span>Settings</span></a>
         </nav>
+        <div class="sidebar-footer">
+          ${sidebarAuthAction}
+        </div>
         <div class="connector-card">
           <span class="aws">${vendorBadge("aws", "AWS")}</span><span class="gcp">${vendorBadge("gcp", "GCP")}</span><span class="azure">${vendorBadge("azure", "Azure")}</span><span class="kubernetes">${vendorBadge("kubernetes", "K8s")}</span>
         </div>
@@ -324,7 +388,6 @@ function renderDemo(app) {
           <div class="top-actions">
             <label class="toggle"><input type="checkbox" ${state.automation ? "checked" : ""} data-action="toggle-automation" /><span></span>Autopilot</label>
             <button data-action="connect">Connect cloud</button>
-            ${authAction}
           </div>
         </header>
         <div class="filters" role="group" aria-label="Cloud provider filter">${renderProviderFilter()}</div>
@@ -379,10 +442,13 @@ document.addEventListener("submit", async (event) => {
   event.preventDefault();
   const mode = form.dataset.authForm;
   const payload = Object.fromEntries(new FormData(form).entries());
-  state.authMessage = mode === "register" ? "Creating workspace..." : "Signing in...";
+  state.authMessage = mode === "login" ? "Signing in..." : "Creating workspace...";
   render();
   try {
-    const response = await fetch(`${basePath()}/api/${mode === "register" ? "register" : "login"}`, {
+    const endpoint = mode === "google-register"
+      ? "complete-google-registration"
+      : mode === "register" ? "register" : "login";
+    const response = await fetch(`${basePath()}/api/${endpoint}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -390,6 +456,7 @@ document.addEventListener("submit", async (event) => {
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "CloudPrune authentication failed.");
     localStorage.setItem("cloudprune.session", body.token);
+    localStorage.removeItem("cloudprune.googleRegistration");
     location.href = `${basePath()}/`;
   } catch (error) {
     state.authMessage = error.message;
@@ -402,6 +469,7 @@ document.addEventListener("click", (event) => {
   if (!authMode) return;
   state.authMode = authMode.dataset.authMode;
   state.authMessage = "";
+  localStorage.removeItem("cloudprune.googleRegistration");
   render();
 });
 

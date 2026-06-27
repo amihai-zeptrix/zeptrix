@@ -74,16 +74,46 @@ function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
 }
 
+function publicUser(user) {
+  return { name: user.name, email: user.email, companyName: user.company_name };
+}
+
 function signSession(user) {
   const payload = {
     sub: user.id,
     email: user.email,
+    name: user.name,
     accountId: user.account_id,
+    companyName: user.company_name,
     exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = crypto.createHmac("sha256", tokenSecret).update(body).digest("base64url");
   return `${body}.${sig}`;
+}
+
+function signGoogleRegistration(profile) {
+  const email = normalizeEmail(profile.email);
+  const payload = {
+    sub: profile.sub,
+    email,
+    name: profile.name || email.split("@")[0],
+    companyName: profile.hd || "",
+    exp: Date.now() + 20 * 60 * 1000,
+  };
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = crypto.createHmac("sha256", tokenSecret).update(body).digest("base64url");
+  return `${body}.${sig}`;
+}
+
+function verifyGoogleRegistration(token) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2) return null;
+  const expected = crypto.createHmac("sha256", tokenSecret).update(parts[0]).digest("base64url");
+  if (!crypto.timingSafeEqual(Buffer.from(parts[1]), Buffer.from(expected))) return null;
+  const payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+  if (!payload.sub || !payload.email || (payload.exp && Number(payload.exp) < Date.now())) return null;
+  return payload;
 }
 
 function cloudpruneOAuthState(prefix) {
@@ -172,8 +202,8 @@ async function registerUser(payload, provider = "password") {
     const user = await client.query(
       `insert into cloudprune_users (account_id, name, email, password_hash, google_subject, provider, last_login_at)
        values ($1,$2,$3,$4,$5,$6,now())
-       returning id, account_id, name, email, provider`,
-      [account.rows[0].id, name, email, provider === "password" ? hashPassword(password) : null, payload.googleSubject || null, provider]
+       returning id, account_id, name, email, provider, $7::text as company_name`,
+      [account.rows[0].id, name, email, provider === "password" ? hashPassword(password) : null, payload.googleSubject || null, provider, company]
     );
     await client.query(
       `insert into cloudprune_auth_events (user_id, email, event_type, detail) values ($1,$2,$3,$4)`,
@@ -193,7 +223,13 @@ async function registerUser(payload, provider = "password") {
 async function loginUser(payload) {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const email = normalizeEmail(payload.email);
-  const result = await pool.query(`select id, account_id, name, email, password_hash, provider from cloudprune_users where email=$1`, [email]);
+  const result = await pool.query(
+    `select u.id, u.account_id, u.name, u.email, u.password_hash, u.provider, a.company_name
+     from cloudprune_users u
+     join cloudprune_accounts a on a.id = u.account_id
+     where u.email=$1`,
+    [email]
+  );
   const user = result.rows[0];
   if (!user || !user.password_hash || !verifyPassword(payload.password || "", user.password_hash)) {
     await recordAuthEvent({ email, eventType: "login_failed", detail: "invalid_credentials" });
@@ -202,6 +238,17 @@ async function loginUser(payload) {
   await pool.query(`update cloudprune_users set last_login_at=now() where id=$1`, [user.id]);
   await recordAuthEvent({ userId: user.id, email, eventType: "login", detail: "password" });
   return user;
+}
+
+async function completeGoogleRegistration(payload) {
+  const registration = verifyGoogleRegistration(payload.googleRegistrationToken);
+  if (!registration) throw new Error("Google registration expired. Please continue with Google again.");
+  return registerUser({
+    name: payload.name || registration.name,
+    company: payload.company || payload.companyName,
+    email: registration.email,
+    googleSubject: registration.sub,
+  }, "google");
 }
 
 async function googleProfileFromCode(code) {
@@ -225,21 +272,22 @@ async function googleProfileFromCode(code) {
   return profile;
 }
 
-async function upsertGoogleUser(profile) {
+async function googleUserFromProfile(profile) {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const email = normalizeEmail(profile.email);
-  const existing = await pool.query(`select id, account_id, name, email, provider from cloudprune_users where email=$1 or google_subject=$2`, [email, profile.sub]);
+  const existing = await pool.query(
+    `select u.id, u.account_id, u.name, u.email, u.provider, a.company_name
+     from cloudprune_users u
+     join cloudprune_accounts a on a.id = u.account_id
+     where u.email=$1 or u.google_subject=$2`,
+    [email, profile.sub]
+  );
   if (existing.rows[0]) {
     await pool.query(`update cloudprune_users set google_subject=$2, provider='google', last_login_at=now() where id=$1`, [existing.rows[0].id, profile.sub]);
     await recordAuthEvent({ userId: existing.rows[0].id, email, eventType: "login", detail: "google" });
     return existing.rows[0];
   }
-  return registerUser({
-    name: profile.name || email.split("@")[0],
-    company: profile.hd || email.split("@")[1] || "CloudPrune workspace",
-    email,
-    googleSubject: profile.sub,
-  }, "google");
+  return null;
 }
 
 async function handleApi(req, res, requestUrl) {
@@ -249,11 +297,15 @@ async function handleApi(req, res, requestUrl) {
   try {
     if (req.method === "POST" && apiPath === "/api/register") {
       const user = await registerUser(await readJson(req));
-      return json(res, 201, { token: signSession(user), user: { name: user.name, email: user.email } });
+      return json(res, 201, { token: signSession(user), user: publicUser(user) });
     }
     if (req.method === "POST" && apiPath === "/api/login") {
       const user = await loginUser(await readJson(req));
-      return json(res, 200, { token: signSession(user), user: { name: user.name, email: user.email } });
+      return json(res, 200, { token: signSession(user), user: publicUser(user) });
+    }
+    if (req.method === "POST" && apiPath === "/api/complete-google-registration") {
+      const user = await completeGoogleRegistration(await readJson(req));
+      return json(res, 201, { token: signSession(user), user: publicUser(user) });
     }
     if (req.method === "GET" && apiPath === "/api/auth/google/start") {
       if (!googleClientId || !googleClientSecret) {
@@ -277,9 +329,12 @@ async function handleApi(req, res, requestUrl) {
       const state = verifyCloudpruneOAuthState(requestUrl.searchParams.get("state"));
       if (!state || state.prefix !== prefix) throw new Error("Google sign-in state did not match.");
       const profile = await googleProfileFromCode(requestUrl.searchParams.get("code"));
-      const user = await upsertGoogleUser(profile);
+      const user = await googleUserFromProfile(profile);
+      const location = user
+        ? `${prefix}/?token=${encodeURIComponent(signSession(user))}`
+        : `${prefix}/?googleRegistration=${encodeURIComponent(signGoogleRegistration(profile))}`;
       res.writeHead(302, {
-        location: `${prefix}/?token=${encodeURIComponent(signSession(user))}`,
+        location,
         "set-cookie": cloudpruneOAuthCookie("", prefix, "; Max-Age=0"),
       });
       res.end();
@@ -354,4 +409,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { cloudpruneOAuthState, googleRedirectUri, hashPassword, initDatabase, registerUser, server, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyPassword };
+module.exports = { cloudpruneOAuthState, googleRedirectUri, hashPassword, initDatabase, registerUser, server, signGoogleRegistration, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword };

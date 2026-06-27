@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { once } = require("node:events");
 const test = require("node:test");
-const { cloudpruneOAuthState, googleRedirectUri, server, staticFilePathForUrlPath, verifyCloudpruneOAuthState } = require("../server");
+const { cloudpruneOAuthState, googleRedirectUri, server, signGoogleRegistration, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -90,6 +90,16 @@ test("Google SSO state is signed and self-contained", () => {
   assert.match(state, /^cloudprune\.[^.]+\.[^.]+$/);
   assert.equal(verifyCloudpruneOAuthState(state).prefix, "/cp");
   assert.equal(verifyCloudpruneOAuthState(`${state.slice(0, -1)}x`), null);
+});
+
+test("Google SSO creates a signed pending registration for new users", () => {
+  const token = signGoogleRegistration({ sub: "google-123", email: "ami@example.com", name: "Ami", hd: "Zeptrix" });
+  const payload = verifyGoogleRegistration(token);
+  assert.equal(payload.sub, "google-123");
+  assert.equal(payload.email, "ami@example.com");
+  assert.equal(payload.name, "Ami");
+  assert.equal(payload.companyName, "Zeptrix");
+  assert.equal(verifyGoogleRegistration(`${token.slice(0, -1)}x`), null);
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {
