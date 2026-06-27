@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { awsScanCounts, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
+const { awsScanCounts, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -370,6 +370,41 @@ test("AWS scan summary counts entities and monthly cost", () => {
   assert.deepEqual(costFromCostExplorer({
     ResultsByTime: [{ Total: { UnblendedCost: { Amount: "123.45", Unit: "USD" } } }],
   }), { amount: 123.45, currency: "USD" });
+});
+
+test("AWS scan API payload includes persisted progress and completion message", () => {
+  assert.deepEqual(publicAwsScan({
+    id: "scan-1",
+    status: "running",
+    provider_account_id: "123456789012",
+    monthly_cost: "0",
+    currency: "USD",
+    counts: {},
+    errors: [],
+    scan_json: { progress: 42, message: "Reading EC2 instances in us-east-1." },
+    created_at: "created",
+    updated_at: "updated",
+  }), {
+    id: "scan-1",
+    status: "running",
+    awsAccountId: "123456789012",
+    monthlyCost: 0,
+    currency: "USD",
+    counts: {},
+    errors: [],
+    progress: 42,
+    message: "Reading EC2 instances in us-east-1.",
+    scannedAt: "created",
+    updatedAt: "updated",
+  });
+
+  assert.equal(publicAwsScan({
+    id: "scan-2",
+    status: "completed",
+    provider_account_id: "123456789012",
+    monthly_cost: 12,
+    scan_json: { progress: 100, message: "AWS scan complete. Read 5 entities." },
+  }).message, "AWS scan complete. Read 5 entities.");
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {

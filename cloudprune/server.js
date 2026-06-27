@@ -124,6 +124,7 @@ function publicCloudConnection(row) {
 
 function publicAwsScan(row) {
   if (!row) return null;
+  const scanJson = row.scan_json || {};
   return {
     id: row.id,
     status: row.status,
@@ -132,6 +133,8 @@ function publicAwsScan(row) {
     currency: row.currency || "USD",
     counts: row.counts || {},
     errors: row.errors || [],
+    progress: Number(scanJson.progress || (row.status === "running" ? 0 : 100)),
+    message: scanJson.message || "",
     scannedAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -414,7 +417,7 @@ async function workspaceForRequest(req) {
   );
   const byProvider = Object.fromEntries(connections.rows.map((row) => [row.provider, publicCloudConnection(row)]));
   const latestScan = await pool.query(
-    `select id, provider_account_id, status, monthly_cost, currency, counts, errors, created_at, updated_at
+    `select id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at
      from cloudprune_aws_scans
      where account_id=$1
      order by created_at desc
@@ -552,10 +555,10 @@ async function startAwsScan(req) {
   if (!aws) throw new Error("Connect AWS before scanning.");
 
   const started = await pool.query(
-    `insert into cloudprune_aws_scans (account_id, provider_account_id, status)
-     values ($1,$2,'running')
-     returning id, provider_account_id, status, monthly_cost, currency, counts, errors, created_at, updated_at`,
-    [user.account_id, aws.provider_account_id]
+    `insert into cloudprune_aws_scans (account_id, provider_account_id, status, scan_json)
+     values ($1,$2,'running',$3)
+     returning id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at`,
+    [user.account_id, aws.provider_account_id, { progress: 0, message: "Starting AWS scan." }]
   );
   setImmediate(() => {
     performAwsScan(started.rows[0].id, user, aws).catch((error) => {
@@ -569,7 +572,7 @@ async function startAwsScan(req) {
 async function getAwsScan(req, scanId) {
   const user = await userFromSession(req);
   const result = await pool.query(
-    `select id, provider_account_id, status, monthly_cost, currency, counts, errors, created_at, updated_at
+    `select id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at
      from cloudprune_aws_scans
      where id=$1 and account_id=$2`,
     [scanId, user.account_id]
@@ -578,11 +581,25 @@ async function getAwsScan(req, scanId) {
   return publicAwsScan(result.rows[0]);
 }
 
+async function updateAwsScanProgress(scanId, completedSteps, totalSteps, message, extra = {}) {
+  const denominator = Math.max(1, totalSteps);
+  const progress = Math.min(99, Math.max(0, Math.round((completedSteps / denominator) * 100)));
+  await pool.query(
+    `update cloudprune_aws_scans
+     set scan_json = scan_json || $2::jsonb, updated_at=now()
+     where id=$1 and status='running'`,
+    [scanId, { ...extra, progress, message }]
+  );
+}
+
 async function performAwsScan(scanId, user, aws) {
   const sessionName = `CloudPruneScan-${Date.now()}`;
   const results = {};
   const errors = [];
+  let completedSteps = 0;
+  let totalSteps = 4;
   try {
+    await updateAwsScanProgress(scanId, completedSteps, totalSteps, "Assuming AWS read-only role.");
     const assumed = await runAwsJson([
       "sts", "assume-role",
       "--role-arn", aws.role_arn,
@@ -593,6 +610,8 @@ async function performAwsScan(scanId, user, aws) {
     if (!credentials?.AccessKeyId || !credentials?.SecretAccessKey || !credentials?.SessionToken) {
       throw new Error("AWS assume-role did not return temporary credentials.");
     }
+    completedSteps += 1;
+    await updateAwsScanProgress(scanId, completedSteps, totalSteps, "Discovering enabled AWS regions.");
     const scanEnv = {
       AWS_ACCESS_KEY_ID: credentials.AccessKeyId,
       AWS_SECRET_ACCESS_KEY: credentials.SecretAccessKey,
@@ -611,10 +630,11 @@ async function performAwsScan(scanId, user, aws) {
     } catch (error) {
       errors.push({ check: "regions", message: error.message });
     }
+    completedSteps += 1;
 
     const globalChecks = [
-      ["s3Buckets", ["s3api", "list-buckets", "--query", "length(Buckets)"]],
-      ["cost", [
+      ["s3Buckets", "Reading S3 buckets.", ["s3api", "list-buckets", "--query", "length(Buckets)"]],
+      ["cost", "Reading Cost Explorer spend.", [
         "ce", "get-cost-and-usage",
         "--time-period", `Start=${start},End=${end}`,
         "--granularity", "MONTHLY",
@@ -622,47 +642,65 @@ async function performAwsScan(scanId, user, aws) {
         "--region", "us-east-1",
       ]],
     ];
-    for (const [id, args] of globalChecks) {
+    const regionalChecks = [
+      ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--query", "length(Reservations[].Instances[])"]],
+      ["ebsVolumes", "Reading EBS volumes", (region) => ["ec2", "describe-volumes", "--region", region, "--query", "length(Volumes)"]],
+      ["lambdas", "Reading Lambda functions", (region) => ["lambda", "list-functions", "--region", region, "--query", "length(Functions)"]],
+      ["rdsInstances", "Reading RDS instances", (region) => ["rds", "describe-db-instances", "--region", region, "--query", "length(DBInstances)"]],
+      ["loadBalancers", "Reading load balancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--query", "length(LoadBalancers)"]],
+    ];
+    const jobs = regions.flatMap((region) => regionalChecks.map(([id, label, command]) => ({ region, id, label, command })));
+    totalSteps = completedSteps + globalChecks.length + jobs.length + 1;
+    await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Discovered ${regions.length} enabled AWS region${regions.length === 1 ? "" : "s"}.`);
+
+    for (const [id, label, args] of globalChecks) {
       try {
         results[id] = await runAwsJson(args, { env: scanEnv, timeoutMs: 60000 });
       } catch (error) {
         errors.push({ check: id, message: error.message });
       }
+      completedSteps += 1;
+      await updateAwsScanProgress(scanId, completedSteps, totalSteps, label);
     }
 
-    const regionalChecks = [
-      ["ec2Instances", (region) => ["ec2", "describe-instances", "--region", region, "--query", "length(Reservations[].Instances[])"]],
-      ["ebsVolumes", (region) => ["ec2", "describe-volumes", "--region", region, "--query", "length(Volumes)"]],
-      ["lambdas", (region) => ["lambda", "list-functions", "--region", region, "--query", "length(Functions)"]],
-      ["rdsInstances", (region) => ["rds", "describe-db-instances", "--region", region, "--query", "length(DBInstances)"]],
-      ["loadBalancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--query", "length(LoadBalancers)"]],
-    ];
-    const jobs = regions.flatMap((region) => regionalChecks.map(([id, command]) => ({ region, id, command })));
     const concurrency = 5;
     for (let index = 0; index < jobs.length; index += concurrency) {
       const batch = jobs.slice(index, index + concurrency);
-      await Promise.all(batch.map(async ({ region, id, command }) => {
+      await Promise.all(batch.map(async ({ region, id, label, command }) => {
         try {
           results[id] = [...(results[id] || []), await runAwsJson(command(region), { env: scanEnv, timeoutMs: 45000 })];
         } catch (error) {
           errors.push({ check: `${id}:${region}`, message: error.message });
         }
+        completedSteps += 1;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `${label} in ${region}.`);
       }));
     }
     const cost = costFromCostExplorer(results.cost);
     const counts = awsScanCounts(results);
     const status = errors.length ? "completed_with_errors" : "completed";
+    const totalEntities = Object.values(counts).reduce((total, value) => total + Number(value || 0), 0);
+    completedSteps += 1;
     await pool.query(
       `update cloudprune_aws_scans
        set status=$2, monthly_cost=$3, currency=$4, counts=$5, errors=$6, scan_json=$7, updated_at=now()
        where id=$1`,
-      [scanId, status, cost.amount, cost.currency, counts, errors, { regions, checks: Object.keys(results) }]
+      [scanId, status, cost.amount, cost.currency, counts, errors, {
+        regions,
+        checks: Object.keys(results),
+        progress: 100,
+        message: `AWS scan complete. Read ${totalEntities.toLocaleString()} entities.`,
+        completedSteps,
+        totalSteps,
+      }]
     );
     await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
   } catch (error) {
     await pool.query(
-      `update cloudprune_aws_scans set status='failed', errors=$2, updated_at=now() where id=$1`,
-      [scanId, [{ check: "scan", message: error.message }]]
+      `update cloudprune_aws_scans
+       set status='failed', errors=$2, scan_json = scan_json || $3::jsonb, updated_at=now()
+       where id=$1`,
+      [scanId, [{ check: "scan", message: error.message }], { progress: 100, message: "AWS scan failed." }]
     );
     await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_failed", detail: aws.provider_account_id });
   }
@@ -850,4 +888,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { awsScanCounts, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
+module.exports = { awsScanCounts, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, publicAwsScan, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
