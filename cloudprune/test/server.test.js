@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { awsScanCounts, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
+const { awsScanCounts, buildAwsAssessment, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -389,6 +389,34 @@ test("CloudPrune recommendations route renders saved scan recommendations", asyn
   assert.doesNotMatch(app.innerHTML, /Move steady EC2 baseline into Savings Plans/);
 });
 
+test("CloudPrune exchanges Google auth code without accepting session tokens in URLs", async () => {
+  const session = signSession({
+    id: "user-1",
+    email: "ami@example.com",
+    name: "Ami",
+    account_id: "account-1",
+    company_name: "Zeptrix",
+  });
+  const { app, store, fetchCalls } = bootCloudPruneApp("/cloudprune/?authCode=one-time-code", null, (url, options = {}) => {
+    if (String(url).endsWith("/api/auth/google/exchange")) {
+      assert.equal(options.method, "POST");
+      assert.equal(JSON.parse(options.body).code, "one-time-code");
+      return jsonResponse({ token: session, user: { email: "ami@example.com", companyName: "Zeptrix" } });
+    }
+    if (String(url).endsWith("/api/profile")) return jsonResponse({ token: session });
+    return jsonResponse({});
+  });
+  assert.match(app.innerHTML, /Completing Google sign-in/);
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(store.get("cloudprune.session"), session);
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/auth/google/exchange")));
+
+  const tokenUrl = bootCloudPruneApp(`/cloudprune/?token=${encodeURIComponent(session)}`);
+  assert.equal(tokenUrl.store.get("cloudprune.session"), undefined);
+});
+
 test("auth API reports missing database instead of dropping requests", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/cloudprune/api/register`, {
@@ -534,6 +562,18 @@ test("AWS scan API payload includes persisted progress and completion message", 
   });
   assert.equal(completed.message, "AWS scan complete. Read 5 entities.");
   assert.deepEqual(completed.recommendations, [{ title: "Release idle Elastic IPs" }]);
+});
+
+test("AWS assessment marks regional services failed when every region fails", () => {
+  const assessment = buildAwsAssessment({}, ["us-east-1", "us-west-2"], [
+    { check: "ec2Instances:us-east-1", message: "AccessDenied" },
+    { check: "ec2Instances:us-west-2", message: "AccessDenied" },
+    { check: "ebsVolumes:us-east-1", message: "AccessDenied" },
+  ]);
+
+  assert.equal(assessment.checks.ec2Instances.ok, false);
+  assert.match(assessment.checks.ec2Instances.error, /us-east-1/);
+  assert.equal(assessment.checks.ebsVolumes.ok, false);
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {

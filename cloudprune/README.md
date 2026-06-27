@@ -47,3 +47,9 @@ Use `--timeout-ms` to cap each AWS CLI call. The default is 30 seconds:
 ```sh
 npm run assess:aws -- --profile prod-readonly --region us-east-1 --timeout-ms 45000
 ```
+
+The web scan uses separate server-side safety caps so repeated onboarding scans stay bounded in large AWS accounts:
+
+- `CLOUDPRUNE_AWS_SCAN_MAX_REGIONS` limits enabled regions scanned, default `12`.
+- `CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS` limits paginated inventory items per regional AWS CLI call, default `200`.
+- `CLOUDPRUNE_AWS_SCAN_MAX_SAMPLED_RESOURCES` limits per-resource lifecycle and CloudWatch metric follow-up checks, default `25`.

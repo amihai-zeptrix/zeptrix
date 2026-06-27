@@ -16,6 +16,9 @@ const cloudFormationTemplateUrl = process.env.CLOUDPRUNE_AWS_CLOUDFORMATION_TEMP
 const awsScanRegion = process.env.CLOUDPRUNE_AWS_SCAN_REGION || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
 const awsCliPath = process.env.CLOUDPRUNE_AWS_CLI || "aws";
 const awsCliMaxOutputBytes = Number(process.env.CLOUDPRUNE_AWS_CLI_MAX_OUTPUT_BYTES || 5 * 1024 * 1024);
+const awsScanMaxRegions = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_REGIONS || 12);
+const awsScanMaxInventoryItems = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS || 200);
+const awsScanMaxSampledResources = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_SAMPLED_RESOURCES || 25);
 const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || "https://www.zeptrix.io/api/auth/google/callback";
 const googleClientId = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
 const googleClientSecret = process.env.CLOUDPRUNE_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
@@ -88,6 +91,9 @@ function verifyPassword(password, stored) {
 function validateRuntimeConfig() {
   if ((databaseUrl || isProduction) && !tokenSecret) throw new Error("CLOUDPRUNE_TOKEN_SECRET or CRM_TOKEN_SECRET is required when persistence is enabled.");
   if (isProduction && !cloudFormationTemplateUrl) throw new Error("CLOUDPRUNE_AWS_CLOUDFORMATION_TEMPLATE_URL is required in production.");
+  if (!Number.isInteger(awsScanMaxRegions) || awsScanMaxRegions < 1 || awsScanMaxRegions > 30) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_REGIONS must be an integer from 1 to 30.");
+  if (!Number.isInteger(awsScanMaxInventoryItems) || awsScanMaxInventoryItems < 1 || awsScanMaxInventoryItems > 5000) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS must be an integer from 1 to 5000.");
+  if (!Number.isInteger(awsScanMaxSampledResources) || awsScanMaxSampledResources < 1 || awsScanMaxSampledResources > 250) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_SAMPLED_RESOURCES must be an integer from 1 to 250.");
 }
 
 function secureEqual(actual, expected) {
@@ -318,6 +324,16 @@ async function initDatabase() {
     )
   `);
   await pool.query(`alter table cloudprune_aws_scans add column if not exists updated_at timestamptz not null default now()`);
+  await pool.query(`
+    create table if not exists cloudprune_oauth_codes (
+      code_hash text primary key,
+      user_id uuid references cloudprune_users(id) on delete cascade,
+      registration jsonb,
+      expires_at timestamptz not null,
+      consumed_at timestamptz,
+      created_at timestamptz not null default now()
+    )
+  `);
 }
 
 async function recordAuthEvent({ userId = null, email = null, eventType, detail = null }) {
@@ -576,28 +592,41 @@ function mergeAwsReservations(items) {
   };
 }
 
+function checkError(errors, id) {
+  return errors.find((error) => error.check === id) || null;
+}
+
+function regionalCheckError(errors, id, regions, resultItems) {
+  const failures = errors.filter((error) => String(error.check || "").startsWith(`${id}:`));
+  if (!failures.length) return null;
+  if (!Array.isArray(resultItems) || resultItems.length === 0 || failures.length >= regions.length) {
+    return new Error(`All ${id} regional checks failed: ${failures.map((error) => error.check.split(":")[1]).join(", ")}`);
+  }
+  return null;
+}
+
 function buildAwsAssessment(results, regions, errors) {
   return {
     generatedAt: new Date().toISOString(),
     region: awsScanRegion,
     days: 30,
     concurrency: 5,
-    maxResources: 25,
+    maxResources: awsScanMaxSampledResources,
     checks: {
-      identity: awsCheck("STS", results.identity, errors.find((error) => error.check === "identity")),
-      costByService: awsCheck("Cost Explorer", results.costByService, errors.find((error) => error.check === "costByService")),
-      savingsPlansRecommendation: awsCheck("Cost Explorer", results.savingsPlansRecommendation, errors.find((error) => error.check === "savingsPlansRecommendation")),
-      ec2Instances: awsCheck("EC2", mergeAwsReservations(results.ec2Instances), null),
-      ebsVolumes: awsCheck("EBS", mergeAwsCollection(results.ebsVolumes, "Volumes"), null),
-      elasticIps: awsCheck("EC2", mergeAwsCollection(results.elasticIps, "Addresses"), null),
-      rdsInstances: awsCheck("RDS", mergeAwsCollection(results.rdsInstances, "DBInstances"), null),
+      identity: awsCheck("STS", results.identity, checkError(errors, "identity")),
+      costByService: awsCheck("Cost Explorer", results.costByService, checkError(errors, "costByService")),
+      savingsPlansRecommendation: awsCheck("Cost Explorer", results.savingsPlansRecommendation, checkError(errors, "savingsPlansRecommendation")),
+      ec2Instances: awsCheck("EC2", mergeAwsReservations(results.ec2Instances), regionalCheckError(errors, "ec2Instances", regions, results.ec2Instances)),
+      ebsVolumes: awsCheck("EBS", mergeAwsCollection(results.ebsVolumes, "Volumes"), regionalCheckError(errors, "ebsVolumes", regions, results.ebsVolumes)),
+      elasticIps: awsCheck("EC2", mergeAwsCollection(results.elasticIps, "Addresses"), regionalCheckError(errors, "elasticIps", regions, results.elasticIps)),
+      rdsInstances: awsCheck("RDS", mergeAwsCollection(results.rdsInstances, "DBInstances"), regionalCheckError(errors, "rdsInstances", regions, results.rdsInstances)),
       rdsMetrics: awsCheck("CloudWatch RDS Metrics", { instances: results.rdsMetrics || [] }, null),
-      logGroups: awsCheck("CloudWatch Logs", mergeAwsCollection(results.logGroups, "logGroups"), null),
-      s3Buckets: awsCheck("S3", results.s3Buckets || {}, errors.find((error) => error.check === "s3Buckets")),
+      logGroups: awsCheck("CloudWatch Logs", mergeAwsCollection(results.logGroups, "logGroups"), regionalCheckError(errors, "logGroups", regions, results.logGroups)),
+      s3Buckets: awsCheck("S3", results.s3Buckets || {}, checkError(errors, "s3Buckets")),
       s3Lifecycle: awsCheck("S3 Lifecycle", { buckets: results.s3Lifecycle || [] }, null),
-      loadBalancers: awsCheck("ELBv2", mergeAwsCollection(results.loadBalancers, "LoadBalancers"), null),
+      loadBalancers: awsCheck("ELBv2", mergeAwsCollection(results.loadBalancers, "LoadBalancers"), regionalCheckError(errors, "loadBalancers", regions, results.loadBalancers)),
       loadBalancerMetrics: awsCheck("CloudWatch ELB Metrics", { loadBalancers: results.loadBalancerMetrics || [] }, null),
-      computeOptimizerEc2: awsCheck("Compute Optimizer", mergeAwsCollection(results.computeOptimizerEc2, "instanceRecommendations"), null),
+      computeOptimizerEc2: awsCheck("Compute Optimizer", mergeAwsCollection(results.computeOptimizerEc2, "instanceRecommendations"), regionalCheckError(errors, "computeOptimizerEc2", regions, results.computeOptimizerEc2)),
     },
     regions,
   };
@@ -662,6 +691,58 @@ function addRegionToAwsResult(id, data, region) {
   };
 }
 
+function hashOauthCode(code) {
+  return crypto.createHash("sha256").update(String(code)).digest("hex");
+}
+
+async function createOauthCode({ user = null, registration = null }) {
+  if (!pool) throw new Error("CloudPrune database is not configured.");
+  const code = crypto.randomBytes(32).toString("base64url");
+  await pool.query(
+    `insert into cloudprune_oauth_codes (code_hash, user_id, registration, expires_at)
+     values ($1,$2,$3,now() + interval '5 minutes')`,
+    [hashOauthCode(code), user?.id || null, registration]
+  );
+  return code;
+}
+
+async function exchangeOauthCode(payload) {
+  if (!pool) throw new Error("CloudPrune database is not configured.");
+  const codeHash = hashOauthCode(payload.code || "");
+  const result = await pool.query(
+    `update cloudprune_oauth_codes
+     set consumed_at=now()
+     where code_hash=$1
+       and consumed_at is null
+       and expires_at > now()
+     returning registration, user_id`,
+    [codeHash]
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("Google sign-in expired. Please try again.");
+  if (row.registration) {
+    return { googleRegistration: signGoogleRegistration(row.registration) };
+  }
+  const userResult = await pool.query(
+    `select u.id, u.account_id, u.name, u.email, u.provider, a.company_name
+     from cloudprune_users u
+     join cloudprune_accounts a on a.id = u.account_id
+     where u.id=$1`,
+    [row.user_id]
+  );
+  const userRow = userResult.rows[0];
+  if (!userRow) throw new Error("Google sign-in expired. Please try again.");
+  const user = {
+    id: userRow.id,
+    account_id: userRow.account_id,
+    name: userRow.name,
+    email: userRow.email,
+    provider: userRow.provider,
+    company_name: userRow.company_name,
+  };
+  return { token: signSession(user), user: publicUser(user) };
+}
+
 async function startAwsScan(req) {
   const user = await userFromSession(req);
   const connection = await pool.query(
@@ -673,19 +754,48 @@ async function startAwsScan(req) {
   const aws = connection.rows[0];
   if (!aws) throw new Error("Connect AWS before scanning.");
 
-  const started = await pool.query(
-    `insert into cloudprune_aws_scans (account_id, provider_account_id, status, scan_json)
-     values ($1,$2,'running',$3)
-     returning id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at`,
-    [user.account_id, aws.provider_account_id, { progress: 0, message: "Starting AWS scan." }]
-  );
+  let startedRow;
+  let isNewScan = false;
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [`cloudprune-aws-scan:${user.account_id}`]);
+    const running = await client.query(
+      `select id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at
+       from cloudprune_aws_scans
+       where account_id=$1 and status='running'
+       order by created_at desc
+       limit 1`,
+      [user.account_id]
+    );
+    if (running.rows[0]) {
+      startedRow = running.rows[0];
+    } else {
+      const inserted = await client.query(
+        `insert into cloudprune_aws_scans (account_id, provider_account_id, status, scan_json)
+         values ($1,$2,'running',$3)
+         returning id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at`,
+        [user.account_id, aws.provider_account_id, { progress: 0, message: "Starting AWS scan." }]
+      );
+      startedRow = inserted.rows[0];
+      isNewScan = true;
+    }
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (!isNewScan) return publicAwsScan(startedRow);
   setImmediate(() => {
-    performAwsScan(started.rows[0].id, user, aws).catch((error) => {
+    performAwsScan(startedRow.id, user, aws).catch((error) => {
       console.error("CloudPrune AWS scan failed", error);
     });
   });
   await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_started", detail: aws.provider_account_id });
-  return publicAwsScan(started.rows[0]);
+  return publicAwsScan(startedRow);
 }
 
 async function getAwsScan(req, scanId) {
@@ -746,6 +856,10 @@ async function performAwsScan(scanId, user, aws) {
         .map((region) => region.RegionName)
         .filter(Boolean);
       if (!regions.length) regions = [awsScanRegion];
+      if (regions.length > awsScanMaxRegions) {
+        errors.push({ check: "regions", message: `Scan limited to ${awsScanMaxRegions} of ${regions.length} enabled AWS regions.` });
+        regions = regions.slice(0, awsScanMaxRegions);
+      }
     } catch (error) {
       errors.push({ check: "regions", message: error.message });
     }
@@ -779,16 +893,16 @@ async function performAwsScan(scanId, user, aws) {
       ]],
     ];
     const regionalChecks = [
-      ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--query", "{Reservations:Reservations[].{Instances:Instances[].{InstanceId:InstanceId,InstanceType:InstanceType,State:State,Tags:Tags}}}"]],
-      ["ebsVolumes", "Reading EBS volumes", (region) => ["ec2", "describe-volumes", "--region", region, "--query", "{Volumes:Volumes[].{VolumeId:VolumeId,State:State,Size:Size,VolumeType:VolumeType,Tags:Tags}}"]],
-      ["elasticIps", "Reading Elastic IP addresses", (region) => ["ec2", "describe-addresses", "--region", region, "--query", "{Addresses:Addresses[].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId,Tags:Tags}}"]],
-      ["lambdas", "Reading Lambda functions", (region) => ["lambda", "list-functions", "--region", region, "--query", "length(Functions)"]],
-      ["rdsInstances", "Reading RDS instances", (region) => ["rds", "describe-db-instances", "--region", region, "--query", "{DBInstances:DBInstances[].{DBInstanceIdentifier:DBInstanceIdentifier,DBInstanceClass:DBInstanceClass,Engine:Engine,MultiAZ:MultiAZ,DBInstanceStatus:DBInstanceStatus}}"]],
-      ["logGroups", "Reading CloudWatch log groups", (region) => ["logs", "describe-log-groups", "--region", region, "--query", "{logGroups:logGroups[].{logGroupName:logGroupName,retentionInDays:retentionInDays,storedBytes:storedBytes}}"]],
-      ["loadBalancers", "Reading load balancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--query", "{LoadBalancers:LoadBalancers[].{LoadBalancerName:LoadBalancerName,LoadBalancerArn:LoadBalancerArn,Type:Type,State:State}}"]],
-      ["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations", (region) => ["compute-optimizer", "get-ec2-instance-recommendations", "--region", region, "--query", "{instanceRecommendations:instanceRecommendations[].{instanceArn:instanceArn,instanceName:instanceName,finding:finding,currentInstanceType:currentInstanceType}}"]],
+      ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Reservations:Reservations[].{Instances:Instances[].{InstanceId:InstanceId,InstanceType:InstanceType,State:State,Tags:Tags}}}"]],
+      ["ebsVolumes", "Reading EBS volumes", (region) => ["ec2", "describe-volumes", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Volumes:Volumes[].{VolumeId:VolumeId,State:State,Size:Size,VolumeType:VolumeType,Tags:Tags}}"]],
+      ["elasticIps", "Reading Elastic IP addresses", (region) => ["ec2", "describe-addresses", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Addresses:Addresses[].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId,Tags:Tags}}"]],
+      ["lambdas", "Reading Lambda functions", (region) => ["lambda", "list-functions", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "length(Functions)"]],
+      ["rdsInstances", "Reading RDS instances", (region) => ["rds", "describe-db-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{DBInstances:DBInstances[].{DBInstanceIdentifier:DBInstanceIdentifier,DBInstanceClass:DBInstanceClass,Engine:Engine,MultiAZ:MultiAZ,DBInstanceStatus:DBInstanceStatus}}"]],
+      ["logGroups", "Reading CloudWatch log groups", (region) => ["logs", "describe-log-groups", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{logGroups:logGroups[].{logGroupName:logGroupName,retentionInDays:retentionInDays,storedBytes:storedBytes}}"]],
+      ["loadBalancers", "Reading load balancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{LoadBalancers:LoadBalancers[].{LoadBalancerName:LoadBalancerName,LoadBalancerArn:LoadBalancerArn,Type:Type,State:State}}"]],
+      ["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations", (region) => ["compute-optimizer", "get-ec2-instance-recommendations", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{instanceRecommendations:instanceRecommendations[].{instanceArn:instanceArn,instanceName:instanceName,finding:finding,currentInstanceType:currentInstanceType}}"]],
     ];
-    const s3LifecycleJobs = () => (results.s3Buckets?.Buckets || []).slice(0, 25).flatMap((bucket) => [
+    const s3LifecycleJobs = () => (results.s3Buckets?.Buckets || []).slice(0, awsScanMaxSampledResources).flatMap((bucket) => [
       { id: "s3Lifecycle", label: `Reading S3 lifecycle for ${bucket.Name}`, bucket: bucket.Name, command: ["s3api", "get-bucket-lifecycle-configuration", "--bucket", bucket.Name] },
     ]);
     const jobs = regions.flatMap((region) => regionalChecks.map(([id, label, command]) => ({ region, id, label, command })));
@@ -837,11 +951,11 @@ async function performAwsScan(scanId, user, aws) {
         await updateAwsScanProgress(scanId, completedSteps, totalSteps, `${label} in ${region}.`);
       }));
     }
-    const rdsMetricJobs = mergeAwsCollection(results.rdsInstances, "DBInstances").DBInstances.slice(0, 25).flatMap((instance) => [
+    const rdsMetricJobs = mergeAwsCollection(results.rdsInstances, "DBInstances").DBInstances.slice(0, awsScanMaxSampledResources).flatMap((instance) => [
       { instance, metricName: "CPUUtilization", statistic: "Average" },
       { instance, metricName: "DatabaseConnections", statistic: "Average" },
     ]);
-    const loadBalancerMetricJobs = mergeAwsCollection(results.loadBalancers, "LoadBalancers").LoadBalancers.slice(0, 25).map((loadBalancer) => ({ loadBalancer }));
+    const loadBalancerMetricJobs = mergeAwsCollection(results.loadBalancers, "LoadBalancers").LoadBalancers.slice(0, awsScanMaxSampledResources).map((loadBalancer) => ({ loadBalancer }));
     if (rdsMetricJobs.length || loadBalancerMetricJobs.length) {
       totalSteps += rdsMetricJobs.length + loadBalancerMetricJobs.length;
       results.rdsMetrics = [];
@@ -930,6 +1044,12 @@ async function performAwsScan(scanId, user, aws) {
         regions,
         checks: Object.keys(results),
         recommendations,
+        limits: {
+          maxRegions: awsScanMaxRegions,
+          maxInventoryItems: awsScanMaxInventoryItems,
+          maxSampledResources: awsScanMaxSampledResources,
+        },
+        regionalErrors: errors.filter((error) => String(error.check || "").includes(":")),
         progress: 100,
         message: `AWS scan complete. Read ${totalEntities.toLocaleString()} entities.`,
         completedSteps,
@@ -1003,6 +1123,9 @@ async function handleApi(req, res, requestUrl) {
       const user = await completeGoogleRegistration(await readJson(req));
       return json(res, 201, { token: signSession(user), user: publicUser(user) });
     }
+    if (req.method === "POST" && apiPath === "/api/auth/google/exchange") {
+      return json(res, 200, await exchangeOauthCode(await readJson(req)));
+    }
     if (req.method === "GET" && apiPath === "/api/session") {
       const user = await userFromSession(req);
       return json(res, 200, { token: signSession(user), user: publicUser(user) });
@@ -1049,9 +1172,10 @@ async function handleApi(req, res, requestUrl) {
       if (!state || state.prefix !== prefix) throw new Error("Google sign-in state did not match.");
       const profile = await googleProfileFromCode(requestUrl.searchParams.get("code"));
       const user = await googleUserFromProfile(profile);
+      const authCode = await createOauthCode(user ? { user } : { registration: profile });
       const location = user
-        ? `${prefix}/?token=${encodeURIComponent(signSession(user))}`
-        : `${prefix}/?googleRegistration=${encodeURIComponent(signGoogleRegistration(profile))}`;
+        ? `${prefix}/?authCode=${encodeURIComponent(authCode)}`
+        : `${prefix}/?authCode=${encodeURIComponent(authCode)}&mode=google-register`;
       res.writeHead(302, {
         location,
         "set-cookie": cloudpruneOAuthCookie("", prefix, "; Max-Age=0"),
@@ -1130,4 +1254,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { awsScanCounts, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, publicAwsScan, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
+module.exports = { awsScanCounts, buildAwsAssessment, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, publicAwsScan, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };

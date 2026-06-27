@@ -767,21 +767,45 @@ function renderAuth(app) {
   const base = basePath();
   const url = new URL(location.href);
   const sso = url.searchParams.get("sso");
-  const token = url.searchParams.get("token");
-  const googleRegistration = url.searchParams.get("googleRegistration");
-  if (token) {
-    localStorage.setItem("cloudprune.session", token);
-    localStorage.removeItem("cloudprune.googleRegistration");
+  const authCode = url.searchParams.get("authCode");
+  if (authCode) {
     history.replaceState({}, "", `${base}/`);
-    syncProfileFromDraft(token, registerDraft()).finally(() => {
-      location.href = `${base}/`;
-    });
+    fetch(`${base}/api/auth/google/exchange`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: authCode }),
+    })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "Google sign-in failed.");
+        if (body.token) {
+          localStorage.setItem("cloudprune.session", body.token);
+          localStorage.removeItem("cloudprune.googleRegistration");
+          return syncProfileFromDraft(body.token, registerDraft()).finally(() => {
+            location.href = `${base}/`;
+          });
+        }
+        if (body.googleRegistration) {
+          localStorage.setItem("cloudprune.googleRegistration", body.googleRegistration);
+          state.authMode = "google-register";
+          render();
+          return null;
+        }
+        throw new Error("Google sign-in failed.");
+      })
+      .catch((error) => {
+        state.authMessage = error.message;
+        render();
+      });
+    app.innerHTML = `
+      <main class="auth-page">
+        <section class="auth-card">
+          <a class="auth-brand" href="${base}/" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
+          <p class="auth-message">Completing Google sign-in...</p>
+        </section>
+      </main>
+    `;
     return;
-  }
-  if (googleRegistration) {
-    localStorage.setItem("cloudprune.googleRegistration", googleRegistration);
-    state.authMode = "google-register";
-    history.replaceState({}, "", `${base}/`);
   }
   const ssoMessage = sso === "not_configured" ? "Google SSO is ready in the UI, but OAuth credentials are not configured on this server yet." : "";
   const googlePending = pendingGoogleRegistration();
