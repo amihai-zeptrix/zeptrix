@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const http = require("node:http");
 const path = require("node:path");
@@ -9,6 +10,8 @@ const root = __dirname;
 const publicRoot = path.join(root, "cloudprune");
 const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "https://zeptrix.io").replace(/\/$/, "");
 const cloudFormationTemplateUrl = process.env.CLOUDPRUNE_AWS_CLOUDFORMATION_TEMPLATE_URL || "https://s3.amazonaws.com/elasticbeanstalk-us-east-1-339494983469/cloudprune/aws-readonly-role-template.yaml";
+const awsScanRegion = process.env.CLOUDPRUNE_AWS_SCAN_REGION || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
+const awsCliPath = process.env.CLOUDPRUNE_AWS_CLI || "aws";
 const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || "https://www.zeptrix.io/api/auth/google/callback";
 const googleClientId = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
 const googleClientSecret = process.env.CLOUDPRUNE_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
@@ -108,6 +111,19 @@ function publicCloudConnection(row) {
     externalId: row.external_id,
     status: row.status,
     updatedAt: row.updated_at,
+  };
+}
+
+function publicAwsScan(row) {
+  if (!row) return null;
+  return {
+    status: row.status,
+    awsAccountId: row.provider_account_id,
+    monthlyCost: Number(row.monthly_cost || 0),
+    currency: row.currency || "USD",
+    counts: row.counts || {},
+    errors: row.errors || [],
+    scannedAt: row.created_at,
   };
 }
 
@@ -253,6 +269,20 @@ async function initDatabase() {
       unique(account_id, provider)
     )
   `);
+  await pool.query(`
+    create table if not exists cloudprune_aws_scans (
+      id uuid primary key default gen_random_uuid(),
+      account_id uuid not null references cloudprune_accounts(id) on delete cascade,
+      provider_account_id text not null,
+      status text not null default 'completed',
+      monthly_cost numeric not null default 0,
+      currency text not null default 'USD',
+      counts jsonb not null default '{}'::jsonb,
+      errors jsonb not null default '[]'::jsonb,
+      scan_json jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    )
+  `);
 }
 
 async function recordAuthEvent({ userId = null, email = null, eventType, detail = null }) {
@@ -353,11 +383,20 @@ async function workspaceForRequest(req) {
     [user.account_id]
   );
   const byProvider = Object.fromEntries(connections.rows.map((row) => [row.provider, publicCloudConnection(row)]));
+  const latestScan = await pool.query(
+    `select provider_account_id, status, monthly_cost, currency, counts, errors, created_at
+     from cloudprune_aws_scans
+     where account_id=$1
+     order by created_at desc
+     limit 1`,
+    [user.account_id]
+  );
   return {
     user: publicUser(user),
     connections: {
       aws: byProvider.aws || null,
     },
+    awsScan: publicAwsScan(latestScan.rows[0]),
     awsSetup: {
       externalId: byProvider.aws?.externalId || externalIdForAccount(user.account_id),
       principalArn: awsPrincipalArn,
@@ -384,6 +423,134 @@ async function saveAwsConnection(req, payload) {
   );
   await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_connection_saved", detail: awsAccountId });
   return publicCloudConnection(result.rows[0]);
+}
+
+function runAwsCli(args, { env = {}, timeoutMs = 60000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(awsCliPath, args, {
+      env: { ...process.env, ...env, AWS_PAGER: "" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`AWS CLI timed out while running aws ${args.join(" ")}`));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(stdout);
+      else reject(new Error((stderr || stdout || `aws ${args.join(" ")} exited with ${code}`).trim()));
+    });
+  });
+}
+
+async function runAwsJson(args, options = {}) {
+  const stdout = await runAwsCli([...args, "--output", "json"], options);
+  return stdout.trim() ? JSON.parse(stdout) : {};
+}
+
+function monthStartEnd() {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  return {
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  };
+}
+
+function costFromCostExplorer(data) {
+  const total = data?.ResultsByTime?.[0]?.Total?.UnblendedCost || {};
+  return {
+    amount: Number(total.Amount || 0),
+    currency: total.Unit || "USD",
+  };
+}
+
+function awsScanCounts(results) {
+  const reservations = results.ec2Instances?.Reservations || [];
+  const ec2Instances = reservations.reduce((total, reservation) => total + (reservation.Instances || []).length, 0);
+  return {
+    ec2Instances,
+    lambdas: (results.lambdas?.Functions || []).length,
+    rdsInstances: (results.rdsInstances?.DBInstances || []).length,
+    s3Buckets: (results.s3Buckets?.Buckets || []).length,
+    ebsVolumes: (results.ebsVolumes?.Volumes || []).length,
+    loadBalancers: (results.loadBalancers?.LoadBalancers || []).length,
+  };
+}
+
+async function scanAwsConnection(req) {
+  const user = await userFromSession(req);
+  const connection = await pool.query(
+    `select provider_account_id, role_arn, external_id
+     from cloudprune_cloud_connections
+     where account_id=$1 and provider='aws'`,
+    [user.account_id]
+  );
+  const aws = connection.rows[0];
+  if (!aws) throw new Error("Connect AWS before scanning.");
+
+  const sessionName = `CloudPruneScan-${Date.now()}`;
+  const assumed = await runAwsJson([
+    "sts", "assume-role",
+    "--role-arn", aws.role_arn,
+    "--role-session-name", sessionName,
+    "--external-id", aws.external_id,
+  ], { timeoutMs: 60000 });
+  const credentials = assumed.Credentials;
+  if (!credentials?.AccessKeyId || !credentials?.SecretAccessKey || !credentials?.SessionToken) {
+    throw new Error("AWS assume-role did not return temporary credentials.");
+  }
+  const scanEnv = {
+    AWS_ACCESS_KEY_ID: credentials.AccessKeyId,
+    AWS_SECRET_ACCESS_KEY: credentials.SecretAccessKey,
+    AWS_SESSION_TOKEN: credentials.SessionToken,
+    AWS_DEFAULT_REGION: awsScanRegion,
+  };
+  const { start, end } = monthStartEnd();
+  const checks = [
+    ["ec2Instances", ["ec2", "describe-instances", "--region", awsScanRegion]],
+    ["ebsVolumes", ["ec2", "describe-volumes", "--region", awsScanRegion]],
+    ["lambdas", ["lambda", "list-functions", "--region", awsScanRegion]],
+    ["rdsInstances", ["rds", "describe-db-instances", "--region", awsScanRegion]],
+    ["loadBalancers", ["elbv2", "describe-load-balancers", "--region", awsScanRegion]],
+    ["s3Buckets", ["s3api", "list-buckets"]],
+    ["cost", [
+      "ce", "get-cost-and-usage",
+      "--time-period", `Start=${start},End=${end}`,
+      "--granularity", "MONTHLY",
+      "--metrics", "UnblendedCost",
+      "--region", "us-east-1",
+    ]],
+  ];
+  const results = {};
+  const errors = [];
+  for (const [id, args] of checks) {
+    try {
+      results[id] = await runAwsJson(args, { env: scanEnv, timeoutMs: 90000 });
+    } catch (error) {
+      errors.push({ check: id, message: error.message });
+    }
+  }
+  const cost = costFromCostExplorer(results.cost);
+  const counts = awsScanCounts(results);
+  const status = errors.length ? "completed_with_errors" : "completed";
+  const saved = await pool.query(
+    `insert into cloudprune_aws_scans (account_id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json)
+     values ($1,$2,$3,$4,$5,$6,$7,$8)
+     returning provider_account_id, status, monthly_cost, currency, counts, errors, created_at`,
+    [user.account_id, aws.provider_account_id, status, cost.amount, cost.currency, counts, errors, { region: awsScanRegion, checks: Object.keys(results) }]
+  );
+  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
+  return publicAwsScan(saved.rows[0]);
 }
 
 async function googleProfileFromCode(code) {
@@ -455,6 +622,9 @@ async function handleApi(req, res, requestUrl) {
     }
     if (req.method === "POST" && apiPath === "/api/cloud-connections/aws") {
       return json(res, 200, { connection: await saveAwsConnection(req, await readJson(req)) });
+    }
+    if (req.method === "POST" && apiPath === "/api/cloud-connections/aws/scan") {
+      return json(res, 200, { scan: await scanAwsConnection(req) });
     }
     if (req.method === "GET" && apiPath === "/api/auth/google/start") {
       if (!googleClientId || !googleClientSecret) {
@@ -558,4 +728,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { cloudpruneOAuthState, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
+module.exports = { awsScanCounts, cloudpruneOAuthState, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };

@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { cloudpruneOAuthState, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
+const { awsScanCounts, cloudpruneOAuthState, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -290,6 +290,27 @@ test("AWS assume-role onboarding validates role ARNs and derives external IDs", 
   assert.equal(externalIdForAccount("tenant-123"), "cloudprune-tenant-123");
   assert.throws(() => normalizeAwsRoleArn("arn:aws:s3:::bucket"), /valid AWS IAM role ARN/);
   assert.throws(() => normalizeAwsRoleArn("arn:aws:iam::123:role/Bad"), /valid AWS IAM role ARN/);
+});
+
+test("AWS scan summary counts entities and monthly cost", () => {
+  assert.deepEqual(awsScanCounts({
+    ec2Instances: { Reservations: [{ Instances: [{}, {}] }, { Instances: [{}] }] },
+    lambdas: { Functions: [{}, {}] },
+    rdsInstances: { DBInstances: [{}] },
+    s3Buckets: { Buckets: [{}, {}, {}, {}] },
+    ebsVolumes: { Volumes: [{}, {}] },
+    loadBalancers: { LoadBalancers: [{}] },
+  }), {
+    ec2Instances: 3,
+    lambdas: 2,
+    rdsInstances: 1,
+    s3Buckets: 4,
+    ebsVolumes: 2,
+    loadBalancers: 1,
+  });
+  assert.deepEqual(costFromCostExplorer({
+    ResultsByTime: [{ Total: { UnblendedCost: { Amount: "123.45", Unit: "USD" } } }],
+  }), { amount: 123.45, currency: "USD" });
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {

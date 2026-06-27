@@ -619,6 +619,91 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   white-space: nowrap;
 }
 
+.scan-panel {
+  display: grid;
+  width: 100%;
+  max-width: 760px;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfb;
+}
+
+.scan-panel h3 {
+  font-size: 18px;
+}
+
+.scan-panel p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.scan-progress {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e6eee9;
+}
+
+.scan-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--leaf), var(--sky));
+  transition: width .35s ease;
+}
+
+.scan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.scan-actions strong {
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.scan-actions small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scan-counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.scan-counts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.scan-counts span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scan-counts strong {
+  color: var(--ink);
+}
+
+.scan-warning {
+  color: #8a5d00;
+}
+
 .connect-form {
   display: grid;
   width: 100%;

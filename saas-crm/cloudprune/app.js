@@ -79,12 +79,68 @@ let state = {
   connectFormVisible: false,
   connectMessage: "",
   awsConnectDraft: { awsAccountId: "", roleArn: "", externalId: "" },
+  awsScan: { status: "idle", progress: 0, message: "" },
 };
 
 const registerDraftKey = "cloudprune.registerDraft";
 
 function money(value) {
   return `$${Math.round(value).toLocaleString()}`;
+}
+
+function scanResult() {
+  return state.awsScan.result || state.workspace?.awsScan || null;
+}
+
+function scanMonthlyCost() {
+  const scan = scanResult();
+  return scan ? Number(scan.monthlyCost || 0) : 0;
+}
+
+function scanTotalEntities(scan) {
+  const counts = scan?.counts || {};
+  return Object.values(counts).reduce((total, value) => total + Number(value || 0), 0);
+}
+
+let scanProgressTimer = null;
+
+function stopScanProgress() {
+  if (scanProgressTimer) clearInterval(scanProgressTimer);
+  scanProgressTimer = null;
+}
+
+function startScanProgress() {
+  stopScanProgress();
+  const messages = ["Assuming read-only role", "Reading EC2 inventory", "Reading Lambda functions", "Reading storage and databases", "Reading Cost Explorer spend"];
+  state.awsScan = { status: "scanning", progress: 8, message: messages[0] };
+  let index = 0;
+  scanProgressTimer = setInterval(() => {
+    if (state.awsScan.status !== "scanning") return stopScanProgress();
+    index = Math.min(messages.length - 1, index + 1);
+    state.awsScan.progress = Math.min(88, state.awsScan.progress + 16);
+    state.awsScan.message = messages[index];
+    render();
+  }, 900);
+}
+
+async function scanAws() {
+  startScanProgress();
+  render();
+  try {
+    const response = await fetch(`${basePath()}/api/cloud-connections/aws/scan`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "AWS scan failed.");
+    stopScanProgress();
+    state.awsScan = { status: "done", progress: 100, message: "AWS scan complete.", result: body.scan };
+    state.workspace = { ...(state.workspace || {}), awsScan: body.scan };
+  } catch (error) {
+    stopScanProgress();
+    state.awsScan = { status: "error", progress: 100, message: error.message };
+  }
+  render();
 }
 
 function filteredServices() {
@@ -342,12 +398,15 @@ function renderKpis() {
 }
 
 function renderEmptyKpis() {
+  const cost = scanMonthlyCost();
+  const scan = scanResult();
+  const analyzed = scanTotalEntities(scan);
   return `
     <section class="kpi-grid" aria-label="Cloud cost summary">
-      <article class="kpi spend"><div class="kpi-icon">${ICONS.spend}</div><span>Month spend</span><strong>$0</strong><em>No billing data connected</em></article>
+      <article class="kpi spend"><div class="kpi-icon">${ICONS.spend}</div><span>Month spend</span><strong>${money(cost)}</strong><em>${scan ? "Updated by latest AWS scan" : "No billing data connected"}</em></article>
       <article class="kpi waste"><div class="kpi-icon">${ICONS.waste}</div><span>Verified waste</span><strong>$0</strong><em>Connect AWS to start analysis</em></article>
       <article class="kpi savings"><div class="kpi-icon">${ICONS.savings}</div><span>Potential annual saving</span><strong>$0</strong><em>Pending first assessment</em></article>
-      <article class="kpi score"><div class="kpi-icon">${ICONS.score}</div><span>Optimization score</span><strong>-</strong><em>No resources analyzed yet</em></article>
+      <article class="kpi score"><div class="kpi-icon">${ICONS.score}</div><span>Resources analyzed</span><strong>${analyzed || "-"}</strong><em>${scan ? "Entities read from AWS" : "No resources analyzed yet"}</em></article>
     </section>
   `;
 }
@@ -408,6 +467,41 @@ function renderAutomationQueue() {
   `).join("") || `<li class="muted-row">Select all clouds to see the automation queue.</li>`;
 }
 
+function renderAwsScanPanel(awsConnection) {
+  const active = state.awsScan.status === "scanning";
+  const scan = scanResult();
+  const counts = scan?.counts || {};
+  const progress = active ? state.awsScan.progress : scan ? 100 : 0;
+  const countRows = [
+    ["EC2 instances", counts.ec2Instances],
+    ["Lambda functions", counts.lambdas],
+    ["RDS instances", counts.rdsInstances],
+    ["S3 buckets", counts.s3Buckets],
+    ["EBS volumes", counts.ebsVolumes],
+    ["Load balancers", counts.loadBalancers],
+  ].map(([label, value]) => `<li><span>${label}</span><strong>${Number(value || 0).toLocaleString()}</strong></li>`).join("");
+  const errors = (scan?.errors || []).length
+    ? `<p class="scan-warning">${scan.errors.length} read check${scan.errors.length === 1 ? "" : "s"} returned warnings. Results are partial.</p>`
+    : "";
+  return `
+    <div class="scan-panel">
+      <div>
+        <span class="eyebrow">AWS scan</span>
+        <h3>${active ? "Scanning account..." : scan ? "Latest scan complete" : "Run first inventory scan"}</h3>
+        <p>${active ? state.awsScan.message : scan ? `Read ${scanTotalEntities(scan).toLocaleString()} entities from AWS account ${escapeHtml(scan.awsAccountId || awsConnection.awsAccountId)}.` : "Collect inventory counts and current-month spend using the saved read-only role."}</p>
+      </div>
+      <div class="scan-progress" aria-label="AWS scan progress">
+        <span style="width:${Math.max(0, Math.min(100, progress))}%"></span>
+      </div>
+      <div class="scan-actions">
+        <button data-action="scan-aws" ${active ? "disabled" : ""}>${scan ? "Scan again" : "Scan AWS"}</button>
+        <strong>${scan ? money(scan.monthlyCost) : "$0"} <small>month spend</small></strong>
+      </div>
+      ${scan ? `<ul class="scan-counts">${countRows}</ul>${errors}` : ""}
+    </div>
+  `;
+}
+
 function renderMainPanel() {
   if (state.view === "services") {
     return `
@@ -456,12 +550,13 @@ function renderEmptyWorkspace() {
             <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Update role</button>
             <a href="${basePath()}/demo">View demo data</a>
           </div>
+          ${renderAwsScanPanel(awsConnection)}
           ${state.connectFormVisible ? renderAwsConnectForm(externalIdValue, principalArnValue, awsConnection.roleArn, templateUrlValue) : ""}
         </section>
         <aside class="right-rail">
           <section class="panel compact empty-side-panel">
             <div class="panel-head"><div><span class="eyebrow">Connection</span><h2>Configured</h2></div></div>
-            <div class="empty">AWS read-only role saved. Assessment execution is the next workflow to wire.</div>
+            <div class="empty">AWS read-only role saved. Run a scan to populate inventory and spend.</div>
           </section>
           <section class="panel compact empty-side-panel">
             <div class="panel-head"><div><span class="eyebrow">Automation queue</span><h2>Disabled</h2></div></div>
@@ -729,6 +824,12 @@ document.addEventListener("click", (event) => {
       externalId: state.workspace?.connections?.aws?.externalId || state.workspace?.awsSetup?.externalId || state.awsConnectDraft.externalId || `cloudprune-${sessionAccountId()}`,
     };
     render();
+    return;
+  }
+  const scanButton = event.target.closest("[data-action='scan-aws']");
+  if (scanButton) {
+    if (scanButton.disabled) return;
+    scanAws();
     return;
   }
   const cancelConnect = event.target.closest("[data-action='cancel-connect']");
