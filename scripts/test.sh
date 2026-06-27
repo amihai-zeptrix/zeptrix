@@ -112,7 +112,7 @@ assert_contains nginx-zeptrix.conf "location = /cloudprune"
 assert_contains nginx-zeptrix.conf "location ^~ /cloudprune/"
 
 if rg -n 'href="styles\.css"|src="app\.js"|url\("assets/' --glob '*.html' --glob '*.css' . \
-  | rg -v '^./mbh/'; then
+  | rg -v '^./(mbh|michal-site|web-site|your-new-crm|saas-crm|cloudprune)/'; then
   fail "root Zeptrix pages must use absolute /styles.css, /app.js, and /assets/... paths"
 fi
 
