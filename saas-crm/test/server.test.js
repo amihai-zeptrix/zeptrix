@@ -206,6 +206,7 @@ test("self registration creates a tenant admin workspace from the sign-in page",
   assert.ok(server.includes('pathname === "/api/auth/google/start"'));
   assert.ok(server.includes('pathname === "/api/auth/google/callback"'));
   assert.ok(server.includes('pathname === "/api/auth/google/exchange"'));
+  assert.match(server, /GOOGLE_SSO_REDIRECT_URI = process\.env\.GOOGLE_SSO_REDIRECT_URI \|\| "https:\/\/www\.zeptrix\.io\/api\/auth\/google\/callback"/);
   assert.ok(server.includes('pathname === "/api/auth/mfa/setup"'));
   assert.ok(server.includes('pathname === "/api/auth/mfa/verify"'));
   assert.match(server, /normalizeRegistrationPayload/);

@@ -8,7 +8,7 @@ const port = Number(process.env.PORT || 4321);
 const root = __dirname;
 const publicRoot = path.join(root, "cloudprune");
 const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "https://zeptrix.io").replace(/\/$/, "");
-const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || `${publicBaseUrl}/api/auth/google/callback`;
+const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || "https://www.zeptrix.io/api/auth/google/callback";
 const googleClientId = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
 const googleClientSecret = process.env.CLOUDPRUNE_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
 const tokenSecret = process.env.CLOUDPRUNE_TOKEN_SECRET || process.env.CRM_TOKEN_SECRET || "local-cloudprune-token-secret";
@@ -26,6 +26,8 @@ const mimeTypes = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8",
 };
+
+const cloudpruneOauthCookieDomain = process.env.CLOUDPRUNE_OAUTH_COOKIE_DOMAIN || "zeptrix.io";
 
 function routePrefix(urlPath) {
   if (urlPath === "/cloudprune" || urlPath.startsWith("/cloudprune/")) return "/cloudprune";
@@ -87,6 +89,11 @@ function signSession(user) {
 function cloudpruneOAuthState(prefix) {
   const body = Buffer.from(JSON.stringify({ prefix, nonce: crypto.randomBytes(18).toString("base64url") })).toString("base64url");
   return `cloudprune.${body}`;
+}
+
+function cloudpruneOAuthCookie(value, prefix, extra = "") {
+  const domain = cloudpruneOauthCookieDomain ? `; Domain=${cloudpruneOauthCookieDomain}` : "";
+  return `cloudprune_oauth_state=${value}; Path=${prefix}${domain}; HttpOnly; SameSite=Lax; Secure${extra}`;
 }
 
 async function initDatabase() {
@@ -246,7 +253,7 @@ async function handleApi(req, res, requestUrl) {
       url.searchParams.set("scope", "openid email profile");
       url.searchParams.set("prompt", "select_account");
       url.searchParams.set("state", state);
-      res.writeHead(302, { location: url.toString(), "set-cookie": `cloudprune_oauth_state=${state}; Path=${prefix}; HttpOnly; SameSite=Lax; Secure` });
+      res.writeHead(302, { location: url.toString(), "set-cookie": cloudpruneOAuthCookie(state, prefix) });
       res.end();
       return;
     }
@@ -257,7 +264,7 @@ async function handleApi(req, res, requestUrl) {
       const user = await upsertGoogleUser(profile);
       res.writeHead(302, {
         location: `${prefix}/?token=${encodeURIComponent(signSession(user))}`,
-        "set-cookie": `cloudprune_oauth_state=; Path=${prefix}; Max-Age=0; HttpOnly; SameSite=Lax; Secure`,
+        "set-cookie": cloudpruneOAuthCookie("", prefix, "; Max-Age=0"),
       });
       res.end();
       return;

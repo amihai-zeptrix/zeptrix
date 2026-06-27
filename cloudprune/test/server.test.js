@@ -82,7 +82,7 @@ test("auth API reports missing database instead of dropping requests", async () 
 });
 
 test("Google SSO uses the canonical shared callback", () => {
-  assert.equal(googleRedirectUri, "https://zeptrix.io/api/auth/google/callback");
+  assert.equal(googleRedirectUri, "https://www.zeptrix.io/api/auth/google/callback");
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {
