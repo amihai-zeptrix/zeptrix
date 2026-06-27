@@ -294,18 +294,21 @@ test("AWS assume-role onboarding validates role ARNs and derives external IDs", 
 
 test("AWS scan summary counts entities and monthly cost", () => {
   assert.deepEqual(awsScanCounts({
-    ec2Instances: { Reservations: [{ Instances: [{}, {}] }, { Instances: [{}] }] },
-    lambdas: { Functions: [{}, {}] },
-    rdsInstances: { DBInstances: [{}] },
+    ec2Instances: [
+      { Reservations: [{ Instances: [{}, {}] }] },
+      { Reservations: [{ Instances: [{}] }] },
+    ],
+    lambdas: [{ Functions: [{}, {}] }, { Functions: [{}] }],
+    rdsInstances: [{ DBInstances: [{}] }],
     s3Buckets: { Buckets: [{}, {}, {}, {}] },
-    ebsVolumes: { Volumes: [{}, {}] },
-    loadBalancers: { LoadBalancers: [{}] },
+    ebsVolumes: [{ Volumes: [{}, {}] }, { Volumes: [{}] }],
+    loadBalancers: [{ LoadBalancers: [{}] }],
   }), {
     ec2Instances: 3,
-    lambdas: 2,
+    lambdas: 3,
     rdsInstances: 1,
     s3Buckets: 4,
-    ebsVolumes: 2,
+    ebsVolumes: 3,
     loadBalancers: 1,
   });
   assert.deepEqual(costFromCostExplorer({

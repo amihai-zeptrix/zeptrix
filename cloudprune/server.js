@@ -475,15 +475,20 @@ function costFromCostExplorer(data) {
 }
 
 function awsScanCounts(results) {
-  const reservations = results.ec2Instances?.Reservations || [];
+  const ec2Payloads = Array.isArray(results.ec2Instances) ? results.ec2Instances : [results.ec2Instances || {}];
+  const lambdaPayloads = Array.isArray(results.lambdas) ? results.lambdas : [results.lambdas || {}];
+  const rdsPayloads = Array.isArray(results.rdsInstances) ? results.rdsInstances : [results.rdsInstances || {}];
+  const ebsPayloads = Array.isArray(results.ebsVolumes) ? results.ebsVolumes : [results.ebsVolumes || {}];
+  const loadBalancerPayloads = Array.isArray(results.loadBalancers) ? results.loadBalancers : [results.loadBalancers || {}];
+  const reservations = ec2Payloads.flatMap((payload) => payload.Reservations || []);
   const ec2Instances = reservations.reduce((total, reservation) => total + (reservation.Instances || []).length, 0);
   return {
     ec2Instances,
-    lambdas: (results.lambdas?.Functions || []).length,
-    rdsInstances: (results.rdsInstances?.DBInstances || []).length,
+    lambdas: lambdaPayloads.reduce((total, payload) => total + (payload.Functions || []).length, 0),
+    rdsInstances: rdsPayloads.reduce((total, payload) => total + (payload.DBInstances || []).length, 0),
     s3Buckets: (results.s3Buckets?.Buckets || []).length,
-    ebsVolumes: (results.ebsVolumes?.Volumes || []).length,
-    loadBalancers: (results.loadBalancers?.LoadBalancers || []).length,
+    ebsVolumes: ebsPayloads.reduce((total, payload) => total + (payload.Volumes || []).length, 0),
+    loadBalancers: loadBalancerPayloads.reduce((total, payload) => total + (payload.LoadBalancers || []).length, 0),
   };
 }
 
@@ -516,12 +521,21 @@ async function scanAwsConnection(req) {
     AWS_DEFAULT_REGION: awsScanRegion,
   };
   const { start, end } = monthStartEnd();
-  const checks = [
-    ["ec2Instances", ["ec2", "describe-instances", "--region", awsScanRegion]],
-    ["ebsVolumes", ["ec2", "describe-volumes", "--region", awsScanRegion]],
-    ["lambdas", ["lambda", "list-functions", "--region", awsScanRegion]],
-    ["rdsInstances", ["rds", "describe-db-instances", "--region", awsScanRegion]],
-    ["loadBalancers", ["elbv2", "describe-load-balancers", "--region", awsScanRegion]],
+  const results = {};
+  const errors = [];
+  let regions = [awsScanRegion];
+  try {
+    const regionResult = await runAwsJson(["ec2", "describe-regions", "--all-regions", "--region", awsScanRegion], { env: scanEnv, timeoutMs: 60000 });
+    regions = (regionResult.Regions || [])
+      .filter((region) => !region.OptInStatus || region.OptInStatus === "opt-in-not-required" || region.OptInStatus === "opted-in")
+      .map((region) => region.RegionName)
+      .filter(Boolean);
+    if (!regions.length) regions = [awsScanRegion];
+  } catch (error) {
+    errors.push({ check: "regions", message: error.message });
+  }
+
+  const globalChecks = [
     ["s3Buckets", ["s3api", "list-buckets"]],
     ["cost", [
       "ce", "get-cost-and-usage",
@@ -531,13 +545,28 @@ async function scanAwsConnection(req) {
       "--region", "us-east-1",
     ]],
   ];
-  const results = {};
-  const errors = [];
-  for (const [id, args] of checks) {
+  for (const [id, args] of globalChecks) {
     try {
       results[id] = await runAwsJson(args, { env: scanEnv, timeoutMs: 90000 });
     } catch (error) {
       errors.push({ check: id, message: error.message });
+    }
+  }
+
+  const regionalChecks = [
+    ["ec2Instances", (region) => ["ec2", "describe-instances", "--region", region]],
+    ["ebsVolumes", (region) => ["ec2", "describe-volumes", "--region", region]],
+    ["lambdas", (region) => ["lambda", "list-functions", "--region", region]],
+    ["rdsInstances", (region) => ["rds", "describe-db-instances", "--region", region]],
+    ["loadBalancers", (region) => ["elbv2", "describe-load-balancers", "--region", region]],
+  ];
+  for (const region of regions) {
+    for (const [id, command] of regionalChecks) {
+      try {
+        results[id] = [...(results[id] || []), await runAwsJson(command(region), { env: scanEnv, timeoutMs: 90000 })];
+      } catch (error) {
+        errors.push({ check: `${id}:${region}`, message: error.message });
+      }
     }
   }
   const cost = costFromCostExplorer(results.cost);
@@ -547,7 +576,7 @@ async function scanAwsConnection(req) {
     `insert into cloudprune_aws_scans (account_id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json)
      values ($1,$2,$3,$4,$5,$6,$7,$8)
      returning provider_account_id, status, monthly_cost, currency, counts, errors, created_at`,
-    [user.account_id, aws.provider_account_id, status, cost.amount, cost.currency, counts, errors, { region: awsScanRegion, checks: Object.keys(results) }]
+    [user.account_id, aws.provider_account_id, status, cost.amount, cost.currency, counts, errors, { regions, checks: Object.keys(results) }]
   );
   await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
   return publicAwsScan(saved.rows[0]);
