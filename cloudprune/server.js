@@ -232,6 +232,19 @@ function verifyCloudpruneOAuthState(state) {
   return payload;
 }
 
+function cookieValue(req, name) {
+  return String(req.headers.cookie || "")
+    .split(";")
+    .map((part) => part.trim())
+    .reduce((found, part) => {
+      if (found !== null) return found;
+      const index = part.indexOf("=");
+      if (index < 0) return null;
+      const key = part.slice(0, index);
+      return key === name ? decodeURIComponent(part.slice(index + 1)) : null;
+    }, null);
+}
+
 function cloudpruneOAuthCookie(value, prefix, extra = "") {
   const domain = cloudpruneOauthCookieDomain ? `; Domain=${cloudpruneOauthCookieDomain}` : "";
   return `cloudprune_oauth_state=${value}; Path=${prefix}${domain}; HttpOnly; SameSite=Lax; Secure${extra}`;
@@ -750,7 +763,9 @@ async function handleApi(req, res, requestUrl) {
       return;
     }
     if (req.method === "GET" && apiPath === "/api/auth/google/callback") {
-      const state = verifyCloudpruneOAuthState(requestUrl.searchParams.get("state"));
+      const rawState = requestUrl.searchParams.get("state");
+      if (!rawState || cookieValue(req, "cloudprune_oauth_state") !== rawState) throw new Error("Google sign-in state did not match.");
+      const state = verifyCloudpruneOAuthState(rawState);
       if (!state || state.prefix !== prefix) throw new Error("Google sign-in state did not match.");
       const profile = await googleProfileFromCode(requestUrl.searchParams.get("code"));
       const user = await googleUserFromProfile(profile);
@@ -835,4 +850,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { awsScanCounts, cloudpruneOAuthState, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
+module.exports = { awsScanCounts, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };

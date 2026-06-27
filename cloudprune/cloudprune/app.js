@@ -348,7 +348,7 @@ function awsAccountIdFromRoleArn(roleArn) {
 
 function captureAwsConnectDraft(form) {
   const accountId = normalizeAwsAccountId(formValue(form, "awsAccountId"));
-  const roleArn = formValue(form, "roleArn") || awsRoleArnForAccount(accountId);
+  const roleArn = awsRoleArnForAccount(accountId);
   state.awsConnectDraft = {
     awsAccountId: accountId,
     roleArn,

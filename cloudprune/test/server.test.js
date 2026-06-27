@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { awsScanCounts, cloudpruneOAuthState, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
+const { awsScanCounts, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -227,6 +227,46 @@ test("CloudPrune AWS role submit derives role ARN from account ID", async () => 
   assert.equal(JSON.parse(saveCall.options.body).roleArn, "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole");
 });
 
+test("CloudPrune AWS role submit refreshes derived ARN when account ID changes", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  let calls;
+  renderCloudPruneApp("/cloudprune/", session, ({ fetchCalls, listeners }) => {
+    calls = fetchCalls;
+    const form = {
+      dataset: { connectForm: "aws" },
+      elements: {
+        awsAccountId: { value: "210987654321" },
+        roleArn: { value: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole" },
+        externalId: { value: "cloudprune-account-1" },
+      },
+      querySelector(selector) {
+        if (selector === "[name='awsAccountId']") return this.elements.awsAccountId;
+        if (selector === "[name='roleArn']") return this.elements.roleArn;
+        if (selector === "[name='externalId']") return this.elements.externalId;
+        return null;
+      },
+    };
+    for (const handler of listeners.submit || []) handler({
+      preventDefault() {},
+      target: {
+        closest(selector) {
+          return selector === "[data-connect-form='aws']" ? form : null;
+        },
+      },
+    });
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const saveCall = calls.find((call) => String(call.url).endsWith("/api/cloud-connections/aws"));
+  assert.ok(saveCall);
+  assert.equal(JSON.parse(saveCall.options.body).roleArn, "arn:aws:iam::210987654321:role/CloudPruneReadOnlyRole");
+});
+
 test("auth API reports missing database instead of dropping requests", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/cloudprune/api/register`, {
@@ -256,6 +296,12 @@ test("Google SSO state is signed and self-contained", () => {
   assert.match(state, /^cloudprune\.[^.]+\.[^.]+$/);
   assert.equal(verifyCloudpruneOAuthState(state).prefix, "/cp");
   assert.equal(verifyCloudpruneOAuthState(`${state.slice(0, -1)}x`), null);
+});
+
+test("Google SSO callback state must match browser cookie", () => {
+  const state = cloudpruneOAuthState("/cloudprune");
+  assert.equal(cookieValue({ headers: { cookie: `other=1; cloudprune_oauth_state=${encodeURIComponent(state)}` } }, "cloudprune_oauth_state"), state);
+  assert.notEqual(cookieValue({ headers: { cookie: `cloudprune_oauth_state=${encodeURIComponent(cloudpruneOAuthState("/cloudprune"))}` } }, "cloudprune_oauth_state"), state);
 });
 
 test("Google SSO creates a signed pending registration for new users", () => {
