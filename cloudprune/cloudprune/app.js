@@ -197,8 +197,13 @@ function filteredServices() {
   return state.cloud === "all" ? SERVICES : SERVICES.filter((service) => service.provider === state.cloud);
 }
 
+function activeRecommendations() {
+  return appRoute() === "demo" ? RECOMMENDATIONS : scanResult()?.recommendations || [];
+}
+
 function filteredRecommendations() {
-  return state.cloud === "all" ? RECOMMENDATIONS : RECOMMENDATIONS.filter((item) => item.cloud === state.cloud);
+  const recommendations = activeRecommendations();
+  return state.cloud === "all" ? recommendations : recommendations.filter((item) => item.cloud === state.cloud);
 }
 
 function sum(items, key) {
@@ -215,6 +220,13 @@ function vendorBadge(provider, label = providerLabel(provider)) {
 
 function appRoute(path = location.pathname) {
   return path.startsWith(`${basePath()}/demo`) ? "demo" : "auth";
+}
+
+function workspaceRoute(path = location.pathname) {
+  const base = basePath(path);
+  const suffix = path.startsWith(`${base}/demo`) ? path.slice(`${base}/demo`.length) : path.slice(base.length);
+  const first = suffix.replace(/^\/+/, "").split("/")[0];
+  return first || "dashboard";
 }
 
 function basePath(path = location.pathname) {
@@ -493,17 +505,20 @@ function renderRecommendations() {
       <div class="rec-icon ${item.cloud}">${ICONS.prune}</div>
       <div class="rec-main">
         <span class="cloud-pill">${vendorBadge(item.cloud)}</span>
-        <h3>${item.title}</h3>
-        <p>${item.detail}</p>
+        <h3>${escapeHtml(item.title)}</h3>
+        <p>${escapeHtml(item.detail || item.impactAnalysis || "")}</p>
+        ${item.minimizeImpact ? `<p><strong>Minimize impact:</strong> ${escapeHtml(item.minimizeImpact)}</p>` : ""}
+        ${item.rollbackPath ? `<p><strong>Rollback:</strong> ${escapeHtml(item.rollbackPath)}</p>` : ""}
       </div>
       <div class="rec-meta">
         <strong>${money(item.impact)}</strong>
-        <span>${item.owner}</span>
-        <span>${item.effort} effort</span>
-        <button data-action="stage" aria-label="Stage ${item.title}">${item.status}</button>
+        <span>${escapeHtml(item.owner || item.strategy || "CloudPrune")}</span>
+        <span>${escapeHtml(item.effort || "Medium")} effort</span>
+        <span>${escapeHtml(item.risk || "Medium")} risk</span>
+        <button data-action="stage" aria-label="Stage ${escapeHtml(item.title)}">${escapeHtml(item.status || "Review")}</button>
       </div>
     </article>
-  `).join("") || `<div class="empty">No recommendations match this cloud.</div>`;
+  `).join("") || `<div class="empty">${appRoute() === "demo" ? "No recommendations match this cloud." : "No recommendations yet. Run an AWS scan to generate cost-saving findings."}</div>`;
 }
 
 function renderAnomalies() {
@@ -594,6 +609,29 @@ function renderEmptyWorkspace() {
   const principalArnValue = state.workspace?.awsSetup?.principalArn || "CloudPrune AWS principal ARN";
   const templateUrlValue = state.workspace?.awsSetup?.cloudFormationTemplateUrl || "";
   if (awsConnection) {
+    if (workspaceRoute() === "recommendations") {
+      return `
+        <div class="workspace">
+          <section class="panel">
+            <div class="panel-head">
+              <div><span class="eyebrow">Savings inbox</span><h2>Prioritized recommendations</h2></div>
+              <button data-action="scan-aws" ${state.awsScan.status === "scanning" ? "disabled" : ""}>${state.awsScan.status === "scanning" ? "Scanning..." : "Scan again"}</button>
+            </div>
+            <div class="recommendation-list">${renderRecommendations()}</div>
+          </section>
+          <aside class="right-rail">
+            <section class="panel compact empty-side-panel">
+              <div class="panel-head"><div><span class="eyebrow">Latest AWS scan</span><h2>${scanResult() ? "Available" : "Not run"}</h2></div></div>
+              ${renderAwsScanPanel(awsConnection)}
+            </section>
+            <section class="panel compact empty-side-panel">
+              <div class="panel-head"><div><span class="eyebrow">Automation queue</span><h2>Review first</h2></div></div>
+              <ol class="queue">${renderAutomationQueue()}</ol>
+            </section>
+          </aside>
+        </div>
+      `;
+    }
     return `
       <div class="workspace empty-workspace">
         <section class="panel empty-state-panel">
@@ -819,6 +857,7 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
   const isDemo = showDemoData;
   const dashboardPath = isDemo ? `${base}/demo` : `${base}/`;
   const navPath = isDemo ? `${base}/demo/` : `${base}/`;
+  const route = workspaceRoute();
   const sidebarAuthAction = hasSession()
     ? `<button class="sidebar-action" data-action="logout" type="button">Logout</button>`
     : `<a class="sidebar-action" href="${base}/">Login</a>`;
@@ -829,11 +868,11 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
         <a class="brand" href="${dashboardPath}" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
         <nav>
           <div class="tenant-label"><span>Tenant</span><strong>${tenantLabel}</strong></div>
-          <a class="active" href="${dashboardPath}">${ICONS.dashboard}<span>Dashboard</span></a>
-          <a href="${navPath}recommendations">${ICONS.recs}<span>Recommendations</span></a>
-          <a href="${navPath}anomalies">${ICONS.alert}<span>Anomalies</span></a>
-          <a href="${navPath}automation">${ICONS.automation}<span>Automation</span></a>
-          <a href="${navPath}settings">${ICONS.settings}<span>Settings</span></a>
+          <a class="${route === "dashboard" ? "active" : ""}" href="${dashboardPath}">${ICONS.dashboard}<span>Dashboard</span></a>
+          <a class="${route === "recommendations" ? "active" : ""}" href="${navPath}recommendations">${ICONS.recs}<span>Recommendations</span></a>
+          <a class="${route === "anomalies" ? "active" : ""}" href="${navPath}anomalies">${ICONS.alert}<span>Anomalies</span></a>
+          <a class="${route === "automation" ? "active" : ""}" href="${navPath}automation">${ICONS.automation}<span>Automation</span></a>
+          <a class="${route === "settings" ? "active" : ""}" href="${navPath}settings">${ICONS.settings}<span>Settings</span></a>
           <div class="nav-separator" aria-hidden="true"></div>
           ${sidebarAuthAction}
         </nav>

@@ -332,6 +332,63 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   assert.doesNotMatch(app.innerHTML, />Scan again<\/button>/);
 });
 
+test("CloudPrune recommendations route renders saved scan recommendations", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const { app } = bootCloudPruneApp("/cloudprune/recommendations", session, (url) => {
+    if (String(url).endsWith("/api/workspace")) {
+      return jsonResponse({
+        user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
+        connections: {
+          aws: {
+            provider: "aws",
+            awsAccountId: "123456789012",
+            roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+            externalId: "cloudprune-account-1",
+            status: "configured",
+          },
+        },
+        awsScan: {
+          id: "scan-1",
+          status: "completed",
+          awsAccountId: "123456789012",
+          monthlyCost: 125,
+          counts: { ec2Instances: 2, ebsVolumes: 1 },
+          errors: [],
+          progress: 100,
+          message: "AWS scan complete. Read 3 entities.",
+          recommendations: [{
+            cloud: "aws",
+            title: "Review 1 unattached EBS volume",
+            detail: "Deleting a detached volume has no compute downtime.",
+            impact: 8,
+            effort: "Low",
+            risk: "Low",
+            owner: "Idle resource cleanup",
+            status: "Review",
+            minimizeImpact: "Snapshot first and delete in small batches.",
+            rollbackPath: "Create a new EBS volume from the retained snapshot.",
+          }],
+        },
+        awsSetup: {},
+      });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.match(app.innerHTML, /Prioritized recommendations/);
+  assert.match(app.innerHTML, /Review 1 unattached EBS volume/);
+  assert.match(app.innerHTML, /Snapshot first and delete in small batches/);
+  assert.match(app.innerHTML, /Create a new EBS volume from the retained snapshot/);
+  assert.doesNotMatch(app.innerHTML, /Move steady EC2 baseline into Savings Plans/);
+});
+
 test("auth API reports missing database instead of dropping requests", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/cloudprune/api/register`, {
@@ -457,19 +514,26 @@ test("AWS scan API payload includes persisted progress and completion message", 
     currency: "USD",
     counts: {},
     errors: [],
+    recommendations: [],
     progress: 42,
     message: "Reading EC2 instances in us-east-1.",
     scannedAt: "created",
     updatedAt: "updated",
   });
 
-  assert.equal(publicAwsScan({
+  const completed = publicAwsScan({
     id: "scan-2",
     status: "completed",
     provider_account_id: "123456789012",
     monthly_cost: 12,
-    scan_json: { progress: 100, message: "AWS scan complete. Read 5 entities." },
-  }).message, "AWS scan complete. Read 5 entities.");
+    scan_json: {
+      progress: 100,
+      message: "AWS scan complete. Read 5 entities.",
+      recommendations: [{ title: "Release idle Elastic IPs" }],
+    },
+  });
+  assert.equal(completed.message, "AWS scan complete. Read 5 entities.");
+  assert.deepEqual(completed.recommendations, [{ title: "Release idle Elastic IPs" }]);
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {

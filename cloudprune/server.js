@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const http = require("node:http");
 const path = require("node:path");
 const { Pool } = require("pg");
+const { buildReport } = require("./scripts/aws-assessment");
 
 const port = Number(process.env.PORT || 4321);
 const root = __dirname;
@@ -133,6 +134,7 @@ function publicAwsScan(row) {
     currency: row.currency || "USD",
     counts: row.counts || {},
     errors: row.errors || [],
+    recommendations: scanJson.recommendations || [],
     progress: Number(scanJson.progress || (row.status === "running" ? 0 : 100)),
     message: scanJson.message || "",
     scannedAt: row.created_at,
@@ -506,6 +508,14 @@ async function runAwsJson(args, options = {}) {
   return stdout.trim() ? JSON.parse(stdout) : {};
 }
 
+async function runAwsJsonCheck(args, options = {}) {
+  try {
+    return { ok: true, data: await runAwsJson(args, options) };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 function monthStartEnd() {
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -540,6 +550,115 @@ function awsScanCounts(results) {
     s3Buckets: scanCountValue(results.s3Buckets, "Buckets"),
     ebsVolumes: scanCountValue(results.ebsVolumes, "Volumes"),
     loadBalancers: scanCountValue(results.loadBalancers, "LoadBalancers"),
+  };
+}
+
+function awsCheck(service, data, error = null) {
+  return {
+    service,
+    ok: !error,
+    data: error ? null : data,
+    error: error ? String(error.message || error) : null,
+  };
+}
+
+function mergeAwsCollection(items, collectionKey) {
+  if (!Array.isArray(items)) return items || {};
+  return {
+    [collectionKey]: items.flatMap((item) => item?.[collectionKey] || []),
+  };
+}
+
+function mergeAwsReservations(items) {
+  if (!Array.isArray(items)) return items || {};
+  return {
+    Reservations: items.flatMap((item) => item?.Reservations || []),
+  };
+}
+
+function buildAwsAssessment(results, regions, errors) {
+  return {
+    generatedAt: new Date().toISOString(),
+    region: awsScanRegion,
+    days: 30,
+    concurrency: 5,
+    maxResources: 25,
+    checks: {
+      identity: awsCheck("STS", results.identity, errors.find((error) => error.check === "identity")),
+      costByService: awsCheck("Cost Explorer", results.costByService, errors.find((error) => error.check === "costByService")),
+      savingsPlansRecommendation: awsCheck("Cost Explorer", results.savingsPlansRecommendation, errors.find((error) => error.check === "savingsPlansRecommendation")),
+      ec2Instances: awsCheck("EC2", mergeAwsReservations(results.ec2Instances), null),
+      ebsVolumes: awsCheck("EBS", mergeAwsCollection(results.ebsVolumes, "Volumes"), null),
+      elasticIps: awsCheck("EC2", mergeAwsCollection(results.elasticIps, "Addresses"), null),
+      rdsInstances: awsCheck("RDS", mergeAwsCollection(results.rdsInstances, "DBInstances"), null),
+      rdsMetrics: awsCheck("CloudWatch RDS Metrics", { instances: results.rdsMetrics || [] }, null),
+      logGroups: awsCheck("CloudWatch Logs", mergeAwsCollection(results.logGroups, "logGroups"), null),
+      s3Buckets: awsCheck("S3", results.s3Buckets || {}, errors.find((error) => error.check === "s3Buckets")),
+      s3Lifecycle: awsCheck("S3 Lifecycle", { buckets: results.s3Lifecycle || [] }, null),
+      loadBalancers: awsCheck("ELBv2", mergeAwsCollection(results.loadBalancers, "LoadBalancers"), null),
+      loadBalancerMetrics: awsCheck("CloudWatch ELB Metrics", { loadBalancers: results.loadBalancerMetrics || [] }, null),
+      computeOptimizerEc2: awsCheck("Compute Optimizer", mergeAwsCollection(results.computeOptimizerEc2, "instanceRecommendations"), null),
+    },
+    regions,
+  };
+}
+
+function publicRecommendation(finding) {
+  return {
+    id: finding.id,
+    cloud: "aws",
+    title: finding.title,
+    detail: finding.impactAnalysis,
+    impact: Number(finding.estimatedMonthlySavings || 0),
+    effort: finding.operationalRisk === "low" ? "Low" : finding.operationalRisk === "high" ? "High" : "Medium",
+    risk: finding.operationalRisk === "low" ? "Low" : finding.operationalRisk === "high" ? "High" : "Medium",
+    owner: finding.strategy,
+    status: finding.executionMode === "assisted" ? "Review" : "Ready",
+    strategy: finding.strategy,
+    confidence: finding.confidence,
+    downtimeRisk: finding.downtimeRisk,
+    blastRadius: finding.blastRadius,
+    impactAnalysis: finding.impactAnalysis,
+    minimizeImpact: finding.minimizeImpact,
+    rollbackPath: finding.rollbackPath,
+    validationWindow: finding.validationWindow,
+    resources: finding.resources || [],
+  };
+}
+
+function metricAverage(datapoints) {
+  const values = (datapoints || []).map((point) => Number(point.Average)).filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+function metricSum(datapoints) {
+  const values = (datapoints || []).map((point) => Number(point.Sum)).filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function loadBalancerDimension(loadBalancerArn) {
+  const marker = ":loadbalancer/";
+  const index = String(loadBalancerArn || "").indexOf(marker);
+  return index === -1 ? null : String(loadBalancerArn).slice(index + marker.length);
+}
+
+function addRegionToAwsResult(id, data, region) {
+  const collectionById = {
+    ec2Instances: "Reservations",
+    ebsVolumes: "Volumes",
+    elasticIps: "Addresses",
+    rdsInstances: "DBInstances",
+    logGroups: "logGroups",
+    loadBalancers: "LoadBalancers",
+    computeOptimizerEc2: "instanceRecommendations",
+  };
+  const collectionKey = collectionById[id];
+  if (!collectionKey || !Array.isArray(data?.[collectionKey])) return data;
+  return {
+    ...data,
+    [collectionKey]: data[collectionKey].map((item) => ({ ...item, Region: region })),
   };
 }
 
@@ -633,7 +752,8 @@ async function performAwsScan(scanId, user, aws) {
     completedSteps += 1;
 
     const globalChecks = [
-      ["s3Buckets", "Reading S3 buckets.", ["s3api", "list-buckets", "--query", "length(Buckets)"]],
+      ["identity", "Reading AWS account identity.", ["sts", "get-caller-identity"]],
+      ["s3Buckets", "Reading S3 buckets.", ["s3api", "list-buckets"]],
       ["cost", "Reading Cost Explorer spend.", [
         "ce", "get-cost-and-usage",
         "--time-period", `Start=${start},End=${end}`,
@@ -641,14 +761,36 @@ async function performAwsScan(scanId, user, aws) {
         "--metrics", "UnblendedCost",
         "--region", "us-east-1",
       ]],
+      ["costByService", "Reading spend by AWS service.", [
+        "ce", "get-cost-and-usage",
+        "--time-period", `Start=${start},End=${end}`,
+        "--granularity", "MONTHLY",
+        "--metrics", "UnblendedCost",
+        "--group-by", "Type=DIMENSION,Key=SERVICE",
+        "--region", "us-east-1",
+      ]],
+      ["savingsPlansRecommendation", "Reading Savings Plans recommendations.", [
+        "ce", "get-savings-plans-purchase-recommendation",
+        "--savings-plans-type", "COMPUTE_SP",
+        "--term-in-years", "ONE_YEAR",
+        "--payment-option", "NO_UPFRONT",
+        "--lookback-period-in-days", "SIXTY_DAYS",
+        "--region", "us-east-1",
+      ]],
     ];
     const regionalChecks = [
-      ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--query", "length(Reservations[].Instances[])"]],
-      ["ebsVolumes", "Reading EBS volumes", (region) => ["ec2", "describe-volumes", "--region", region, "--query", "length(Volumes)"]],
+      ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--query", "{Reservations:Reservations[].{Instances:Instances[].{InstanceId:InstanceId,InstanceType:InstanceType,State:State,Tags:Tags}}}"]],
+      ["ebsVolumes", "Reading EBS volumes", (region) => ["ec2", "describe-volumes", "--region", region, "--query", "{Volumes:Volumes[].{VolumeId:VolumeId,State:State,Size:Size,VolumeType:VolumeType,Tags:Tags}}"]],
+      ["elasticIps", "Reading Elastic IP addresses", (region) => ["ec2", "describe-addresses", "--region", region, "--query", "{Addresses:Addresses[].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId,Tags:Tags}}"]],
       ["lambdas", "Reading Lambda functions", (region) => ["lambda", "list-functions", "--region", region, "--query", "length(Functions)"]],
-      ["rdsInstances", "Reading RDS instances", (region) => ["rds", "describe-db-instances", "--region", region, "--query", "length(DBInstances)"]],
-      ["loadBalancers", "Reading load balancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--query", "length(LoadBalancers)"]],
+      ["rdsInstances", "Reading RDS instances", (region) => ["rds", "describe-db-instances", "--region", region, "--query", "{DBInstances:DBInstances[].{DBInstanceIdentifier:DBInstanceIdentifier,DBInstanceClass:DBInstanceClass,Engine:Engine,MultiAZ:MultiAZ,DBInstanceStatus:DBInstanceStatus}}"]],
+      ["logGroups", "Reading CloudWatch log groups", (region) => ["logs", "describe-log-groups", "--region", region, "--query", "{logGroups:logGroups[].{logGroupName:logGroupName,retentionInDays:retentionInDays,storedBytes:storedBytes}}"]],
+      ["loadBalancers", "Reading load balancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--query", "{LoadBalancers:LoadBalancers[].{LoadBalancerName:LoadBalancerName,LoadBalancerArn:LoadBalancerArn,Type:Type,State:State}}"]],
+      ["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations", (region) => ["compute-optimizer", "get-ec2-instance-recommendations", "--region", region, "--query", "{instanceRecommendations:instanceRecommendations[].{instanceArn:instanceArn,instanceName:instanceName,finding:finding,currentInstanceType:currentInstanceType}}"]],
     ];
+    const s3LifecycleJobs = () => (results.s3Buckets?.Buckets || []).slice(0, 25).flatMap((bucket) => [
+      { id: "s3Lifecycle", label: `Reading S3 lifecycle for ${bucket.Name}`, bucket: bucket.Name, command: ["s3api", "get-bucket-lifecycle-configuration", "--bucket", bucket.Name] },
+    ]);
     const jobs = regions.flatMap((region) => regionalChecks.map(([id, label, command]) => ({ region, id, label, command })));
     totalSteps = completedSteps + globalChecks.length + jobs.length + 1;
     await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Discovered ${regions.length} enabled AWS region${regions.length === 1 ? "" : "s"}.`);
@@ -663,12 +805,31 @@ async function performAwsScan(scanId, user, aws) {
       await updateAwsScanProgress(scanId, completedSteps, totalSteps, label);
     }
 
+    const lifecycleJobs = s3LifecycleJobs();
+    if (lifecycleJobs.length) {
+      totalSteps += lifecycleJobs.length;
+      results.s3Lifecycle = [];
+      await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading lifecycle policies for ${lifecycleJobs.length} S3 bucket${lifecycleJobs.length === 1 ? "" : "s"}.`);
+      for (const job of lifecycleJobs) {
+        const lifecycle = await runAwsJsonCheck(job.command, { env: scanEnv, timeoutMs: 45000 });
+        results.s3Lifecycle.push({
+          name: job.bucket,
+          lifecycleStatus: lifecycle.ok ? (Array.isArray(lifecycle.data?.Rules) && lifecycle.data.Rules.length ? "configured" : "missing") : /NoSuchLifecycleConfiguration/i.test(lifecycle.error?.message || "") ? "missing" : "unknown",
+          lifecycleConfigured: lifecycle.ok ? Array.isArray(lifecycle.data?.Rules) && lifecycle.data.Rules.length > 0 : false,
+          lifecycleError: lifecycle.ok ? null : lifecycle.error?.message,
+        });
+        completedSteps += 1;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `${job.label}.`);
+      }
+    }
+
     const concurrency = 5;
     for (let index = 0; index < jobs.length; index += concurrency) {
       const batch = jobs.slice(index, index + concurrency);
       await Promise.all(batch.map(async ({ region, id, label, command }) => {
         try {
-          results[id] = [...(results[id] || []), await runAwsJson(command(region), { env: scanEnv, timeoutMs: 45000 })];
+          const data = await runAwsJson(command(region), { env: scanEnv, timeoutMs: 45000 });
+          results[id] = [...(results[id] || []), addRegionToAwsResult(id, data, region)];
         } catch (error) {
           errors.push({ check: `${id}:${region}`, message: error.message });
         }
@@ -676,8 +837,88 @@ async function performAwsScan(scanId, user, aws) {
         await updateAwsScanProgress(scanId, completedSteps, totalSteps, `${label} in ${region}.`);
       }));
     }
+    const rdsMetricJobs = mergeAwsCollection(results.rdsInstances, "DBInstances").DBInstances.slice(0, 25).flatMap((instance) => [
+      { instance, metricName: "CPUUtilization", statistic: "Average" },
+      { instance, metricName: "DatabaseConnections", statistic: "Average" },
+    ]);
+    const loadBalancerMetricJobs = mergeAwsCollection(results.loadBalancers, "LoadBalancers").LoadBalancers.slice(0, 25).map((loadBalancer) => ({ loadBalancer }));
+    if (rdsMetricJobs.length || loadBalancerMetricJobs.length) {
+      totalSteps += rdsMetricJobs.length + loadBalancerMetricJobs.length;
+      results.rdsMetrics = [];
+      results.loadBalancerMetrics = [];
+      const metricPeriod = String(86400);
+      const startTime = `${start}T00:00:00Z`;
+      const endTime = `${end}T00:00:00Z`;
+      await updateAwsScanProgress(scanId, completedSteps, totalSteps, "Reading CloudWatch utilization metrics.");
+      const rdsById = new Map();
+      for (const job of rdsMetricJobs) {
+        const id = job.instance.DBInstanceIdentifier;
+        const region = job.instance.Region || awsScanRegion;
+        const metric = await runAwsJsonCheck([
+          "cloudwatch", "get-metric-statistics",
+          "--namespace", "AWS/RDS",
+          "--metric-name", job.metricName,
+          "--start-time", startTime,
+          "--end-time", endTime,
+          "--period", metricPeriod,
+          "--statistics", job.statistic,
+          "--dimensions", `Name=DBInstanceIdentifier,Value=${id}`,
+          "--region", region,
+        ], { env: scanEnv, timeoutMs: 45000 });
+        const current = rdsById.get(id) || {
+          id,
+          class: job.instance.DBInstanceClass,
+          engine: job.instance.Engine,
+          multiAz: Boolean(job.instance.MultiAZ),
+          status: job.instance.DBInstanceStatus,
+          region,
+        };
+        if (job.metricName === "CPUUtilization") current.averageCpu = metric.ok ? metricAverage(metric.data?.Datapoints) : null;
+        if (job.metricName === "DatabaseConnections") current.averageConnections = metric.ok ? metricAverage(metric.data?.Datapoints) : null;
+        rdsById.set(id, current);
+        completedSteps += 1;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading ${job.metricName} for RDS ${id}.`);
+      }
+      results.rdsMetrics = Array.from(rdsById.values());
+      for (const { loadBalancer } of loadBalancerMetricJobs) {
+        const dimension = loadBalancerDimension(loadBalancer.LoadBalancerArn);
+        const region = loadBalancer.Region || awsScanRegion;
+        const metricConfigByType = {
+          application: { namespace: "AWS/ApplicationELB", metricName: "RequestCount" },
+          network: { namespace: "AWS/NetworkELB", metricName: "ActiveFlowCount" },
+        };
+        const config = metricConfigByType[loadBalancer.Type];
+        const metric = dimension && config ? await runAwsJsonCheck([
+          "cloudwatch", "get-metric-statistics",
+          "--namespace", config.namespace,
+          "--metric-name", config.metricName,
+          "--start-time", startTime,
+          "--end-time", endTime,
+          "--period", metricPeriod,
+          "--statistics", "Sum",
+          "--dimensions", `Name=LoadBalancer,Value=${dimension}`,
+          "--region", region,
+        ], { env: scanEnv, timeoutMs: 45000 }) : { ok: false, error: new Error("Unsupported load balancer type.") };
+        const metricValue = metric.ok ? metricSum(metric.data?.Datapoints) : null;
+        results.loadBalancerMetrics.push({
+          name: loadBalancer.LoadBalancerName,
+          arn: loadBalancer.LoadBalancerArn,
+          type: loadBalancer.Type,
+          state: loadBalancer.State?.Code,
+          region,
+          metricName: config?.metricName || null,
+          metricStatus: metric.ok ? (metricValue == null ? "no-data" : "observed") : "unavailable",
+          metricSum: metricValue,
+          metricError: metric.ok ? null : metric.error?.message,
+        });
+        completedSteps += 1;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading load balancer traffic for ${loadBalancer.LoadBalancerName}.`);
+      }
+    }
     const cost = costFromCostExplorer(results.cost);
     const counts = awsScanCounts(results);
+    const assessment = buildAwsAssessment(results, regions, errors);
+    const recommendations = buildReport(assessment).findings.slice(0, 20).map(publicRecommendation);
     const status = errors.length ? "completed_with_errors" : "completed";
     const totalEntities = Object.values(counts).reduce((total, value) => total + Number(value || 0), 0);
     completedSteps += 1;
@@ -688,6 +929,7 @@ async function performAwsScan(scanId, user, aws) {
       [scanId, status, cost.amount, cost.currency, counts, errors, {
         regions,
         checks: Object.keys(results),
+        recommendations,
         progress: 100,
         message: `AWS scan complete. Read ${totalEntities.toLocaleString()} entities.`,
         completedSteps,
