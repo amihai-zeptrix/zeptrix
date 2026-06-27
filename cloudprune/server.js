@@ -12,6 +12,7 @@ const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || "https:/
 const googleClientId = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
 const googleClientSecret = process.env.CLOUDPRUNE_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
 const tokenSecret = process.env.CLOUDPRUNE_TOKEN_SECRET || process.env.CRM_TOKEN_SECRET || "local-cloudprune-token-secret";
+const awsPrincipalArn = process.env.CLOUDPRUNE_AWS_PRINCIPAL_ARN || "";
 const pool = process.env.CLOUDPRUNE_DATABASE_URL || process.env.DATABASE_URL
   ? new Pool({
       connectionString: process.env.CLOUDPRUNE_DATABASE_URL || process.env.DATABASE_URL,
@@ -82,6 +83,29 @@ function secureEqual(actual, expected) {
 
 function publicUser(user) {
   return { name: user.name, email: user.email, companyName: user.company_name };
+}
+
+function externalIdForAccount(accountId) {
+  return `cloudprune-${accountId}`;
+}
+
+function normalizeAwsRoleArn(roleArn) {
+  const value = String(roleArn || "").trim();
+  const match = value.match(/^arn:aws[a-z-]*:iam::(\d{12}):role\/([A-Za-z0-9+=,.@_/-]{1,512})$/);
+  if (!match) throw new Error("Enter a valid AWS IAM role ARN.");
+  return { roleArn: value, awsAccountId: match[1] };
+}
+
+function publicCloudConnection(row) {
+  if (!row) return null;
+  return {
+    provider: row.provider,
+    awsAccountId: row.provider_account_id,
+    roleArn: row.role_arn,
+    externalId: row.external_id,
+    status: row.status,
+    updatedAt: row.updated_at,
+  };
 }
 
 function signSession(user) {
@@ -212,6 +236,20 @@ async function initDatabase() {
       created_at timestamptz not null default now()
     )
   `);
+  await pool.query(`
+    create table if not exists cloudprune_cloud_connections (
+      id uuid primary key default gen_random_uuid(),
+      account_id uuid not null references cloudprune_accounts(id) on delete cascade,
+      provider text not null,
+      provider_account_id text,
+      role_arn text,
+      external_id text not null,
+      status text not null default 'configured',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique(account_id, provider)
+    )
+  `);
 }
 
 async function recordAuthEvent({ userId = null, email = null, eventType, detail = null }) {
@@ -303,6 +341,47 @@ async function updateUserProfile(req, payload) {
   return { ...user, name, company_name: company };
 }
 
+async function workspaceForRequest(req) {
+  const user = await userFromSession(req);
+  const connections = await pool.query(
+    `select provider, provider_account_id, role_arn, external_id, status, updated_at
+     from cloudprune_cloud_connections
+     where account_id=$1`,
+    [user.account_id]
+  );
+  const byProvider = Object.fromEntries(connections.rows.map((row) => [row.provider, publicCloudConnection(row)]));
+  return {
+    user: publicUser(user),
+    connections: {
+      aws: byProvider.aws || null,
+    },
+    awsSetup: {
+      externalId: byProvider.aws?.externalId || externalIdForAccount(user.account_id),
+      principalArn: awsPrincipalArn,
+    },
+  };
+}
+
+async function saveAwsConnection(req, payload) {
+  const user = await userFromSession(req);
+  const { roleArn, awsAccountId } = normalizeAwsRoleArn(payload.roleArn);
+  const externalId = String(payload.externalId || externalIdForAccount(user.account_id)).trim();
+  const result = await pool.query(
+    `insert into cloudprune_cloud_connections (account_id, provider, provider_account_id, role_arn, external_id, status)
+     values ($1, 'aws', $2, $3, $4, 'configured')
+     on conflict (account_id, provider) do update set
+       provider_account_id=excluded.provider_account_id,
+       role_arn=excluded.role_arn,
+       external_id=excluded.external_id,
+       status='configured',
+       updated_at=now()
+     returning provider, provider_account_id, role_arn, external_id, status, updated_at`,
+    [user.account_id, awsAccountId, roleArn, externalId]
+  );
+  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_connection_saved", detail: awsAccountId });
+  return publicCloudConnection(result.rows[0]);
+}
+
 async function googleProfileFromCode(code) {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -366,6 +445,12 @@ async function handleApi(req, res, requestUrl) {
     if (req.method === "POST" && apiPath === "/api/profile") {
       const user = await updateUserProfile(req, await readJson(req));
       return json(res, 200, { token: signSession(user), user: publicUser(user) });
+    }
+    if (req.method === "GET" && apiPath === "/api/workspace") {
+      return json(res, 200, await workspaceForRequest(req));
+    }
+    if (req.method === "POST" && apiPath === "/api/cloud-connections/aws") {
+      return json(res, 200, { connection: await saveAwsConnection(req, await readJson(req)) });
     }
     if (req.method === "GET" && apiPath === "/api/auth/google/start") {
       if (!googleClientId || !googleClientSecret) {
@@ -469,4 +554,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { cloudpruneOAuthState, googleRedirectUri, hashPassword, initDatabase, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
+module.exports = { cloudpruneOAuthState, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };

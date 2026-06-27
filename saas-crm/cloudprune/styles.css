@@ -588,6 +588,96 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   min-height: 88px;
 }
 
+.connection-summary {
+  display: grid;
+  width: 100%;
+  max-width: 760px;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 8px 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.connection-summary span,
+.trust-policy span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.connection-summary code,
+.trust-policy code {
+  overflow: hidden;
+  color: var(--ink);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connect-form {
+  display: grid;
+  width: 100%;
+  max-width: 760px;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.connect-form h3 {
+  font-size: 18px;
+}
+
+.connect-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.connect-form input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: #fff;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.connect-form input[readonly] {
+  color: var(--muted);
+  background: #f7faf8;
+}
+
+.trust-policy {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f7faf8;
+}
+
+.connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.secondary-connect {
+  color: var(--forest);
+  background: var(--green-soft);
+}
+
 .auth-page {
   display: grid;
   min-height: 100vh;

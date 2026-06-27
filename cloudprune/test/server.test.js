@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { cloudpruneOAuthState, googleRedirectUri, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
+const { cloudpruneOAuthState, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -21,15 +21,18 @@ function sessionToken(payload) {
   return `${Buffer.from(JSON.stringify(payload)).toString("base64url")}.sig`;
 }
 
-function renderCloudPruneApp(pathname, session = null) {
+function renderCloudPruneApp(pathname, session = null, interact = null) {
   const app = { innerHTML: "" };
+  const listeners = {};
   const store = new Map(session ? [["cloudprune.session", session]] : []);
   const script = fs.readFileSync(path.join(__dirname, "../cloudprune/app.js"), "utf8");
   const context = {
     URL,
     atob: (value) => Buffer.from(value, "base64").toString("binary"),
     document: {
-      addEventListener() {},
+      addEventListener(type, handler) {
+        listeners[type] = [...(listeners[type] || []), handler];
+      },
       querySelector(selector) {
         return selector === "#app" ? app : null;
       },
@@ -48,6 +51,7 @@ function renderCloudPruneApp(pathname, session = null) {
     },
   };
   vm.runInNewContext(script, context, { filename: "cloudprune/app.js" });
+  if (interact) interact({ app, listeners, store });
   return app.innerHTML;
 }
 
@@ -121,6 +125,28 @@ test("authenticated CloudPrune workspace starts empty while demo data remains in
   assert.doesNotMatch(demo, /No cloud data yet/);
 });
 
+test("CloudPrune empty workspace opens AWS assume-role setup", () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const workspace = renderCloudPruneApp("/cloudprune/", session, ({ listeners }) => {
+    for (const handler of listeners.click || []) handler({
+      target: {
+        closest(selector) {
+          return selector === "[data-action='connect']" ? {} : null;
+        },
+      },
+    });
+  });
+  assert.match(workspace, /Assume role setup/);
+  assert.match(workspace, /arn:aws:iam::123456789012:role\/CloudPruneReadOnlyRole/);
+  assert.match(workspace, /cloudprune-account-1/);
+});
+
 test("auth API reports missing database instead of dropping requests", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/cloudprune/api/register`, {
@@ -174,6 +200,16 @@ test("CloudPrune sessions carry the account company name", () => {
   assert.equal(payload.email, "amihaih@gmail.com");
   assert.equal(payload.companyName, "Zeptrix");
   assert.equal(verifySession(`${token.slice(0, -1)}x`), null);
+});
+
+test("AWS assume-role onboarding validates role ARNs and derives external IDs", () => {
+  assert.deepEqual(normalizeAwsRoleArn("arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole"), {
+    roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+    awsAccountId: "123456789012",
+  });
+  assert.equal(externalIdForAccount("tenant-123"), "cloudprune-tenant-123");
+  assert.throws(() => normalizeAwsRoleArn("arn:aws:s3:::bucket"), /valid AWS IAM role ARN/);
+  assert.throws(() => normalizeAwsRoleArn("arn:aws:iam::123:role/Bad"), /valid AWS IAM role ARN/);
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {
