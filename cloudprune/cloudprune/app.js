@@ -73,6 +73,7 @@ let state = {
   automation: false,
   authMode: "register",
   authMessage: "",
+  sessionRefreshStarted: false,
 };
 
 const registerDraftKey = "cloudprune.registerDraft";
@@ -196,6 +197,43 @@ function refreshGoogleStart(form) {
   const hint = form.querySelector("[data-google-hint]");
   if (googleButton) googleButton.disabled = !isComplete;
   if (hint) hint.classList.toggle("hidden", isComplete);
+}
+
+async function refreshSession() {
+  const token = localStorage.getItem("cloudprune.session");
+  if (!token || state.sessionRefreshStarted || typeof fetch !== "function") return;
+  state.sessionRefreshStarted = true;
+  try {
+    const response = await fetch(`${basePath()}/api/session`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "CloudPrune session refresh failed.");
+    if (body.token && body.token !== token) {
+      localStorage.setItem("cloudprune.session", body.token);
+      render();
+    }
+  } catch {
+    state.sessionRefreshStarted = false;
+  }
+}
+
+async function syncProfileFromDraft(token, draft) {
+  if (!isRegisterDraftComplete(draft) || typeof fetch !== "function") return token;
+  try {
+    const response = await fetch(`${basePath()}/api/profile`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: draft.name, company: draft.company }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "CloudPrune profile update failed.");
+    if (body.token) localStorage.setItem("cloudprune.session", body.token);
+    localStorage.removeItem(registerDraftKey);
+    return body.token || token;
+  } catch {
+    return token;
+  }
 }
 
 function renderProviderFilter() {
@@ -365,7 +403,9 @@ function renderAuth(app) {
     localStorage.setItem("cloudprune.session", token);
     localStorage.removeItem("cloudprune.googleRegistration");
     history.replaceState({}, "", `${base}/`);
-    location.href = `${base}/`;
+    syncProfileFromDraft(token, registerDraft()).finally(() => {
+      location.href = `${base}/`;
+    });
     return;
   }
   if (googleRegistration) {
@@ -439,6 +479,7 @@ function renderAuth(app) {
 }
 
 function renderDemo(app, showDemoData = appRoute() === "demo") {
+  if (!showDemoData && hasSession()) refreshSession();
   const base = basePath();
   const isDemo = showDemoData;
   const dashboardPath = isDemo ? `${base}/demo` : `${base}/`;

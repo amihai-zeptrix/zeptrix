@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { cloudpruneOAuthState, googleRedirectUri, server, signGoogleRegistration, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration } = require("../server");
+const { cloudpruneOAuthState, googleRedirectUri, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -160,6 +160,20 @@ test("Google SSO creates a signed pending registration for new users", () => {
   assert.equal(payload.name, "Ami");
   assert.equal(payload.companyName, "Zeptrix");
   assert.equal(verifyGoogleRegistration(`${token.slice(0, -1)}x`), null);
+});
+
+test("CloudPrune sessions carry the account company name", () => {
+  const token = signSession({
+    id: "user-1",
+    email: "amihaih@gmail.com",
+    name: "Amihai Hadar",
+    account_id: "account-1",
+    company_name: "Zeptrix",
+  });
+  const payload = verifySession(token);
+  assert.equal(payload.email, "amihaih@gmail.com");
+  assert.equal(payload.companyName, "Zeptrix");
+  assert.equal(verifySession(`${token.slice(0, -1)}x`), null);
 });
 
 test("rejects encoded traversal outside the public app directory", async () => {

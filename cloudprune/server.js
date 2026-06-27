@@ -74,6 +74,12 @@ function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
 }
 
+function secureEqual(actual, expected) {
+  const actualBuffer = Buffer.from(String(actual || ""));
+  const expectedBuffer = Buffer.from(String(expected || ""));
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
 function publicUser(user) {
   return { name: user.name, email: user.email, companyName: user.company_name };
 }
@@ -90,6 +96,36 @@ function signSession(user) {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = crypto.createHmac("sha256", tokenSecret).update(body).digest("base64url");
   return `${body}.${sig}`;
+}
+
+function verifySession(token) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2) return null;
+  const expected = crypto.createHmac("sha256", tokenSecret).update(parts[0]).digest("base64url");
+  if (!secureEqual(parts[1], expected)) return null;
+  const payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+  if (!payload.sub || (payload.exp && Number(payload.exp) < Date.now())) return null;
+  return payload;
+}
+
+function bearerToken(req) {
+  const match = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : "";
+}
+
+async function userFromSession(req) {
+  if (!pool) throw new Error("CloudPrune database is not configured.");
+  const session = verifySession(bearerToken(req));
+  if (!session) throw new Error("CloudPrune session is invalid.");
+  const result = await pool.query(
+    `select u.id, u.account_id, u.name, u.email, u.provider, a.company_name
+     from cloudprune_users u
+     join cloudprune_accounts a on a.id = u.account_id
+     where u.id=$1`,
+    [session.sub]
+  );
+  if (!result.rows[0]) throw new Error("CloudPrune session user was not found.");
+  return result.rows[0];
 }
 
 function signGoogleRegistration(profile) {
@@ -110,7 +146,7 @@ function verifyGoogleRegistration(token) {
   const parts = String(token || "").split(".");
   if (parts.length !== 2) return null;
   const expected = crypto.createHmac("sha256", tokenSecret).update(parts[0]).digest("base64url");
-  if (!crypto.timingSafeEqual(Buffer.from(parts[1]), Buffer.from(expected))) return null;
+  if (!secureEqual(parts[1], expected)) return null;
   const payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
   if (!payload.sub || !payload.email || (payload.exp && Number(payload.exp) < Date.now())) return null;
   return payload;
@@ -130,7 +166,7 @@ function verifyCloudpruneOAuthState(state) {
   const parts = String(state || "").split(".");
   if (parts.length !== 3 || parts[0] !== "cloudprune") return null;
   const expected = crypto.createHmac("sha256", tokenSecret).update(parts[1]).digest("base64url");
-  if (!crypto.timingSafeEqual(Buffer.from(parts[2]), Buffer.from(expected))) return null;
+  if (!secureEqual(parts[2], expected)) return null;
   const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
   if (payload.exp && Number(payload.exp) < Date.now()) return null;
   if (payload.prefix !== "/cp" && payload.prefix !== "/cloudprune") return null;
@@ -251,6 +287,22 @@ async function completeGoogleRegistration(payload) {
   }, "google");
 }
 
+async function updateUserProfile(req, payload) {
+  const user = await userFromSession(req);
+  const name = String(payload.name || "").trim();
+  const company = String(payload.company || payload.companyName || "").trim();
+  if (!name || !company) throw new Error("Name and company are required.");
+  await pool.query(
+    `update cloudprune_users set name=$2 where id=$1`,
+    [user.id, name]
+  );
+  await pool.query(
+    `update cloudprune_accounts set company_name=$2 where id=$1`,
+    [user.account_id, company]
+  );
+  return { ...user, name, company_name: company };
+}
+
 async function googleProfileFromCode(code) {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -306,6 +358,14 @@ async function handleApi(req, res, requestUrl) {
     if (req.method === "POST" && apiPath === "/api/complete-google-registration") {
       const user = await completeGoogleRegistration(await readJson(req));
       return json(res, 201, { token: signSession(user), user: publicUser(user) });
+    }
+    if (req.method === "GET" && apiPath === "/api/session") {
+      const user = await userFromSession(req);
+      return json(res, 200, { token: signSession(user), user: publicUser(user) });
+    }
+    if (req.method === "POST" && apiPath === "/api/profile") {
+      const user = await updateUserProfile(req, await readJson(req));
+      return json(res, 200, { token: signSession(user), user: publicUser(user) });
     }
     if (req.method === "GET" && apiPath === "/api/auth/google/start") {
       if (!googleClientId || !googleClientSecret) {
@@ -409,4 +469,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { cloudpruneOAuthState, googleRedirectUri, hashPassword, initDatabase, registerUser, server, signGoogleRegistration, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword };
+module.exports = { cloudpruneOAuthState, googleRedirectUri, hashPassword, initDatabase, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
