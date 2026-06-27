@@ -825,6 +825,13 @@ async function performAwsScan(scanId, user, aws) {
   const sessionName = `CloudPruneScan-${Date.now()}`;
   const results = {};
   const errors = [];
+  const inventoryLimits = {
+    maxRegions: awsScanMaxRegions,
+    maxInventoryItems: awsScanMaxInventoryItems,
+    maxSampledResources: awsScanMaxSampledResources,
+    limitedRegionalChecks: [],
+    truncatedChecks: [],
+  };
   let completedSteps = 0;
   let totalSteps = 4;
   try {
@@ -902,6 +909,7 @@ async function performAwsScan(scanId, user, aws) {
       ["loadBalancers", "Reading load balancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{LoadBalancers:LoadBalancers[].{LoadBalancerName:LoadBalancerName,LoadBalancerArn:LoadBalancerArn,Type:Type,State:State}}"]],
       ["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations", (region) => ["compute-optimizer", "get-ec2-instance-recommendations", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{instanceRecommendations:instanceRecommendations[].{instanceArn:instanceArn,instanceName:instanceName,finding:finding,currentInstanceType:currentInstanceType}}"]],
     ];
+    inventoryLimits.limitedRegionalChecks = regionalChecks.map(([id]) => id);
     const s3LifecycleJobs = () => (results.s3Buckets?.Buckets || []).slice(0, awsScanMaxSampledResources).flatMap((bucket) => [
       { id: "s3Lifecycle", label: `Reading S3 lifecycle for ${bucket.Name}`, bucket: bucket.Name, command: ["s3api", "get-bucket-lifecycle-configuration", "--bucket", bucket.Name] },
     ]);
@@ -917,6 +925,21 @@ async function performAwsScan(scanId, user, aws) {
       }
       completedSteps += 1;
       await updateAwsScanProgress(scanId, completedSteps, totalSteps, label);
+    }
+    if ((results.s3Buckets?.Buckets || []).length > awsScanMaxInventoryItems) {
+      const originalCount = results.s3Buckets.Buckets.length;
+      results.s3Buckets = {
+        ...results.s3Buckets,
+        Buckets: results.s3Buckets.Buckets.slice(0, awsScanMaxInventoryItems),
+        CloudPruneTruncated: true,
+        CloudPruneOriginalBucketCount: originalCount,
+      };
+      inventoryLimits.truncatedChecks.push({
+        check: "s3Buckets",
+        originalCount,
+        returnedCount: awsScanMaxInventoryItems,
+      });
+      errors.push({ check: "s3Buckets", message: `S3 bucket inventory limited to ${awsScanMaxInventoryItems} of ${originalCount} buckets.` });
     }
 
     const lifecycleJobs = s3LifecycleJobs();
@@ -1049,6 +1072,7 @@ async function performAwsScan(scanId, user, aws) {
           maxInventoryItems: awsScanMaxInventoryItems,
           maxSampledResources: awsScanMaxSampledResources,
         },
+        inventoryLimits,
         regionalErrors: errors.filter((error) => String(error.check || "").includes(":")),
         progress: 100,
         message: `AWS scan complete. Read ${totalEntities.toLocaleString()} entities.`,
