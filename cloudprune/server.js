@@ -835,6 +835,11 @@ function buildAwsAssessment(results, regions, errors) {
       s3Lifecycle: awsCheck("S3 Lifecycle", { buckets: results.s3Lifecycle || [] }, null),
       loadBalancers: awsCheck("ELBv2", mergeAwsCollection(results.loadBalancers, "LoadBalancers"), regionalCheckError(errors, "loadBalancers", regions, results.loadBalancers)),
       loadBalancerMetrics: awsCheck("CloudWatch ELB Metrics", { loadBalancers: results.loadBalancerMetrics || [] }, null),
+      albTargetMappings: awsCheck("ELBv2 Target Mapping", { targetGroups: results.albTargetMappings || [] }, null),
+      apiGatewayV2: awsCheck("API Gateway HTTP APIs", mergeAwsCollection(results.apiGatewayV2, "Items"), regionalCheckError(errors, "apiGatewayV2", regions, results.apiGatewayV2)),
+      apiGatewayRest: awsCheck("API Gateway REST APIs", mergeAwsCollection(results.apiGatewayRest, "items"), regionalCheckError(errors, "apiGatewayRest", regions, results.apiGatewayRest)),
+      ssmInstances: awsCheck("SSM Managed Instances", mergeAwsCollection(results.ssmInstances, "InstanceInformationList"), regionalCheckError(errors, "ssmInstances", regions, results.ssmInstances)),
+      ssmApplications: awsCheck("SSM Application Inventory", { instances: results.ssmApplications || [] }, null),
       computeOptimizerEc2: awsCheck("Compute Optimizer", mergeAwsCollection(results.computeOptimizerEc2, "instanceRecommendations"), regionalCheckError(errors, "computeOptimizerEc2", regions, results.computeOptimizerEc2)),
     },
     regions,
@@ -901,6 +906,10 @@ function addRegionToAwsResult(id, data, region) {
     rdsInstances: "DBInstances",
     logGroups: "logGroups",
     loadBalancers: "LoadBalancers",
+    targetGroups: "TargetGroups",
+    apiGatewayV2: "Items",
+    apiGatewayRest: "items",
+    ssmInstances: "InstanceInformationList",
     computeOptimizerEc2: "instanceRecommendations",
   };
   const collectionKey = collectionById[id];
@@ -922,6 +931,10 @@ function awsCollectionCount(id, data) {
     rdsInstances: "DBInstances",
     logGroups: "logGroups",
     loadBalancers: "LoadBalancers",
+    targetGroups: "TargetGroups",
+    apiGatewayV2: "Items",
+    apiGatewayRest: "items",
+    ssmInstances: "InstanceInformationList",
     computeOptimizerEc2: "instanceRecommendations",
   };
   const collectionKey = collectionById[id];
@@ -1184,6 +1197,10 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
       ["rdsInstances", "Reading RDS instances", (region) => ["rds", "describe-db-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{DBInstances:DBInstances[].{DBInstanceIdentifier:DBInstanceIdentifier,DBInstanceClass:DBInstanceClass,Engine:Engine,MultiAZ:MultiAZ,DBInstanceStatus:DBInstanceStatus},NextToken:NextToken}"]],
       ["logGroups", "Reading CloudWatch log groups", (region) => ["logs", "describe-log-groups", "--region", region, "--max-items", String(awsScanMaxLogGroups), "--page-size", String(Math.min(50, awsScanMaxLogGroups)), "--query", "{logGroups:logGroups[].{logGroupName:logGroupName,retentionInDays:retentionInDays,storedBytes:storedBytes},NextToken:NextToken}"]],
       ["loadBalancers", "Reading load balancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{LoadBalancers:LoadBalancers[].{LoadBalancerName:LoadBalancerName,LoadBalancerArn:LoadBalancerArn,Type:Type,State:State},NextToken:NextToken}"]],
+      ["targetGroups", "Reading ALB target groups", (region) => ["elbv2", "describe-target-groups", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{TargetGroups:TargetGroups[].{TargetGroupName:TargetGroupName,TargetGroupArn:TargetGroupArn,TargetType:TargetType,Protocol:Protocol,Port:Port,LoadBalancerArns:LoadBalancerArns},NextToken:NextToken}"]],
+      ["apiGatewayV2", "Reading API Gateway HTTP APIs", (region) => ["apigatewayv2", "get-apis", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Items:Items[].{ApiId:ApiId,Name:Name,ProtocolType:ProtocolType,ApiEndpoint:ApiEndpoint},NextToken:NextToken}"]],
+      ["apiGatewayRest", "Reading API Gateway REST APIs", (region) => ["apigateway", "get-rest-apis", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{items:items[].{id:id,name:name,endpointConfiguration:endpointConfiguration},position:position}"]],
+      ["ssmInstances", "Reading SSM managed instances", (region) => ["ssm", "describe-instance-information", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{InstanceInformationList:InstanceInformationList[].{InstanceId:InstanceId,ComputerName:ComputerName,PlatformName:PlatformName,PlatformType:PlatformType,AgentVersion:AgentVersion,PingStatus:PingStatus},NextToken:NextToken}"]],
       ["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations", (region) => ["compute-optimizer", "get-ec2-instance-recommendations", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{instanceRecommendations:instanceRecommendations[].{instanceArn:instanceArn,instanceName:instanceName,finding:finding,currentInstanceType:currentInstanceType},NextToken:NextToken}"]],
     ];
     inventoryLimits.limitedRegionalChecks = regionalChecks.map(([id]) => id);
@@ -1291,6 +1308,73 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
         activeSteps.delete(activeStep);
         await updateAwsScanProgress(scanId, completedSteps, totalSteps, runningScanMessage(activeSteps));
       }));
+    }
+    const targetGroupJobs = mergeAwsCollection(results.targetGroups, "TargetGroups").TargetGroups
+      .slice(0, awsScanMaxSampledResources)
+      .map((targetGroup) => ({ targetGroup }));
+    const ssmApplicationJobs = mergeAwsCollection(results.ssmInstances, "InstanceInformationList").InstanceInformationList
+      .filter((instance) => instance.InstanceId)
+      .slice(0, awsScanMaxSampledResources)
+      .map((instance) => ({ instance }));
+    if (targetGroupJobs.length || ssmApplicationJobs.length) {
+      totalSteps += targetGroupJobs.length + ssmApplicationJobs.length;
+      results.albTargetMappings = [];
+      results.ssmApplications = [];
+      for (const { targetGroup } of targetGroupJobs) {
+        const region = targetGroup.Region || awsScanRegion;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading ALB target health for ${targetGroup.TargetGroupName}.`);
+        const health = await runAwsJsonCheck([
+          "elbv2", "describe-target-health",
+          "--target-group-arn", targetGroup.TargetGroupArn,
+          "--region", region,
+        ], { env: scanEnv, timeoutMs: 30000 });
+        results.albTargetMappings.push({
+          name: targetGroup.TargetGroupName,
+          arn: targetGroup.TargetGroupArn,
+          targetType: targetGroup.TargetType,
+          protocol: targetGroup.Protocol,
+          port: targetGroup.Port,
+          region,
+          loadBalancerArns: targetGroup.LoadBalancerArns || [],
+          targets: health.ok ? (health.data?.TargetHealthDescriptions || []).map((item) => ({
+            id: item.Target?.Id,
+            port: item.Target?.Port,
+            state: item.TargetHealth?.State,
+            reason: item.TargetHealth?.Reason,
+          })) : [],
+          error: health.ok ? null : health.error?.message,
+        });
+        completedSteps += 1;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed ALB target health for ${targetGroup.TargetGroupName}.`);
+      }
+      for (const { instance } of ssmApplicationJobs) {
+        const region = instance.Region || awsScanRegion;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading SSM application inventory for ${instance.InstanceId}.`);
+        const applications = await runAwsJsonCheck([
+          "ssm", "list-inventory-entries",
+          "--instance-id", instance.InstanceId,
+          "--type-name", "AWS:Application",
+          "--region", region,
+          "--max-items", "50",
+        ], { env: scanEnv, timeoutMs: 30000 });
+        results.ssmApplications.push({
+          id: instance.InstanceId,
+          computerName: instance.ComputerName,
+          platformName: instance.PlatformName,
+          platformType: instance.PlatformType,
+          pingStatus: instance.PingStatus,
+          region,
+          applications: applications.ok ? (applications.data?.Entries || []).map((entry) => ({
+            name: entry.Name,
+            version: entry.Version,
+            publisher: entry.Publisher,
+            applicationType: entry.ApplicationType,
+          })) : [],
+          error: applications.ok ? null : applications.error?.message,
+        });
+        completedSteps += 1;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed SSM application inventory for ${instance.InstanceId}.`);
+      }
     }
     const ec2MetricJobs = mergeAwsReservations(results.ec2Instances).Reservations
       .flatMap((reservation) => reservation.Instances || [])

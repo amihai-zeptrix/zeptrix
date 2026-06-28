@@ -110,6 +110,42 @@ const fixtureAssessment = {
       ok: true,
       data: { loadBalancers: [{ name: "unused-alb", state: "active", metricSum: 0 }] },
     },
+    albTargetMappings: {
+      service: "ELBv2 Target Mapping",
+      ok: true,
+      data: {
+        targetGroups: [{
+          name: "apps",
+          targetType: "instance",
+          protocol: "HTTP",
+          port: 80,
+          targets: [
+            { id: "i-app-a", state: "healthy" },
+            { id: "i-app-b", state: "healthy" },
+          ],
+        }],
+      },
+    },
+    apiGatewayV2: {
+      service: "API Gateway HTTP APIs",
+      ok: true,
+      data: { Items: [{ ApiId: "api-1", Name: "public-api", ProtocolType: "HTTP" }] },
+    },
+    apiGatewayRest: {
+      service: "API Gateway REST APIs",
+      ok: true,
+      data: { items: [] },
+    },
+    ssmApplications: {
+      service: "SSM Application Inventory",
+      ok: true,
+      data: {
+        instances: [
+          { id: "i-app-a", applications: [{ name: "nodejs" }, { name: "nginx" }] },
+          { id: "i-app-b", applications: [{ name: "python3" }] },
+        ],
+      },
+    },
     natGateways: {
       service: "VPC",
       ok: true,
@@ -147,6 +183,7 @@ test("buildReport creates impact-aware AWS recommendations", () => {
   assert.ok(ids.includes("idle-load-balancers"));
   assert.ok(ids.includes("ec2-rightsizing"));
   assert.ok(ids.includes("ec2-app-consolidation"));
+  assert.ok(ids.includes("ec2-to-lambda-assessment"));
   assert.ok(ids.includes("rds-rightsizing"));
   assert.ok(ids.includes("compute-commitments"));
   assert.ok(ids.includes("storage-lifecycle"));
@@ -177,8 +214,14 @@ test("buildReport creates impact-aware AWS recommendations", () => {
   assert.equal(consolidation.statistics["Running instances"], "2");
   assert.equal(consolidation.statistics["Combined avg CPU"], "14.6% instance-capacity");
   assert.equal(consolidation.statistics["Memory usage"], "38-41%");
+  assert.equal(consolidation.statistics["Traffic mapping"], "1 ALB target group, 2 healthy EC2 targets, 1 API Gateway API");
+  assert.equal(consolidation.statistics["App inventory"], "2/2 SSM-managed instances with application inventory");
   assert.ok(consolidation.resources.includes("app-a"));
   assert.ok(consolidation.resources.includes("app-b"));
+
+  const serverless = report.findings.find((finding) => finding.id === "ec2-to-lambda-assessment");
+  assert.equal(serverless.statistics["Traffic mapping"], "1 ALB target group, 2 healthy EC2 targets, 1 API Gateway API");
+  assert.equal(serverless.statistics["App inventory"], "2/2 SSM-managed instances with application inventory");
 });
 
 test("renderMarkdown includes permission and impact sections", () => {
@@ -285,6 +328,45 @@ test("EC2 consolidation finding is shown for low average CPU even with peak spik
   assert.equal(consolidation.statistics["Peak CPU range"], "66.7-96.7%");
   assert.equal(consolidation.statistics["Memory usage"], "not available for 2/2");
   assert.match(consolidation.impactAnalysis, /CPU has spikes/);
+  assert.equal(report.findings.some((finding) => finding.id === "ec2-to-lambda-assessment"), false);
+});
+
+test("Lambda migration finding requires traffic or app inventory evidence", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [] } },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [
+              { InstanceId: "i-web", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", VpcId: "vpc-1", State: { Name: "running" } },
+              { InstanceId: "i-worker", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", VpcId: "vpc-1", State: { Name: "running" } },
+            ],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: {
+          instances: [
+            { id: "i-web", averageCpu: 1, maximumCpu: 10, memoryStatus: "missing", diskStatus: "missing" },
+            { id: "i-worker", averageCpu: 2, maximumCpu: 12, memoryStatus: "missing", diskStatus: "missing" },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.ok(report.findings.find((finding) => finding.id === "ec2-app-consolidation"));
+  assert.equal(report.findings.some((finding) => finding.id === "ec2-to-lambda-assessment"), false);
 });
 
 test("load balancer no-data is treated as idle but unavailable metrics are not", () => {

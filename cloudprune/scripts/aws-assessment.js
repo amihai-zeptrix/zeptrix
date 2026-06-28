@@ -560,7 +560,31 @@ function formatMetricRange(range, suffix = "%") {
   return `${range.min.toFixed(1).replace(/\.0$/, "")}-${range.max.toFixed(1).replace(/\.0$/, "")}${suffix}`;
 }
 
-function ec2ConsolidationCandidate(instances, metrics, ec2Cost) {
+function applicationInventorySummary(ssmApplications) {
+  const managedInstances = ssmApplications.filter((item) => item.id);
+  const withApps = managedInstances.filter((item) => (item.applications || []).length > 0);
+  const appNames = [...new Set(withApps.flatMap((item) => (item.applications || []).map((app) => app.name).filter(Boolean)))].slice(0, 8);
+  return {
+    managedInstances,
+    withApps,
+    appNames,
+    label: managedInstances.length ? `${withApps.length}/${managedInstances.length} SSM-managed instance${managedInstances.length === 1 ? "" : "s"} with application inventory` : "not available",
+  };
+}
+
+function trafficMappingSummary(albTargetMappings, apiGatewayV2, apiGatewayRest, instanceIds) {
+  const idSet = new Set(instanceIds);
+  const targetGroups = albTargetMappings.filter((group) => (group.targets || []).some((target) => idSet.has(target.id)));
+  const healthyTargets = targetGroups.flatMap((group) => group.targets || []).filter((target) => idSet.has(target.id) && target.state === "healthy").length;
+  const apiCount = apiGatewayV2.length + apiGatewayRest.length;
+  return {
+    targetGroups,
+    apiCount,
+    label: `${targetGroups.length} ALB target group${targetGroups.length === 1 ? "" : "s"}, ${healthyTargets} healthy EC2 target${healthyTargets === 1 ? "" : "s"}, ${apiCount} API Gateway API${apiCount === 1 ? "" : "s"}`,
+  };
+}
+
+function ec2ConsolidationCandidate(instances, metrics, ec2Cost, signals = {}) {
   const running = instances.filter((instance) => instance.State?.Name === "running");
   const metricsById = new Map(metrics.map((item) => [item.id, item]));
   const measured = running.map((instance) => ({ instance, metrics: metricsById.get(instance.InstanceId) })).filter((item) => item.metrics?.averageCpu != null);
@@ -582,11 +606,16 @@ function ec2ConsolidationCandidate(instances, metrics, ec2Cost) {
   if (!cpuLooksConsolidatable || !memoryLooksSafe || !diskLooksSafe || !sameVpc || !sameArchitecture) return null;
   const estimatedSavings = ec2Cost && running.length > 1 ? dollars(ec2Cost / running.length) : null;
   const confidence = missingMemory || missingDisk || hasCpuSpikes ? "low" : samePlatform ? "medium" : "low";
+  const measuredIds = measured.map((item) => item.instance.InstanceId);
+  const appInventory = applicationInventorySummary(signals.ssmApplications || []);
+  const traffic = trafficMappingSummary(signals.albTargetMappings || [], signals.apiGatewayV2 || [], signals.apiGatewayRest || [], measuredIds);
   return {
     measured,
     estimatedSavings,
     hasCpuSpikes,
     confidence,
+    appInventory,
+    traffic,
     statistics: {
       "Running instances": String(running.length),
       "Measured instances": String(measured.length),
@@ -594,7 +623,25 @@ function ec2ConsolidationCandidate(instances, metrics, ec2Cost) {
       "Peak CPU range": formatMetricRange(cpuMaximum),
       "Memory usage": missingMemory ? `not available for ${missingMemory}/${measured.length}` : formatMetricRange(memoryMaximum),
       "Disk usage": missingDisk ? `not available for ${missingDisk}/${measured.length}` : formatMetricRange(diskMaximum),
+      "Traffic mapping": traffic.label,
+      "App inventory": appInventory.label,
       "Compatibility": `${sameVpc ? "same VPC" : "different VPCs"}, ${sameArchitecture ? "same architecture" : "mixed architecture"}, ${samePlatform ? "same platform" : "mixed platform"}`,
+    },
+  };
+}
+
+function serverlessMigrationCandidate(ec2Consolidation) {
+  if (!ec2Consolidation) return null;
+  const hasEntrypointEvidence = ec2Consolidation.traffic.targetGroups.length > 0 || ec2Consolidation.traffic.apiCount > 0 || ec2Consolidation.appInventory.withApps.length > 0;
+  if (!hasEntrypointEvidence) return null;
+  return {
+    confidence: ec2Consolidation.traffic.targetGroups.length || ec2Consolidation.traffic.apiCount ? "low" : "very low",
+    statistics: {
+      "Candidate hosts": String(ec2Consolidation.measured.length),
+      "Traffic mapping": ec2Consolidation.traffic.label,
+      "App inventory": ec2Consolidation.appInventory.label,
+      "Observed CPU": ec2Consolidation.statistics["Combined avg CPU"],
+      "Peak CPU range": ec2Consolidation.statistics["Peak CPU range"],
     },
   };
 }
@@ -639,7 +686,13 @@ function buildFindings(assessment) {
   const ec2Cost = costs.find((item) => /Elastic Compute Cloud|EC2/i.test(item.service))?.amount || 0;
   const s3Cost = costs.find((item) => /Simple Storage Service|S3/i.test(item.service))?.amount || 0;
   const ec2Metrics = checks.ec2Metrics?.ok ? checks.ec2Metrics.data?.instances || [] : [];
-  const ec2Consolidation = ec2ConsolidationCandidate(instances, ec2Metrics, ec2Cost);
+  const ec2Consolidation = ec2ConsolidationCandidate(instances, ec2Metrics, ec2Cost, {
+    albTargetMappings: checks.albTargetMappings?.ok ? checks.albTargetMappings.data?.targetGroups || [] : [],
+    apiGatewayV2: checks.apiGatewayV2?.ok ? checks.apiGatewayV2.data?.Items || [] : [],
+    apiGatewayRest: checks.apiGatewayRest?.ok ? checks.apiGatewayRest.data?.items || [] : [],
+    ssmApplications: checks.ssmApplications?.ok ? checks.ssmApplications.data?.instances || [] : [],
+  });
+  const serverlessMigration = serverlessMigrationCandidate(ec2Consolidation);
   const savingsPlanSavings = estimatedSavingsFromSavingsPlans(checks.savingsPlansRecommendation);
 
   if (unattachedVolumes.length) {
@@ -749,6 +802,25 @@ function buildFindings(assessment) {
       validationWindow: "Run both apps on the target host through at least one normal traffic cycle; require CPU, memory, disk, latency, and errors to remain within agreed thresholds before terminating a source instance.",
       statistics: ec2Consolidation.statistics,
       resources: names,
+    });
+  }
+
+  if (serverlessMigration) {
+    addFinding(findings, {
+      id: "ec2-to-lambda-assessment",
+      strategy: "Serverless migration assessment",
+      title: "Assess whether low-utilization EC2 app entrypoints can move to Lambda",
+      estimatedMonthlySavings: null,
+      confidence: serverlessMigration.confidence,
+      blastRadius: "API handlers, scheduled jobs, workers, IAM roles, network access, environment variables, deployment flow, and any local filesystem/state dependencies.",
+      operationalRisk: "medium",
+      downtimeRisk: "possible during API cutover or worker migration",
+      impactAnalysis: "Traffic/app inventory signals suggest at least one low-utilization EC2 workload may be worth evaluating for Lambda, but Lambda fit depends on request duration, statelessness, package size, VPC needs, cold-start tolerance, and concurrency profile.",
+      minimizeImpact: "Start with one stateless endpoint or worker, replay production-like traffic, compare p95 duration and error rate, keep the EC2 implementation live behind a reversible route/feature flag, and only terminate EC2 capacity after steady-state validation.",
+      rollbackPath: "Route traffic back to the EC2 endpoint, disable the Lambda trigger or API integration, and keep the original instance running until the rollback window closes.",
+      validationWindow: "Measure Lambda duration, throttles, errors, cold starts, downstream latency, and total Lambda plus API Gateway/EventBridge/SQS cost for at least one normal traffic cycle.",
+      statistics: serverlessMigration.statistics,
+      resources: ec2Consolidation.measured.map(({ instance }) => instanceName(instance)),
     });
   }
 
