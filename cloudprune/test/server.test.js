@@ -408,7 +408,7 @@ test("CloudPrune AWS connected regions can be changed from the summary", async (
   assert.deepEqual(JSON.parse(saveCall.options.body).regions, ["us-east-1", "il-central-1"]);
 });
 
-test("CloudPrune AWS connected region summary counts more than two regions", async () => {
+test("CloudPrune AWS connected region summary counts from five regions", async () => {
   const session = sessionToken({
     sub: "user-1",
     email: "ami@example.com",
@@ -426,7 +426,7 @@ test("CloudPrune AWS connected region summary counts more than two regions", asy
             awsAccountId: "123456789012",
             roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
             externalId: "cloudprune-account-1",
-            regions: ["us-east-1", "il-central-1", "eu-west-1"],
+            regions: ["us-east-1", "il-central-1", "eu-west-1", "eu-central-1"],
             status: "configured",
           },
         },
@@ -437,8 +437,41 @@ test("CloudPrune AWS connected region summary counts more than two regions", asy
     return jsonResponse({});
   });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.match(app.innerHTML, /title="us-east-1, il-central-1, eu-west-1"/);
-  assert.match(app.innerHTML, /<strong>3 regions<\/strong>/);
+  assert.match(app.innerHTML, /title="us-east-1, il-central-1, eu-west-1, eu-central-1"/);
+  assert.match(app.innerHTML, /<strong>us-east-1, il-central-1, eu-west-1, eu-central-1<\/strong>/);
+});
+
+test("CloudPrune AWS connected region summary collapses five regions", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const { app } = bootCloudPruneApp("/cloudprune/", session, (url) => {
+    if (String(url).endsWith("/api/workspace")) {
+      return jsonResponse({
+        user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
+        connections: {
+          aws: {
+            provider: "aws",
+            awsAccountId: "123456789012",
+            roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+            externalId: "cloudprune-account-1",
+            regions: ["us-east-1", "il-central-1", "eu-west-1", "eu-central-1", "us-west-2"],
+            status: "configured",
+          },
+        },
+        awsScan: null,
+        awsSetup: {},
+      });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(app.innerHTML, /title="us-east-1, il-central-1, eu-west-1, eu-central-1, us-west-2"/);
+  assert.match(app.innerHTML, /<strong>5 regions<\/strong>/);
 });
 
 test("CloudPrune AWS region dropdown closes on outside click", async () => {

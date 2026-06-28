@@ -815,7 +815,7 @@ function renderEmptyWorkspace() {
 
 function renderAwsRegionPicker(context = "form") {
   const regions = selectedAwsRegions();
-  const regionSummary = context === "connection" && regions.length <= 2 ? regions.join(", ") : regions.length === 1 ? regions[0] : `${regions.length} regions`;
+  const regionSummary = context === "connection" && regions.length <= 4 ? regions.join(", ") : regions.length === 1 ? regions[0] : `${regions.length} regions`;
   const title = regions.join(", ");
   return `
     <div class="region-picker" data-region-picker="${context}">
