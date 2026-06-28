@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "checkJs": false,
+    "declaration": false,
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "exclude": [
+    "cloudprune/**",
+    "dist/**",
+    "node_modules/**",
+    "test/**"
+  ]
+}
