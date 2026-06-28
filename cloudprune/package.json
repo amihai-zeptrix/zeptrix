@@ -7,11 +7,12 @@
     "assess:aws": "node scripts/aws-assessment.js",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-build-assets.js",
     "clean": "rm -rf dist",
-    "start": "npm run build && node dist/server.js",
-    "start:dist": "node dist/server.js",
+    "dev": "npm run build && node dist/server.js",
+    "start": "node dist/server.js",
     "start:source": "node server.js",
+    "test": "npm run build && node --test",
     "typecheck": "tsc --noEmit",
-    "check": "node --check server.js && node --check cloudprune/app.js && node --check scripts/aws-assessment.js && node --check scripts/copy-build-assets.js && npm run typecheck && npm run clean && npm run build && node --test"
+    "check": "node --check server.js && node --check cloudprune/app.js && node --check scripts/aws-assessment.js && node --check scripts/copy-build-assets.js && npm run typecheck && npm run clean && npm test"
   },
   "engines": {
     "node": ">=20"
