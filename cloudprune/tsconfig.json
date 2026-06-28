@@ -14,6 +14,7 @@
   },
   "include": [
     "server.js",
+    "src/**/*.ts",
     "src/**/*.js",
     "scripts/**/*.js",
     "test/**/*.js"
