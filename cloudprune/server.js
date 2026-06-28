@@ -110,7 +110,7 @@ async function googleProfileFromCode(code) {
     }),
   });
   if (!tokenResponse.ok) throw new Error("Google token exchange failed.");
-  const token = await tokenResponse.json();
+  const token = /** @type {{ id_token?: string }} */ (await tokenResponse.json());
   const profileResponse = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token.id_token || "")}`);
   if (!profileResponse.ok) throw new Error("Google identity verification failed.");
   const profile = await profileResponse.json();

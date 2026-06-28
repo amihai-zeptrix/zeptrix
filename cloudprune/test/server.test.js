@@ -10,7 +10,9 @@ const { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectU
 async function withServer(callback) {
   server.listen(0);
   await once(server, "listening");
-  const { port } = server.address();
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected local test server to listen on a TCP port.");
+  const { port } = address;
   try {
     await callback(`http://127.0.0.1:${port}`);
   } finally {
@@ -209,7 +211,7 @@ test("CloudPrune AWS role submit derives role ARN from account ID", async () => 
     companyName: "Zeptrix",
     exp: Date.now() + 10000,
   });
-  let calls;
+  let calls = [];
   renderCloudPruneApp("/cloudprune/", session, ({ fetchCalls, listeners }) => {
     calls = fetchCalls;
     const form = {
@@ -250,7 +252,7 @@ test("CloudPrune AWS role submit refreshes derived ARN when account ID changes",
     companyName: "Zeptrix",
     exp: Date.now() + 10000,
   });
-  let calls;
+  let calls = [];
   renderCloudPruneApp("/cloudprune/", session, ({ fetchCalls, listeners }) => {
     calls = fetchCalls;
     const form = {
