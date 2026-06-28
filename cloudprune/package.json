@@ -9,7 +9,6 @@
     "clean": "rm -rf dist",
     "dev": "npm run build && node dist/server.js",
     "start": "node dist/server.js",
-    "start:source": "node server.js",
     "test": "npm run build && node --test",
     "typecheck": "tsc --noEmit",
     "check": "node --check server.js && node --check cloudprune/app.js && node --check scripts/aws-assessment.js && node --check scripts/copy-build-assets.js && npm run typecheck && npm run clean && npm test"
