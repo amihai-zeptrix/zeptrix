@@ -866,6 +866,39 @@ test("AWS scan database writes serialize JSONB payloads", () => {
   assert.doesNotMatch(source, /\[scanId, \[\{ check: "scan", message: error\.message \}\], \{ progress: 100/);
 });
 
+test("AWS scan source collects traffic mapping and app inventory signals", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../server.js"), "utf8");
+
+  assert.match(source, /\["targetGroups", "Reading ALB target groups"/);
+  assert.match(source, /"elbv2", "describe-target-groups"/);
+  assert.match(source, /"elbv2", "describe-target-health"/);
+  assert.match(source, /\["apiGatewayV2", "Reading API Gateway HTTP APIs"/);
+  assert.match(source, /"apigatewayv2", "get-apis"/);
+  assert.match(source, /\["apiGatewayRest", "Reading API Gateway REST APIs"/);
+  assert.match(source, /"apigateway", "get-rest-apis"/);
+  assert.match(source, /\["ssmInstances", "Reading SSM managed instances"/);
+  assert.match(source, /"ssm", "describe-instance-information"/);
+  assert.match(source, /"ssm", "list-inventory-entries"/);
+  assert.match(source, /"AWS:Application"/);
+});
+
+test("AWS assessment exposes traffic mapping and app inventory checks", () => {
+  const assessment = buildAwsAssessment({
+    targetGroups: [{ TargetGroups: [{ TargetGroupName: "apps", TargetGroupArn: "tg-1", Region: "us-east-1" }] }],
+    apiGatewayV2: [{ Items: [{ ApiId: "api-1", Name: "http-api", Region: "us-east-1" }] }],
+    apiGatewayRest: [{ items: [{ id: "rest-1", name: "rest-api", Region: "us-east-1" }] }],
+    ssmInstances: [{ InstanceInformationList: [{ InstanceId: "i-1", ComputerName: "app", Region: "us-east-1" }] }],
+    albTargetMappings: [{ name: "apps", targets: [{ id: "i-1", state: "healthy" }] }],
+    ssmApplications: [{ id: "i-1", applications: [{ name: "nodejs" }] }],
+  }, ["us-east-1"], []);
+
+  assert.deepEqual(assessment.checks.albTargetMappings.data.targetGroups, [{ name: "apps", targets: [{ id: "i-1", state: "healthy" }] }]);
+  assert.equal(assessment.checks.apiGatewayV2.data.Items[0].ApiId, "api-1");
+  assert.equal(assessment.checks.apiGatewayRest.data.items[0].id, "rest-1");
+  assert.equal(assessment.checks.ssmInstances.data.InstanceInformationList[0].InstanceId, "i-1");
+  assert.equal(assessment.checks.ssmApplications.data.instances[0].applications[0].name, "nodejs");
+});
+
 test("AWS assessment marks regional services failed when every region fails", () => {
   const assessment = buildAwsAssessment({}, ["us-east-1", "us-west-2"], [
     { check: "ec2Instances:us-east-1", message: "AccessDenied" },
