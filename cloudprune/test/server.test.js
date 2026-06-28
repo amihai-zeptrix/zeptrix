@@ -188,7 +188,8 @@ test("CloudPrune empty workspace opens AWS assume-role setup", () => {
   assert.match(workspace, /External ID/);
   assert.match(workspace, /Read-only cost, inventory, and utilization signals/);
   assert.match(workspace, /AWS account ID/);
-  assert.match(workspace, /Regions to scan/);
+  assert.match(workspace, /Region\(s\)/);
+  assert.doesNotMatch(workspace, /Regions to scan/);
   assert.match(workspace, /us-east-1/);
   assert.match(workspace, /AccountId/);
   assert.match(workspace, /placeholder="123456789012"/);
@@ -312,6 +313,7 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
           errors: [],
           progress: 100,
           message: "AWS scan complete. Read 5 entities.",
+          regions: ["us-west-2"],
         },
         awsSetup: {},
       });
@@ -323,11 +325,9 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(app.innerHTML, />Scan again<\/button>/);
-  assert.match(app.innerHTML, /<span>Region\(s\)<\/span><div class="connection-region-control">/);
-  assert.match(app.innerHTML, /data-region-picker="connection"/);
-  assert.match(app.innerHTML, /title="us-east-1, il-central-1"/);
-  assert.match(app.innerHTML, /<strong>us-east-1, il-central-1<\/strong>/);
-  assert.doesNotMatch(app.innerHTML, /<span>Region\(s\)<\/span><strong>/);
+  assert.match(app.innerHTML, />Edit scan configuration<\/button>/);
+  assert.doesNotMatch(app.innerHTML, /<span>Region\(s\)<\/span><div class="connection-region-control">/);
+  assert.match(app.innerHTML, /<span>Region\(s\)<\/span><code title="us-west-2">us-west-2<\/code>/);
 
   for (const handler of listeners.click || []) handler({
     target: {
@@ -349,7 +349,7 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   assert.equal(scanCall.options.headers["content-type"], undefined);
 });
 
-test("CloudPrune AWS connected regions can be changed from the summary", async () => {
+test("CloudPrune AWS setup regions can be changed before saving role", async () => {
   const session = sessionToken({
     sub: "user-1",
     email: "ami@example.com",
@@ -392,12 +392,41 @@ test("CloudPrune AWS connected regions can be changed from the summary", async (
   });
   await new Promise((resolve) => setImmediate(resolve));
 
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='connect']" ? { disabled: false } : null;
+      },
+    },
+  });
   for (const handler of listeners.change || []) handler({
     target: {
       checked: true,
-      dataset: { regionChoice: "il-central-1", regionContext: "connection" },
+      dataset: { regionChoice: "il-central-1" },
       closest(selector) {
         return selector === "[data-region-choice]" ? this : null;
+      },
+    },
+  });
+  const form = {
+    dataset: { connectForm: "aws" },
+    elements: {
+      awsAccountId: { value: "123456789012" },
+      roleArn: { value: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole" },
+      externalId: { value: "cloudprune-account-1" },
+    },
+    querySelector(selector) {
+      if (selector === "[name='awsAccountId']") return this.elements.awsAccountId;
+      if (selector === "[name='roleArn']") return this.elements.roleArn;
+      if (selector === "[name='externalId']") return this.elements.externalId;
+      return null;
+    },
+  };
+  for (const handler of listeners.submit || []) handler({
+    preventDefault() {},
+    target: {
+      closest(selector) {
+        return selector === "[data-connect-form='aws']" ? form : null;
       },
     },
   });
@@ -408,7 +437,7 @@ test("CloudPrune AWS connected regions can be changed from the summary", async (
   assert.deepEqual(JSON.parse(saveCall.options.body).regions, ["us-east-1", "il-central-1"]);
 });
 
-test("CloudPrune AWS connected region summary counts from five regions", async () => {
+test("CloudPrune AWS setup region summary counts from five regions", async () => {
   const session = sessionToken({
     sub: "user-1",
     email: "ami@example.com",
@@ -416,7 +445,7 @@ test("CloudPrune AWS connected region summary counts from five regions", async (
     companyName: "Zeptrix",
     exp: Date.now() + 10000,
   });
-  const { app } = bootCloudPruneApp("/cloudprune/", session, (url) => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/", session, (url) => {
     if (String(url).endsWith("/api/workspace")) {
       return jsonResponse({
         user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
@@ -437,11 +466,40 @@ test("CloudPrune AWS connected region summary counts from five regions", async (
     return jsonResponse({});
   });
   await new Promise((resolve) => setImmediate(resolve));
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='connect']" ? { disabled: false } : null;
+      },
+    },
+  });
+  assert.match(app.innerHTML, /class="region-field"/);
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='connect']" ? { disabled: false } : null;
+      },
+    },
+  });
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='connect']" ? { disabled: false } : null;
+      },
+    },
+  });
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='connect']" ? { disabled: false } : null;
+      },
+    },
+  });
   assert.match(app.innerHTML, /title="us-east-1, il-central-1, eu-west-1, eu-central-1"/);
   assert.match(app.innerHTML, /<strong>us-east-1, il-central-1, eu-west-1, eu-central-1<\/strong>/);
 });
 
-test("CloudPrune AWS connected region summary collapses five regions", async () => {
+test("CloudPrune AWS setup region summary collapses five regions", async () => {
   const session = sessionToken({
     sub: "user-1",
     email: "ami@example.com",
@@ -449,7 +507,7 @@ test("CloudPrune AWS connected region summary collapses five regions", async () 
     companyName: "Zeptrix",
     exp: Date.now() + 10000,
   });
-  const { app } = bootCloudPruneApp("/cloudprune/", session, (url) => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/", session, (url) => {
     if (String(url).endsWith("/api/workspace")) {
       return jsonResponse({
         user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
@@ -470,6 +528,13 @@ test("CloudPrune AWS connected region summary collapses five regions", async () 
     return jsonResponse({});
   });
   await new Promise((resolve) => setImmediate(resolve));
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='connect']" ? { disabled: false } : null;
+      },
+    },
+  });
   assert.match(app.innerHTML, /title="us-east-1, il-central-1, eu-west-1, eu-central-1, us-west-2"/);
   assert.match(app.innerHTML, /<strong>5 regions<\/strong>/);
 });
@@ -503,6 +568,14 @@ test("CloudPrune AWS region dropdown closes on outside click", async () => {
     return jsonResponse({});
   });
   await new Promise((resolve) => setImmediate(resolve));
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='connect']" ? { disabled: false } : null;
+      },
+    },
+  });
+  assert.match(app.innerHTML, /class="region-field"/);
   for (const handler of listeners.click || []) handler({
     target: {
       closest(selector) {
