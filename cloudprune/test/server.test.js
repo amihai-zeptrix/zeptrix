@@ -328,7 +328,9 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   });
 
   assert.match(app.innerHTML, /<button data-action="scan-aws" disabled>Scanning\.\.\.<\/button>/);
-  assert.match(app.innerHTML, /style="width:3%"/);
+  assert.match(app.innerHTML, /role="progressbar"/);
+  assert.match(app.innerHTML, /style="--scan-progress:5%"/);
+  assert.match(app.innerHTML, /<strong>0%<\/strong>/);
   assert.doesNotMatch(app.innerHTML, />Scan again<\/button>/);
 });
 

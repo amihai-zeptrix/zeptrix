@@ -546,7 +546,8 @@ function renderAwsScanPanel(awsConnection) {
   const active = state.awsScan.status === "scanning" || scan?.status === "running";
   const counts = scan?.counts || {};
   const progress = active ? Number(scan?.progress ?? state.awsScan.progress ?? 0) : scan ? 100 : 0;
-  const progressWidth = active ? Math.max(3, progress) : progress;
+  const clampedProgress = Math.max(0, Math.min(100, progress));
+  const progressWidth = active ? Math.max(5, clampedProgress) : clampedProgress;
   const countRows = [
     ["EC2 instances", counts.ec2Instances],
     ["Lambda functions", counts.lambdas],
@@ -565,8 +566,11 @@ function renderAwsScanPanel(awsConnection) {
         <h3>${active ? "Scanning account..." : scan ? scan.status === "failed" ? "Latest scan failed" : "Latest scan complete" : "Run first inventory scan"}</h3>
         <p>${active ? escapeHtml(scan?.message || state.awsScan.message || "AWS scan is running.") : scan ? escapeHtml(scan.message || `AWS scan complete. Read ${scanTotalEntities(scan).toLocaleString()} entities from AWS account ${scan.awsAccountId || awsConnection.awsAccountId}.`) : "Collect inventory counts and current-month spend using the saved read-only role."}</p>
       </div>
-      <div class="scan-progress" aria-label="AWS scan progress">
-        <span style="width:${Math.max(0, Math.min(100, progressWidth))}%"></span>
+      <div class="scan-progress-row">
+        <div class="scan-progress ${active ? "active" : ""}" aria-label="AWS scan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(clampedProgress)}" role="progressbar" style="--scan-progress:${progressWidth}%">
+          <span></span>
+        </div>
+        <strong>${Math.round(clampedProgress)}%</strong>
       </div>
       <div class="scan-actions">
         <button data-action="scan-aws" ${active ? "disabled" : ""}>${active ? "Scanning..." : scan ? "Scan again" : "Scan AWS"}</button>
