@@ -158,6 +158,7 @@ test("compiled server serves app shell and copied assets", async () => {
     const script = await fetch(`${baseUrl}/cloudprune/app.js`);
     assert.equal(script.status, 200);
     assert.match(script.headers.get("content-type"), /application\/javascript/);
+    assert.match(await script.text(), /CloudPrune/);
   });
 });
 
