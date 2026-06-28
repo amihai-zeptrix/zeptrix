@@ -36,7 +36,6 @@ const {
   googleClientSecret,
   googleRedirectUri,
   port,
-  publicRoot,
   validateRuntimeConfig,
 } = require("./src/config");
 const {
