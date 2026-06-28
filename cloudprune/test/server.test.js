@@ -5,7 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const { awsScanCounts, buildAwsAssessment, costFromCostExplorer } = require("../src/aws-scan-report");
-const { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
+const { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require(path.join(__dirname, "../dist/server.js"));
 
 async function withHttpServer(testServer, callback) {
   testServer.listen(0);
@@ -145,11 +145,7 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
 });
 
 test("compiled server serves app shell and copied assets", async () => {
-  const builtServerPath = path.join(__dirname, "../dist/server.js");
-  if (!fs.existsSync(builtServerPath)) throw new Error("Run npm run build before this test.");
-  const { server: builtServer } = require(builtServerPath);
-
-  await withHttpServer(builtServer, async (baseUrl) => {
+  await withHttpServer(server, async (baseUrl) => {
     const root = await fetch(`${baseUrl}/cloudprune/`);
     assert.equal(root.status, 200);
     assert.match(root.headers.get("content-type"), /text\/html/);
@@ -961,10 +957,7 @@ test("returns 400 for malformed percent encoding", async () => {
 });
 
 test("compiled server can resolve copied CloudPrune assets", () => {
-  const builtServerPath = path.join(__dirname, "../dist/server.js");
-  if (!fs.existsSync(builtServerPath)) throw new Error("Run npm run build before this test.");
-  const { staticFilePathForUrlPath: builtStaticFilePathForUrlPath } = require(builtServerPath);
-  const appPath = builtStaticFilePathForUrlPath("/cloudprune/app.js");
+  const appPath = staticFilePathForUrlPath("/cloudprune/app.js");
   assert.match(appPath, /dist[/\\]cloudprune[/\\]app\.js$/);
   assert.equal(fs.existsSync(appPath), true);
 });
