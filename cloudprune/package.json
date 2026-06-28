@@ -6,12 +6,17 @@
   "scripts": {
     "assess:aws": "node scripts/aws-assessment.js",
     "start": "node server.js",
-    "check": "node --check server.js && node --check cloudprune/app.js && node --check scripts/aws-assessment.js && node --test"
+    "typecheck": "tsc --noEmit",
+    "check": "node --check server.js && node --check cloudprune/app.js && node --check scripts/aws-assessment.js && npm run typecheck && node --test"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "typescript": "^6.0.3"
   }
 }
