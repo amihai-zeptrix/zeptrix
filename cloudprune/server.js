@@ -607,6 +607,108 @@ function monthStartEnd() {
   };
 }
 
+function s3MetricWindow() {
+  const end = new Date();
+  const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+  return {
+    startTime: start.toISOString(),
+    endTime: end.toISOString(),
+  };
+}
+
+function normalizeS3BucketRegion(locationConstraint) {
+  if (!locationConstraint || locationConstraint === "None") return "us-east-1";
+  if (locationConstraint === "EU") return "eu-west-1";
+  return locationConstraint;
+}
+
+function latestMetricDataValue(result) {
+  const timestamps = result?.Timestamps || [];
+  const values = result?.Values || [];
+  let latestIndex = -1;
+  let latestTime = 0;
+  for (let index = 0; index < timestamps.length; index += 1) {
+    if (values[index] == null) continue;
+    const time = Date.parse(timestamps[index]);
+    if (Number.isFinite(time) && time >= latestTime) {
+      latestTime = time;
+      latestIndex = index;
+    }
+  }
+  return latestIndex === -1 ? null : Number(values[latestIndex]);
+}
+
+function s3StorageMetricQueries(bucketName) {
+  const storageTypes = [
+    "StandardStorage",
+    "StandardIAStorage",
+    "OneZoneIAStorage",
+    "GlacierStorage",
+    "DeepArchiveStorage",
+    "IntelligentTieringFAStorage",
+    "IntelligentTieringIAStorage",
+    "IntelligentTieringAAStorage",
+    "IntelligentTieringAIAStorage",
+    "IntelligentTieringDAAStorage",
+  ];
+  const sizeQueries = storageTypes.map((storageType, index) => ({
+    Id: `s${index}`,
+    Label: storageType,
+    MetricStat: {
+      Metric: {
+        Namespace: "AWS/S3",
+        MetricName: "BucketSizeBytes",
+        Dimensions: [
+          { Name: "BucketName", Value: bucketName },
+          { Name: "StorageType", Value: storageType },
+        ],
+      },
+      Period: 86400,
+      Stat: "Average",
+    },
+    ReturnData: true,
+  }));
+  return [
+    ...sizeQueries,
+    {
+      Id: "objects",
+      Label: "NumberOfObjects",
+      MetricStat: {
+        Metric: {
+          Namespace: "AWS/S3",
+          MetricName: "NumberOfObjects",
+          Dimensions: [
+            { Name: "BucketName", Value: bucketName },
+            { Name: "StorageType", Value: "AllStorageTypes" },
+          ],
+        },
+        Period: 86400,
+        Stat: "Average",
+      },
+      ReturnData: true,
+    },
+  ];
+}
+
+function s3StorageStatsFromMetricData(data) {
+  const results = data?.MetricDataResults || [];
+  const byLabel = Object.fromEntries(results.map((result) => [result.Label, latestMetricDataValue(result)]));
+  const storageBreakdown = Object.fromEntries(Object.entries(byLabel)
+    .filter(([label, value]) => label !== "NumberOfObjects" && value != null && value > 0)
+    .map(([label, value]) => [label, Math.round(value)]));
+  const totalStorageBytes = Object.values(storageBreakdown).reduce((total, value) => total + value, 0);
+  const coldStorageBytes = Object.entries(storageBreakdown)
+    .filter(([label]) => label !== "StandardStorage" && label !== "IntelligentTieringFAStorage")
+    .reduce((total, [, value]) => total + value, 0);
+  return {
+    objectCount: byLabel.NumberOfObjects == null ? null : Math.round(byLabel.NumberOfObjects),
+    totalStorageBytes,
+    coldStorageBytes,
+    coldStoragePercent: totalStorageBytes ? Math.round((coldStorageBytes / totalStorageBytes) * 1000) / 10 : null,
+    storageBreakdown,
+  };
+}
+
 function costFromCostExplorer(data) {
   const total = data?.ResultsByTime?.[0]?.Total?.UnblendedCost || {};
   return {
@@ -716,6 +818,7 @@ function publicRecommendation(finding) {
     minimizeImpact: finding.minimizeImpact,
     rollbackPath: finding.rollbackPath,
     validationWindow: finding.validationWindow,
+    statistics: finding.statistics || null,
     resources: finding.resources || [],
   };
 }
@@ -1073,11 +1176,33 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
       for (const job of lifecycleJobs) {
         await updateAwsScanProgress(scanId, completedSteps, totalSteps, `${job.label}.`);
         const lifecycle = await runAwsJsonCheck(job.command, { env: scanEnv, timeoutMs: 45000 });
+        const lifecycleStatus = lifecycle.ok ? (Array.isArray(lifecycle.data?.Rules) && lifecycle.data.Rules.length ? "configured" : "missing") : /NoSuchLifecycleConfiguration/i.test(lifecycle.error?.message || "") ? "missing" : "unknown";
+        let storageStats = null;
+        let bucketRegion = null;
+        let storageStatsError = null;
+        if (lifecycleStatus === "missing") {
+          await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading S3 storage metrics for ${job.bucket}.`);
+          const location = await runAwsJsonCheck(["s3api", "get-bucket-location", "--bucket", job.bucket], { env: scanEnv, timeoutMs: 30000 });
+          bucketRegion = location.ok ? normalizeS3BucketRegion(location.data?.LocationConstraint) : awsScanRegion;
+          const { startTime, endTime } = s3MetricWindow();
+          const metrics = await runAwsJsonCheck([
+            "cloudwatch", "get-metric-data",
+            "--region", bucketRegion,
+            "--start-time", startTime,
+            "--end-time", endTime,
+            "--metric-data-queries", JSON.stringify(s3StorageMetricQueries(job.bucket)),
+          ], { env: scanEnv, timeoutMs: 45000 });
+          if (metrics.ok) storageStats = s3StorageStatsFromMetricData(metrics.data);
+          else storageStatsError = metrics.error?.message || "Unable to read S3 storage metrics.";
+        }
         results.s3Lifecycle.push({
           name: job.bucket,
-          lifecycleStatus: lifecycle.ok ? (Array.isArray(lifecycle.data?.Rules) && lifecycle.data.Rules.length ? "configured" : "missing") : /NoSuchLifecycleConfiguration/i.test(lifecycle.error?.message || "") ? "missing" : "unknown",
+          lifecycleStatus,
           lifecycleConfigured: lifecycle.ok ? Array.isArray(lifecycle.data?.Rules) && lifecycle.data.Rules.length > 0 : false,
           lifecycleError: lifecycle.ok ? null : lifecycle.error?.message,
+          region: bucketRegion,
+          storageStats,
+          storageStatsError,
         });
         completedSteps += 1;
         await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed ${scanStepLabel(job.label).toLowerCase()}.`);

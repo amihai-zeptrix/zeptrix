@@ -388,6 +388,31 @@ button:hover { background: #1e4d43; }
 .rec-icon.kubernetes { background: #6956dc; }
 .rec-icon.data { background: #d94d83; }
 .rec-main p { margin-top: 7px; color: var(--muted); }
+.rec-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.rec-stats div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fbf9;
+}
+.rec-stats dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.rec-stats dd {
+  margin-top: 3px;
+  color: var(--ink);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
 .cloud-pill {
   display: inline-flex;
   margin-bottom: 8px;

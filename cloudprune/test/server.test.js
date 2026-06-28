@@ -635,6 +635,10 @@ test("CloudPrune recommendations route renders saved scan recommendations", asyn
             status: "Review",
             minimizeImpact: "Snapshot first and delete in small batches.",
             rollbackPath: "Create a new EBS volume from the retained snapshot.",
+            statistics: {
+              "Measured data": "210 GB",
+              "Cold/old-tier S3": "80 GB (40% of measured S3)",
+            },
           }],
         },
         awsSetup: {},
@@ -646,6 +650,9 @@ test("CloudPrune recommendations route renders saved scan recommendations", asyn
 
   assert.match(app.innerHTML, /Prioritized recommendations/);
   assert.match(app.innerHTML, /Review 1 unattached EBS volume/);
+  assert.match(app.innerHTML, /Measured data/);
+  assert.match(app.innerHTML, /210 GB/);
+  assert.match(app.innerHTML, /Cold\/old-tier S3/);
   assert.match(app.innerHTML, /Snapshot first and delete in small batches/);
   assert.match(app.innerHTML, /Create a new EBS volume from the retained snapshot/);
   assert.doesNotMatch(app.innerHTML, /Move steady EC2 baseline into Savings Plans/);

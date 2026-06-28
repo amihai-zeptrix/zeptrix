@@ -57,12 +57,25 @@ const fixtureAssessment = {
     logGroups: {
       service: "CloudWatch Logs",
       ok: true,
-      data: { logGroups: [{ logGroupName: "/aws/lambda/no-retention" }] },
+      data: { logGroups: [{ logGroupName: "/aws/lambda/no-retention", storedBytes: 10 * 1024 ** 3 }] },
     },
     s3Lifecycle: {
       service: "S3 Lifecycle",
       ok: true,
-      data: { buckets: [{ name: "logs-bucket", lifecycleStatus: "missing", lifecycleConfigured: false, versioningStatus: "Enabled" }] },
+      data: {
+        buckets: [{
+          name: "logs-bucket",
+          lifecycleStatus: "missing",
+          lifecycleConfigured: false,
+          versioningStatus: "Enabled",
+          storageStats: {
+            objectCount: 123456,
+            totalStorageBytes: 200 * 1024 ** 3,
+            coldStorageBytes: 80 * 1024 ** 3,
+            coldStoragePercent: 40,
+          },
+        }],
+      },
     },
     computeOptimizerEc2: {
       service: "Compute Optimizer",
@@ -132,6 +145,10 @@ test("buildReport creates impact-aware AWS recommendations", () => {
 
   const storage = report.findings.find((finding) => finding.id === "storage-lifecycle");
   assert.ok(storage.resources.includes("s3://logs-bucket"));
+  assert.equal(storage.statistics["Measured data"], "210 GB");
+  assert.equal(storage.statistics["Cold/old-tier S3"], "80 GB (40% of measured S3)");
+  assert.equal(storage.statistics["S3 objects"], "123,456");
+  assert.match(storage.impactAnalysis, /Observed 210 GB across sampled storage targets/);
 
   const ec2 = report.findings.find((finding) => finding.id === "ec2-rightsizing");
   assert.ok(ec2.resources.includes("arn:aws:ec2:us-east-1:123456789012:instance/i-over"));

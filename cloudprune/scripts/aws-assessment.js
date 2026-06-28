@@ -503,6 +503,47 @@ function resourceSample(items, key, limit = 20) {
   return items.slice(0, limit).map((item) => (typeof key === "function" ? key(item) : item[key])).filter(Boolean);
 }
 
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!value) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  let amount = value;
+  let unitIndex = 0;
+  while (amount >= 1024 && unitIndex < units.length - 1) {
+    amount /= 1024;
+    unitIndex += 1;
+  }
+  const precision = amount >= 100 || unitIndex === 0 ? 0 : amount >= 10 ? 1 : 2;
+  return `${amount.toFixed(precision).replace(/\.0$/, "")} ${units[unitIndex]}`;
+}
+
+function formatPercent(value) {
+  if (value == null || !Number.isFinite(Number(value))) return "n/a";
+  return `${Number(value).toFixed(Number(value) % 1 === 0 ? 0 : 1)}%`;
+}
+
+function storageLifecycleStatistics(infiniteLogGroups, bucketsWithoutLifecycle) {
+  const logBytes = infiniteLogGroups.reduce((total, group) => total + Number(group.storedBytes || 0), 0);
+  const bucketStats = bucketsWithoutLifecycle.map((bucket) => bucket.storageStats || {}).filter((stats) => Number(stats.totalStorageBytes || 0) > 0 || Number(stats.objectCount || 0) > 0);
+  const s3Bytes = bucketStats.reduce((total, stats) => total + Number(stats.totalStorageBytes || 0), 0);
+  const coldS3Bytes = bucketStats.reduce((total, stats) => total + Number(stats.coldStorageBytes || 0), 0);
+  const objectCount = bucketStats.reduce((total, stats) => total + Number(stats.objectCount || 0), 0);
+  const totalBytes = logBytes + s3Bytes;
+  const coldS3Percent = s3Bytes ? (coldS3Bytes / s3Bytes) * 100 : null;
+  const infiniteLogPercent = totalBytes ? (logBytes / totalBytes) * 100 : null;
+  const statistics = {
+    "Measured data": formatBytes(totalBytes),
+    "S3 measured": formatBytes(s3Bytes),
+    "Cold/old-tier S3": `${formatBytes(coldS3Bytes)}${coldS3Percent == null ? "" : ` (${formatPercent(coldS3Percent)} of measured S3)`}`,
+    "S3 objects": objectCount ? objectCount.toLocaleString() : "n/a",
+    "Infinite-retention logs": `${formatBytes(logBytes)}${infiniteLogPercent == null ? "" : ` (${formatPercent(infiniteLogPercent)} of measured data)`}`,
+  };
+  const sentence = totalBytes
+    ? `Observed ${formatBytes(totalBytes)} across sampled storage targets: ${formatBytes(s3Bytes)} in measured S3 buckets and ${formatBytes(logBytes)} in infinite-retention CloudWatch log groups. Cold/old-tier S3 data is ${formatBytes(coldS3Bytes)}${coldS3Percent == null ? "" : ` (${formatPercent(coldS3Percent)} of measured S3)`}.`
+    : "Storage quantity metrics were not available for the sampled targets; the finding is based on missing lifecycle/retention policies and cost signals.";
+  return { statistics, sentence };
+}
+
 function addFinding(findings, finding) {
   findings.push({
     confidence: "medium",
@@ -671,6 +712,7 @@ function buildFindings(assessment) {
   }
 
   if (infiniteLogGroups.length || bucketsWithoutLifecycle.length || s3Cost > Math.max(50, totalCost * 0.1)) {
+    const storageStats = storageLifecycleStatistics(infiniteLogGroups, bucketsWithoutLifecycle);
     addFinding(findings, {
       id: "storage-lifecycle",
       strategy: "Storage lifecycle optimization",
@@ -680,9 +722,10 @@ function buildFindings(assessment) {
       blastRadius: "Log groups and storage buckets selected for lifecycle policy.",
       operationalRisk: "low",
       downtimeRisk: "none, but retrieval latency can increase for archive tiers",
-      impactAnalysis: "Retention changes can remove historical logs or move objects to slower retrieval classes, affecting incident response and analytics.",
+      impactAnalysis: `${storageStats.sentence} Retention changes can remove historical logs or move objects to slower retrieval classes, affecting incident response and analytics.`,
       minimizeImpact: "Start with transition policies before deletion, preserve compliance-tagged data, use longer retention for production logs, and avoid Deep Archive without explicit restore-time approval.",
       rollbackPath: "Increase retention going forward; restore archived objects when needed, subject to storage class restore latency.",
+      statistics: storageStats.statistics,
       resources: [
         ...resourceSample(infiniteLogGroups, "logGroupName", 10),
         ...resourceSample(bucketsWithoutLifecycle, (bucket) => `s3://${bucket.name}`, 10),

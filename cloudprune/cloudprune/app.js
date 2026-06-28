@@ -596,6 +596,7 @@ function renderRecommendations() {
         <span class="cloud-pill">${vendorBadge(item.cloud)}</span>
         <h3>${escapeHtml(item.title)}</h3>
         <p>${escapeHtml(item.detail || item.impactAnalysis || "")}</p>
+        ${renderRecommendationStats(item.statistics)}
         ${item.minimizeImpact ? `<p><strong>Minimize impact:</strong> ${escapeHtml(item.minimizeImpact)}</p>` : ""}
         ${item.rollbackPath ? `<p><strong>Rollback:</strong> ${escapeHtml(item.rollbackPath)}</p>` : ""}
       </div>
@@ -608,6 +609,21 @@ function renderRecommendations() {
       </div>
     </article>
   `).join("") || `<div class="empty">${appRoute() === "demo" ? "No recommendations match this cloud." : "No recommendations yet. Run an AWS scan to generate cost-saving findings."}</div>`;
+}
+
+function renderRecommendationStats(statistics) {
+  const entries = Object.entries(statistics || {}).filter(([, value]) => value != null && value !== "");
+  if (!entries.length) return "";
+  return `
+    <dl class="rec-stats">
+      ${entries.map(([label, value]) => `
+        <div>
+          <dt>${escapeHtml(label)}</dt>
+          <dd>${escapeHtml(value)}</dd>
+        </div>
+      `).join("")}
+    </dl>
+  `;
 }
 
 function renderAnomalies() {
