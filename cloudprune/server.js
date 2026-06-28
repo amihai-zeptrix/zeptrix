@@ -882,6 +882,18 @@ async function updateAwsScanProgress(scanId, completedSteps, totalSteps, message
   );
 }
 
+function scanStepLabel(label, region) {
+  const step = String(label || "").replace(/^Reading /, "").replace(/\.$/, "");
+  return region ? `${step} in ${region}` : step;
+}
+
+function runningScanMessage(activeSteps) {
+  const steps = Array.from(activeSteps);
+  if (!steps.length) return "Finishing current scan batch.";
+  const visibleSteps = steps.slice(0, 3).join("; ");
+  return `Running ${visibleSteps}${steps.length > 3 ? ` and ${steps.length - 3} more` : ""}.`;
+}
+
 async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegion]) {
   const sessionName = `CloudPruneScan-${Date.now()}`;
   const results = {};
@@ -1013,6 +1025,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
       results.s3Lifecycle = [];
       await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading lifecycle policies for ${lifecycleJobs.length} S3 bucket${lifecycleJobs.length === 1 ? "" : "s"}.`);
       for (const job of lifecycleJobs) {
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `${job.label}.`);
         const lifecycle = await runAwsJsonCheck(job.command, { env: scanEnv, timeoutMs: 45000 });
         results.s3Lifecycle.push({
           name: job.bucket,
@@ -1021,16 +1034,17 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
           lifecycleError: lifecycle.ok ? null : lifecycle.error?.message,
         });
         completedSteps += 1;
-        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `${job.label}.`);
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed ${scanStepLabel(job.label).toLowerCase()}.`);
       }
     }
 
     const concurrency = 5;
     for (let index = 0; index < jobs.length; index += concurrency) {
       const batch = jobs.slice(index, index + concurrency);
-      const batchLabel = batch.map(({ region, label }) => `${label.replace(/^Reading /, "")} in ${region}`).join("; ");
-      await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Starting ${batchLabel}.`);
+      const activeSteps = new Set(batch.map(({ region, label }) => scanStepLabel(label, region)));
+      await updateAwsScanProgress(scanId, completedSteps, totalSteps, runningScanMessage(activeSteps));
       await Promise.all(batch.map(async ({ region, id, label, command }) => {
+        const activeStep = scanStepLabel(label, region);
         try {
           const data = await runAwsJson(command(region), { env: scanEnv, timeoutMs: 45000 });
           inventoryLimits.regionalResults.push({
@@ -1051,7 +1065,8 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
           errors.push({ check: `${id}:${region}`, message: error.message });
         }
         completedSteps += 1;
-        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed ${label.replace(/^Reading /, "").toLowerCase()} in ${region}.`);
+        activeSteps.delete(activeStep);
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, runningScanMessage(activeSteps));
       }));
     }
     const rdsMetricJobs = mergeAwsCollection(results.rdsInstances, "DBInstances").DBInstances.slice(0, awsScanMaxSampledResources).flatMap((instance) => [
@@ -1071,6 +1086,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
       for (const job of rdsMetricJobs) {
         const id = job.instance.DBInstanceIdentifier;
         const region = job.instance.Region || awsScanRegion;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading ${job.metricName} for RDS ${id}.`);
         const metric = await runAwsJsonCheck([
           "cloudwatch", "get-metric-statistics",
           "--namespace", "AWS/RDS",
@@ -1094,7 +1110,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
         if (job.metricName === "DatabaseConnections") current.averageConnections = metric.ok ? metricAverage(metric.data?.Datapoints) : null;
         rdsById.set(id, current);
         completedSteps += 1;
-        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading ${job.metricName} for RDS ${id}.`);
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed ${job.metricName} for RDS ${id}.`);
       }
       results.rdsMetrics = Array.from(rdsById.values());
       for (const { loadBalancer } of loadBalancerMetricJobs) {
@@ -1105,6 +1121,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
           network: { namespace: "AWS/NetworkELB", metricName: "ActiveFlowCount" },
         };
         const config = metricConfigByType[loadBalancer.Type];
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading load balancer traffic for ${loadBalancer.LoadBalancerName}.`);
         const metric = dimension && config ? await runAwsJsonCheck([
           "cloudwatch", "get-metric-statistics",
           "--namespace", config.namespace,
@@ -1129,7 +1146,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
           metricError: metric.ok ? null : metric.error?.message,
         });
         completedSteps += 1;
-        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading load balancer traffic for ${loadBalancer.LoadBalancerName}.`);
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed load balancer traffic for ${loadBalancer.LoadBalancerName}.`);
       }
     }
     const cost = costFromCostExplorer(results.cost);
