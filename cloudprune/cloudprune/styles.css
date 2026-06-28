@@ -667,7 +667,7 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   height: 100%;
   width: var(--scan-progress, 0%);
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--leaf), var(--sky));
+  background: linear-gradient(90deg, var(--green, #2fb66d), var(--sky, #1f9ed8));
   transition: width .35s ease;
 }
 
