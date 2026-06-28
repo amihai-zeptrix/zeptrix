@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { awsScanCounts, buildAwsAssessment, costFromCostExplorer } = require("../src/aws-scan-report");
+const { awsScanCounts, buildAwsAssessment, costFromCostExplorer } = require(path.join(__dirname, "../dist/src/aws-scan-report.js"));
 const { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require(path.join(__dirname, "../dist/server.js"));
 
 async function withHttpServer(testServer, callback) {
