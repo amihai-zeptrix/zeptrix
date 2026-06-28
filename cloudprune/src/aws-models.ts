@@ -1,17 +1,50 @@
 const { awsScanMaxRegions, awsScanRegion } = require("./config");
 
-function externalIdForAccount(accountId) {
+type JsonObject = Record<string, unknown>;
+
+interface CloudConnectionRow {
+  provider: string;
+  provider_account_id: string;
+  role_arn: string;
+  external_id: string;
+  metadata?: {
+    regions?: unknown;
+  } | null;
+  status: string;
+  updated_at: unknown;
+}
+
+interface AwsScanRow {
+  id: string;
+  status: string;
+  provider_account_id: string;
+  monthly_cost?: string | number | null;
+  currency?: string | null;
+  counts?: JsonObject | null;
+  errors?: unknown[] | null;
+  scan_json?: {
+    recommendations?: unknown[];
+    regions?: unknown[];
+    requestedRegions?: unknown[];
+    progress?: string | number | null;
+    message?: string | null;
+  } | null;
+  created_at: unknown;
+  updated_at: unknown;
+}
+
+export function externalIdForAccount(accountId: string): string {
   return `cloudprune-${accountId}`;
 }
 
-function normalizeAwsRoleArn(roleArn) {
+export function normalizeAwsRoleArn(roleArn: unknown): { roleArn: string; awsAccountId: string } {
   const value = String(roleArn || "").trim();
   const match = value.match(/^arn:aws[a-z-]*:iam::(\d{12}):role\/([A-Za-z0-9+=,.@_/-]{1,512})$/);
   if (!match) throw new Error("Enter a valid AWS IAM role ARN.");
   return { roleArn: value, awsAccountId: match[1] };
 }
 
-function normalizeAwsScanRegions(regions) {
+export function normalizeAwsScanRegions(regions: unknown): string[] {
   const values = Array.isArray(regions) ? regions : [];
   const selected = values.map((region) => String(region || "").trim()).filter(Boolean);
   const normalized = selected.length ? selected : [awsScanRegion];
@@ -23,7 +56,7 @@ function normalizeAwsScanRegions(regions) {
   return unique;
 }
 
-function publicCloudConnection(row) {
+export function publicCloudConnection(row: CloudConnectionRow | null) {
   if (!row) return null;
   const metadata = row.metadata || {};
   return {
@@ -37,7 +70,7 @@ function publicCloudConnection(row) {
   };
 }
 
-function publicAwsScan(row) {
+export function publicAwsScan(row: AwsScanRow | null) {
   if (!row) return null;
   const scanJson = row.scan_json || {};
   return {
@@ -56,11 +89,3 @@ function publicAwsScan(row) {
     updatedAt: row.updated_at,
   };
 }
-
-module.exports = {
-  externalIdForAccount,
-  normalizeAwsRoleArn,
-  normalizeAwsScanRegions,
-  publicAwsScan,
-  publicCloudConnection,
-};
