@@ -677,6 +677,18 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   font-size: 13px;
 }
 
+.region-picker[data-region-picker="connection"] > button {
+  justify-content: flex-start;
+}
+
+.region-picker[data-region-picker="connection"] > button strong {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .region-menu {
   position: absolute;
   z-index: 20;

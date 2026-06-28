@@ -815,11 +815,12 @@ function renderEmptyWorkspace() {
 
 function renderAwsRegionPicker(context = "form") {
   const regions = selectedAwsRegions();
-  const regionSummary = regions.length === 1 ? regions[0] : `${regions.length} regions`;
+  const regionSummary = context === "connection" && regions.length <= 2 ? regions.join(", ") : regions.length === 1 ? regions[0] : `${regions.length} regions`;
+  const title = regions.join(", ");
   return `
     <div class="region-picker" data-region-picker="${context}">
-      <button type="button" data-action="toggle-region-picker" aria-expanded="${state.awsRegionPickerOpen ? "true" : "false"}">
-        <span>${context === "connection" ? "Region(s)" : "Regions to scan"}</span>
+      <button type="button" data-action="toggle-region-picker" aria-expanded="${state.awsRegionPickerOpen ? "true" : "false"}" title="${escapeHtml(title)}">
+        ${context === "connection" ? "" : "<span>Regions to scan</span>"}
         <strong>${escapeHtml(regionSummary)}</strong>
       </button>
       ${state.awsRegionPickerOpen ? `
@@ -1153,6 +1154,11 @@ document.addEventListener("click", (event) => {
   const viewButton = event.target.closest("[data-view]");
   if (viewButton) {
     state.view = viewButton.dataset.view;
+    render();
+    return;
+  }
+  if (state.awsRegionPickerOpen && !event.target.closest(".region-picker")) {
+    state.awsRegionPickerOpen = false;
     render();
   }
 });
