@@ -161,6 +161,11 @@ function toggleAwsScanRegion(region, checked) {
   saveAwsScanRegions();
 }
 
+function savedAwsConnectionRegions(connection = state.workspace?.connections?.aws) {
+  const regions = Array.isArray(connection?.regions) ? connection.regions.filter((region) => AWS_REGIONS.some((item) => item.id === region)) : [];
+  return regions.length ? regions : selectedAwsRegions();
+}
+
 let scanProgressTimer = null;
 
 function stopScanProgress() {
@@ -184,8 +189,7 @@ async function scanAws() {
   try {
     const response = await fetch(`${basePath()}/api/cloud-connections/aws/scan`, {
       method: "POST",
-      headers: authHeaders({ "content-type": "application/json" }),
-      body: JSON.stringify({ regions: selectedAwsRegions() }),
+      headers: authHeaders(),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "AWS scan failed.");
@@ -430,6 +434,7 @@ function captureAwsConnectDraft(form) {
     awsAccountId: accountId,
     roleArn,
     externalId: formValue(form, "externalId"),
+    regions: selectedAwsRegions(),
   };
   return state.awsConnectDraft;
 }
@@ -462,6 +467,10 @@ async function loadWorkspace() {
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "CloudPrune workspace load failed.");
     state.workspace = body;
+    if (body.connections?.aws?.regions?.length) {
+      state.awsScanRegions = savedAwsConnectionRegions(body.connections.aws);
+      saveAwsScanRegions();
+    }
     render();
     if (body.awsScan?.status === "running" && state.awsScan.result?.id !== body.awsScan.id) {
       startScanProgress(body.awsScan);
@@ -596,8 +605,6 @@ function renderAwsScanPanel(awsConnection) {
   const scan = scanResult();
   const active = state.awsScan.status === "scanning" || scan?.status === "running";
   const counts = scan?.counts || {};
-  const regions = selectedAwsRegions();
-  const regionSummary = regions.length === 1 ? regions[0] : `${regions.length} regions`;
   const progress = active ? Number(scan?.progress ?? state.awsScan.progress ?? 0) : scan ? 100 : 0;
   const clampedProgress = Math.max(0, Math.min(100, progress));
   const progressWidth = active ? Math.max(5, clampedProgress) : clampedProgress;
@@ -618,22 +625,6 @@ function renderAwsScanPanel(awsConnection) {
         <span class="eyebrow">AWS scan</span>
         <h3>${active ? "Scanning account..." : scan ? scan.status === "failed" ? "Latest scan failed" : "Latest scan complete" : "Run first inventory scan"}</h3>
         <p>${active ? escapeHtml(scan?.message || state.awsScan.message || "AWS scan is running.") : scan ? escapeHtml(scan.message || `AWS scan complete. Read ${scanTotalEntities(scan).toLocaleString()} entities from AWS account ${scan.awsAccountId || awsConnection.awsAccountId}.`) : "Collect inventory counts and current-month spend using the saved read-only role."}</p>
-      </div>
-      <div class="region-picker">
-        <button type="button" data-action="toggle-region-picker" aria-expanded="${state.awsRegionPickerOpen ? "true" : "false"}" ${active ? "disabled" : ""}>
-          <span>Regions</span>
-          <strong>${escapeHtml(regionSummary)}</strong>
-        </button>
-        ${state.awsRegionPickerOpen && !active ? `
-          <div class="region-menu" role="group" aria-label="AWS regions to scan">
-            ${AWS_REGIONS.map((region) => `
-              <label class="region-choice">
-                <input type="checkbox" data-region-choice="${region.id}" ${regions.includes(region.id) ? "checked" : ""} ${regions.length === 1 && regions.includes(region.id) ? "data-last-selected='true'" : ""}>
-                <span><strong>${region.id}</strong><small>${escapeHtml(region.label)}</small></span>
-              </label>
-            `).join("")}
-          </div>
-        ` : ""}
       </div>
       <div class="scan-progress-row">
         <div class="scan-progress ${active ? "active" : ""}" aria-label="AWS scan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(clampedProgress)}" role="progressbar" style="--scan-progress:${progressWidth}%">
@@ -764,6 +755,29 @@ function renderEmptyWorkspace() {
   `;
 }
 
+function renderAwsRegionPicker() {
+  const regions = selectedAwsRegions();
+  const regionSummary = regions.length === 1 ? regions[0] : `${regions.length} regions`;
+  return `
+    <div class="region-picker">
+      <button type="button" data-action="toggle-region-picker" aria-expanded="${state.awsRegionPickerOpen ? "true" : "false"}">
+        <span>Regions to scan</span>
+        <strong>${escapeHtml(regionSummary)}</strong>
+      </button>
+      ${state.awsRegionPickerOpen ? `
+        <div class="region-menu" role="group" aria-label="AWS regions to scan">
+          ${AWS_REGIONS.map((region) => `
+            <label class="region-choice">
+              <input type="checkbox" data-region-choice="${region.id}" ${regions.includes(region.id) ? "checked" : ""}>
+              <span><strong>${region.id}</strong><small>${escapeHtml(region.label)}</small></span>
+            </label>
+          `).join("")}
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
 function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUrl = "") {
   const accountId = state.awsConnectDraft.awsAccountId || awsAccountIdFromRoleArn(state.awsConnectDraft.roleArn || roleArn);
   const derivedRoleArn = state.awsConnectDraft.roleArn || roleArn || awsRoleArnForAccount(accountId);
@@ -808,6 +822,7 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUr
           <div>
             <strong>Enter AWS account ID</strong>
             <label>AWS account ID<input name="awsAccountId" value="${draftAccountId}" inputmode="numeric" maxlength="12" placeholder="123456789012" /></label>
+            ${renderAwsRegionPicker()}
             <p>Copy the <strong>AccountId</strong> value from the CloudFormation stack Outputs.</p>
             <p class="derived-role" data-derived-role>${draftRoleArn || "Role ARN will be derived automatically."}</p>
           </div>
@@ -1018,7 +1033,10 @@ document.addEventListener("click", (event) => {
     state.awsConnectDraft = {
       roleArn: state.workspace?.connections?.aws?.roleArn || state.awsConnectDraft.roleArn || "",
       externalId: state.workspace?.connections?.aws?.externalId || state.workspace?.awsSetup?.externalId || state.awsConnectDraft.externalId || `cloudprune-${sessionAccountId()}`,
+      regions: savedAwsConnectionRegions(),
     };
+    state.awsScanRegions = savedAwsConnectionRegions();
+    saveAwsScanRegions();
     render();
     return;
   }
@@ -1135,7 +1153,9 @@ document.addEventListener("submit", async (event) => {
         ...(state.workspace || {}),
         connections: { ...((state.workspace || {}).connections || {}), aws: body.connection },
       };
-      state.awsConnectDraft = { roleArn: body.connection.roleArn, externalId: body.connection.externalId };
+      state.awsScanRegions = savedAwsConnectionRegions(body.connection);
+      saveAwsScanRegions();
+      state.awsConnectDraft = { roleArn: body.connection.roleArn, externalId: body.connection.externalId, regions: state.awsScanRegions };
       state.connectFormVisible = false;
       state.connectMessage = "";
       render();

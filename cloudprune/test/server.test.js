@@ -188,6 +188,8 @@ test("CloudPrune empty workspace opens AWS assume-role setup", () => {
   assert.match(workspace, /External ID/);
   assert.match(workspace, /Read-only cost, inventory, and utilization signals/);
   assert.match(workspace, /AWS account ID/);
+  assert.match(workspace, /Regions to scan/);
+  assert.match(workspace, /us-east-1/);
   assert.match(workspace, /AccountId/);
   assert.match(workspace, /placeholder="123456789012"/);
   assert.match(workspace, /Role ARN will be derived automatically/);
@@ -235,6 +237,7 @@ test("CloudPrune AWS role submit derives role ARN from account ID", async () => 
   const saveCall = calls.find((call) => String(call.url).endsWith("/api/cloud-connections/aws"));
   assert.ok(saveCall);
   assert.equal(JSON.parse(saveCall.options.body).roleArn, "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole");
+  assert.deepEqual(JSON.parse(saveCall.options.body).regions, ["us-east-1"]);
 });
 
 test("CloudPrune AWS role submit refreshes derived ARN when account ID changes", async () => {
@@ -275,6 +278,7 @@ test("CloudPrune AWS role submit refreshes derived ARN when account ID changes",
   const saveCall = calls.find((call) => String(call.url).endsWith("/api/cloud-connections/aws"));
   assert.ok(saveCall);
   assert.equal(JSON.parse(saveCall.options.body).roleArn, "arn:aws:iam::210987654321:role/CloudPruneReadOnlyRole");
+  assert.deepEqual(JSON.parse(saveCall.options.body).regions, ["us-east-1"]);
 });
 
 test("CloudPrune AWS scan disables the button and shows visible in-progress state", async () => {
@@ -334,8 +338,8 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   assert.doesNotMatch(app.innerHTML, />Scan again<\/button>/);
   const scanCall = fetchCalls.find((call) => String(call.url).endsWith("/api/cloud-connections/aws/scan"));
   assert.ok(scanCall);
-  assert.deepEqual(JSON.parse(scanCall.options.body), { regions: ["us-east-1"] });
-  assert.equal(scanCall.options.headers["content-type"], "application/json");
+  assert.equal(scanCall.options.body, undefined);
+  assert.equal(scanCall.options.headers["content-type"], undefined);
 });
 
 test("CloudPrune recommendations route renders saved scan recommendations", async () => {

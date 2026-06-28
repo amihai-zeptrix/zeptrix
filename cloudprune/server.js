@@ -131,11 +131,13 @@ function normalizeAwsScanRegions(regions) {
 
 function publicCloudConnection(row) {
   if (!row) return null;
+  const metadata = row.metadata || {};
   return {
     provider: row.provider,
     awsAccountId: row.provider_account_id,
     roleArn: row.role_arn,
     externalId: row.external_id,
+    regions: normalizeAwsScanRegions(metadata.regions),
     status: row.status,
     updatedAt: row.updated_at,
   };
@@ -316,12 +318,14 @@ async function initDatabase() {
       provider_account_id text,
       role_arn text,
       external_id text not null,
+      metadata jsonb not null default '{}'::jsonb,
       status text not null default 'configured',
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now(),
       unique(account_id, provider)
     )
   `);
+  await pool.query(`alter table cloudprune_cloud_connections add column if not exists metadata jsonb not null default '{}'::jsonb`);
   await pool.query(`
     create table if not exists cloudprune_aws_scans (
       id uuid primary key default gen_random_uuid(),
@@ -441,7 +445,7 @@ async function updateUserProfile(req, payload) {
 async function workspaceForRequest(req) {
   const user = await userFromSession(req);
   const connections = await pool.query(
-    `select provider, provider_account_id, role_arn, external_id, status, updated_at
+    `select provider, provider_account_id, role_arn, external_id, metadata, status, updated_at
      from cloudprune_cloud_connections
      where account_id=$1`,
     [user.account_id]
@@ -473,17 +477,19 @@ async function saveAwsConnection(req, payload) {
   const user = await userFromSession(req);
   const { roleArn, awsAccountId } = normalizeAwsRoleArn(payload.roleArn);
   const externalId = String(payload.externalId || externalIdForAccount(user.account_id)).trim();
+  const regions = normalizeAwsScanRegions(payload.regions);
   const result = await pool.query(
-    `insert into cloudprune_cloud_connections (account_id, provider, provider_account_id, role_arn, external_id, status)
-     values ($1, 'aws', $2, $3, $4, 'configured')
+    `insert into cloudprune_cloud_connections (account_id, provider, provider_account_id, role_arn, external_id, metadata, status)
+     values ($1, 'aws', $2, $3, $4, $5, 'configured')
      on conflict (account_id, provider) do update set
        provider_account_id=excluded.provider_account_id,
        role_arn=excluded.role_arn,
        external_id=excluded.external_id,
+       metadata=excluded.metadata,
        status='configured',
        updated_at=now()
-     returning provider, provider_account_id, role_arn, external_id, status, updated_at`,
-    [user.account_id, awsAccountId, roleArn, externalId]
+     returning provider, provider_account_id, role_arn, external_id, metadata, status, updated_at`,
+    [user.account_id, awsAccountId, roleArn, externalId, { regions }]
   );
   await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_connection_saved", detail: awsAccountId });
   return publicCloudConnection(result.rows[0]);
@@ -773,17 +779,17 @@ async function exchangeOauthCode(payload) {
   return { token: signSession(user), user: publicUser(user) };
 }
 
-async function startAwsScan(req, payload = {}) {
+async function startAwsScan(req) {
   const user = await userFromSession(req);
-  const requestedRegions = normalizeAwsScanRegions(payload.regions);
   const connection = await pool.query(
-    `select provider_account_id, role_arn, external_id
+    `select provider_account_id, role_arn, external_id, metadata
      from cloudprune_cloud_connections
      where account_id=$1 and provider='aws'`,
     [user.account_id]
   );
   const aws = connection.rows[0];
   if (!aws) throw new Error("Connect AWS before scanning.");
+  const requestedRegions = normalizeAwsScanRegions(aws.metadata?.regions);
 
   let startedRow;
   let isNewScan = false;
@@ -1213,7 +1219,7 @@ async function handleApi(req, res, requestUrl) {
       return json(res, 200, { connection: await saveAwsConnection(req, await readJson(req)) });
     }
     if (req.method === "POST" && apiPath === "/api/cloud-connections/aws/scan") {
-      return json(res, 202, { scan: await startAwsScan(req, await readJson(req)) });
+      return json(res, 202, { scan: await startAwsScan(req) });
     }
     const scanMatch = apiPath.match(/^\/api\/cloud-connections\/aws\/scan\/([0-9a-f-]{36})$/i);
     if (req.method === "GET" && scanMatch) {
