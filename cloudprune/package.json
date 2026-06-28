@@ -5,11 +5,11 @@
   "description": "CloudPrune cloud cost monitoring and savings workspace.",
   "scripts": {
     "assess:aws": "node scripts/aws-assessment.js",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-build-assets.js",
     "clean": "rm -rf dist",
     "start": "node server.js",
     "typecheck": "tsc --noEmit",
-    "check": "node --check server.js && node --check cloudprune/app.js && node --check scripts/aws-assessment.js && npm run typecheck && npm run clean && npm run build && node --test"
+    "check": "node --check server.js && node --check cloudprune/app.js && node --check scripts/aws-assessment.js && node --check scripts/copy-build-assets.js && npm run typecheck && npm run clean && npm run build && node --test"
   },
   "engines": {
     "node": ">=20"
