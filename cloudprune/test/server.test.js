@@ -843,6 +843,22 @@ test("AWS scan API payload includes persisted progress and completion message", 
   assert.deepEqual(stopped.regions, ["us-east-1"]);
 });
 
+test("AWS scan database writes serialize JSONB payloads", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../server.js"), "utf8");
+
+  assert.match(source, /values \(\$1,\$2,'running',\$3\)[\s\S]*jsonb\(\{ progress: 0, message: "Starting AWS scan\.", requestedRegions \}\)/);
+  assert.match(source, /scan_json = scan_json \|\| \$3::jsonb[\s\S]*jsonb\(\{ progress: 100, message: "AWS scan stopped by user\." \}\)/);
+  assert.match(source, /scan_json = scan_json \|\| \$2::jsonb[\s\S]*jsonb\(\{ \.\.\.extra, progress, message \}\)/);
+  assert.match(source, /counts=\$5::jsonb, errors=\$6::jsonb, scan_json=\$7::jsonb[\s\S]*jsonb\(counts\), jsonb\(errors\), jsonb\(\{/);
+  assert.match(source, /set status='failed', errors=\$2, scan_json = scan_json \|\| \$3::jsonb[\s\S]*jsonb\(\[\{ check: "scan", message: error\.message \}\]\), jsonb\(\{ progress: 100, message: "AWS scan failed\." \}\)/);
+
+  assert.doesNotMatch(source, /\[user\.account_id, aws\.provider_account_id, \{ progress: 0/);
+  assert.doesNotMatch(source, /\[user\.account_id, "stopped", \{ progress: 100/);
+  assert.doesNotMatch(source, /\[scanId, \{ \.\.\.extra, progress, message \}\]/);
+  assert.doesNotMatch(source, /\[scanId, status, cost\.amount, cost\.currency, counts, errors, \{/);
+  assert.doesNotMatch(source, /\[scanId, \[\{ check: "scan", message: error\.message \}\], \{ progress: 100/);
+});
+
 test("AWS assessment marks regional services failed when every region fails", () => {
   const assessment = buildAwsAssessment({}, ["us-east-1", "us-west-2"], [
     { check: "ec2Instances:us-east-1", message: "AccessDenied" },

@@ -20,6 +20,7 @@ const awsScanMaxRegions = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_REGIONS || 
 const awsScanMaxInventoryItems = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS || 200);
 const awsScanMaxLogGroups = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_LOG_GROUPS || 50);
 const awsScanMaxSampledResources = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_SAMPLED_RESOURCES || 25);
+const awsScanStaleAfterSeconds = Number(process.env.CLOUDPRUNE_AWS_SCAN_STALE_AFTER_SECONDS || 300);
 const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || "https://www.zeptrix.io/api/auth/google/callback";
 const googleClientId = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
 const googleClientSecret = process.env.CLOUDPRUNE_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
@@ -66,6 +67,10 @@ function json(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function jsonb(value) {
+  return JSON.stringify(value);
+}
+
 async function readJson(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -96,6 +101,7 @@ function validateRuntimeConfig() {
   if (!Number.isInteger(awsScanMaxInventoryItems) || awsScanMaxInventoryItems < 1 || awsScanMaxInventoryItems > 5000) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS must be an integer from 1 to 5000.");
   if (!Number.isInteger(awsScanMaxLogGroups) || awsScanMaxLogGroups < 1 || awsScanMaxLogGroups > 1000) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_LOG_GROUPS must be an integer from 1 to 1000.");
   if (!Number.isInteger(awsScanMaxSampledResources) || awsScanMaxSampledResources < 1 || awsScanMaxSampledResources > 250) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_SAMPLED_RESOURCES must be an integer from 1 to 250.");
+  if (!Number.isInteger(awsScanStaleAfterSeconds) || awsScanStaleAfterSeconds < 60 || awsScanStaleAfterSeconds > 3600) throw new Error("CLOUDPRUNE_AWS_SCAN_STALE_AFTER_SECONDS must be an integer from 60 to 3600.");
 }
 
 function secureEqual(actual, expected) {
@@ -444,8 +450,46 @@ async function updateUserProfile(req, payload) {
   return { ...user, name, company_name: company };
 }
 
+async function expireStaleAwsScans(accountId = null) {
+  if (!pool) return 0;
+  const message = "AWS scan worker stopped before completion. Start a new scan.";
+  const params = [`${awsScanStaleAfterSeconds} seconds`, jsonb([{ check: "scan", message }]), jsonb({ progress: 100, message })];
+  let accountFilter = "";
+  if (accountId) {
+    params.push(accountId);
+    accountFilter = ` and account_id=$${params.length}`;
+  }
+  const result = await pool.query(
+    `update cloudprune_aws_scans
+     set status='failed',
+         errors=errors || $2::jsonb,
+         scan_json = scan_json || $3::jsonb,
+         updated_at=now()
+     where status='running'
+       and updated_at < now() - $1::interval${accountFilter}`,
+    params
+  );
+  return result.rowCount || 0;
+}
+
+async function failOrphanedAwsScansOnStartup() {
+  if (!pool) return 0;
+  const message = "CloudPrune restarted before this AWS scan completed. Start a new scan.";
+  const result = await pool.query(
+    `update cloudprune_aws_scans
+     set status='failed',
+         errors=errors || $1::jsonb,
+         scan_json = scan_json || $2::jsonb,
+         updated_at=now()
+     where status='running'`,
+    [jsonb([{ check: "scan", message }]), jsonb({ progress: 100, message })]
+  );
+  return result.rowCount || 0;
+}
+
 async function workspaceForRequest(req) {
   const user = await userFromSession(req);
+  await expireStaleAwsScans(user.account_id);
   const connections = await pool.query(
     `select provider, provider_account_id, role_arn, external_id, metadata, status, updated_at
      from cloudprune_cloud_connections
@@ -783,6 +827,7 @@ async function exchangeOauthCode(payload) {
 
 async function startAwsScan(req) {
   const user = await userFromSession(req);
+  await expireStaleAwsScans(user.account_id);
   const connection = await pool.query(
     `select provider_account_id, role_arn, external_id, metadata
      from cloudprune_cloud_connections
@@ -814,7 +859,7 @@ async function startAwsScan(req) {
         `insert into cloudprune_aws_scans (account_id, provider_account_id, status, scan_json)
          values ($1,$2,'running',$3)
          returning id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at`,
-        [user.account_id, aws.provider_account_id, { progress: 0, message: "Starting AWS scan.", requestedRegions }]
+        [user.account_id, aws.provider_account_id, jsonb({ progress: 0, message: "Starting AWS scan.", requestedRegions })]
       );
       startedRow = inserted.rows[0];
       isNewScan = true;
@@ -839,6 +884,7 @@ async function startAwsScan(req) {
 
 async function getAwsScan(req, scanId) {
   const user = await userFromSession(req);
+  await expireStaleAwsScans(user.account_id);
   const result = await pool.query(
     `select id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at
      from cloudprune_aws_scans
@@ -864,7 +910,7 @@ async function stopAwsScan(req) {
        limit 1
      )
      returning id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at`,
-    [user.account_id, "stopped", { progress: 100, message: "AWS scan stopped by user." }]
+    [user.account_id, "stopped", jsonb({ progress: 100, message: "AWS scan stopped by user." })]
   );
   if (!result.rows[0]) throw new Error("No running AWS scan was found.");
   await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_stopped", detail: result.rows[0].provider_account_id });
@@ -878,7 +924,7 @@ async function updateAwsScanProgress(scanId, completedSteps, totalSteps, message
     `update cloudprune_aws_scans
      set scan_json = scan_json || $2::jsonb, updated_at=now()
      where id=$1 and status='running'`,
-    [scanId, { ...extra, progress, message }]
+    [scanId, jsonb({ ...extra, progress, message })]
   );
 }
 
@@ -1158,10 +1204,10 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
     completedSteps += 1;
     const finalResult = await pool.query(
       `update cloudprune_aws_scans
-       set status=$2, monthly_cost=$3, currency=$4, counts=$5, errors=$6, scan_json=$7, updated_at=now()
+       set status=$2, monthly_cost=$3, currency=$4, counts=$5::jsonb, errors=$6::jsonb, scan_json=$7::jsonb, updated_at=now()
        where id=$1 and status='running'
        returning id`,
-      [scanId, status, cost.amount, cost.currency, counts, errors, {
+      [scanId, status, cost.amount, cost.currency, jsonb(counts), jsonb(errors), jsonb({
         regions,
         requestedRegions,
         skippedRegions,
@@ -1179,7 +1225,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
         message: `AWS scan complete. Read ${totalEntities.toLocaleString()} entities.`,
         completedSteps,
         totalSteps,
-      }]
+      })]
     );
     if (finalResult.rows[0]) await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
   } catch (error) {
@@ -1188,7 +1234,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
        set status='failed', errors=$2, scan_json = scan_json || $3::jsonb, updated_at=now()
        where id=$1 and status='running'
        returning id`,
-      [scanId, [{ check: "scan", message: error.message }], { progress: 100, message: "AWS scan failed." }]
+      [scanId, jsonb([{ check: "scan", message: error.message }]), jsonb({ progress: 100, message: "AWS scan failed." })]
     );
     if (failureResult.rows[0]) await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_failed", detail: aws.provider_account_id });
   }
@@ -1370,6 +1416,7 @@ if (require.main === module) {
   Promise.resolve()
     .then(validateRuntimeConfig)
     .then(initDatabase)
+    .then(() => failOrphanedAwsScansOnStartup())
     .then(() => {
       server.listen(port, () => {
         console.log(`CloudPrune listening on http://localhost:${port}/cloudprune/`);
