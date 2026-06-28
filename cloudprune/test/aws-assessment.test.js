@@ -244,6 +244,49 @@ test("S3 lifecycle findings require at least 10 percent cold or old measured S3 
   assert.equal(report.findings.some((finding) => finding.id === "storage-lifecycle"), false);
 });
 
+test("EC2 consolidation finding is shown for low average CPU even with peak spikes", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [] } },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [
+              { InstanceId: "i-web", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", VpcId: "vpc-1", State: { Name: "running" }, Tags: [{ Key: "Name", Value: "web" }] },
+              { InstanceId: "i-worker", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", VpcId: "vpc-1", State: { Name: "running" }, Tags: [{ Key: "Name", Value: "worker" }] },
+            ],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: {
+          instances: [
+            { id: "i-web", averageCpu: 0.4, maximumCpu: 66.7, memoryStatus: "missing", diskStatus: "missing" },
+            { id: "i-worker", averageCpu: 3.2, maximumCpu: 96.7, memoryStatus: "missing", diskStatus: "missing" },
+          ],
+        },
+      },
+    },
+  });
+  const consolidation = report.findings.find((finding) => finding.id === "ec2-app-consolidation");
+
+  assert.ok(consolidation);
+  assert.equal(consolidation.confidence, "low");
+  assert.equal(consolidation.statistics["Combined avg CPU"], "3.6% instance-capacity");
+  assert.equal(consolidation.statistics["Peak CPU range"], "66.7-96.7%");
+  assert.equal(consolidation.statistics["Memory usage"], "not available for 2/2");
+  assert.match(consolidation.impactAnalysis, /CPU has spikes/);
+});
+
 test("load balancer no-data is treated as idle but unavailable metrics are not", () => {
   const report = buildReport({
     generatedAt: "2026-06-27T10:00:00.000Z",
