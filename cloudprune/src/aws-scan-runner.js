@@ -323,7 +323,7 @@ function runningScanMessage(activeSteps) {
   return `Running ${visibleSteps}${steps.length > 3 ? ` and ${steps.length - 3} more` : ""}.`;
 }
 
-async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegion], { recordAuthEvent = async () => {} } = {}) {
+async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegion], { recordAuthEvent = async (_event) => {} } = {}) {
   const sessionName = `CloudPruneScan-${Date.now()}`;
   const results = {};
   const errors = [];
@@ -377,6 +377,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
     if (!regions.length) throw new Error("None of the selected AWS regions are enabled for this account.");
     completedSteps += 1;
 
+    /** @type {Array<[string, string, string[]]>} */
     const globalChecks = [
       ["identity", "Reading AWS account identity.", ["sts", "get-caller-identity"]],
       ["s3Buckets", "Reading S3 buckets.", ["s3api", "list-buckets", "--max-items", String(awsScanMaxInventoryItems)]],
@@ -404,6 +405,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
         "--region", "us-east-1",
       ]],
     ];
+    /** @type {Array<[string, string, (region: string) => string[]]>} */
     const regionalChecks = [
       ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Reservations:Reservations[].{Instances:Instances[].{InstanceId:InstanceId,InstanceType:InstanceType,Architecture:Architecture,PlatformDetails:PlatformDetails,VpcId:VpcId,SubnetId:SubnetId,State:State,Tags:Tags}},NextToken:NextToken}"]],
       ["ebsVolumes", "Reading EBS volumes", (region) => ["ec2", "describe-volumes", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Volumes:Volumes[].{VolumeId:VolumeId,State:State,Size:Size,VolumeType:VolumeType,Tags:Tags},NextToken:NextToken}"]],

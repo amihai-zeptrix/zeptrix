@@ -472,7 +472,9 @@ test("createLimiter caps concurrent asynchronous work globally", async () => {
 
 test("awsExecutionOptions preserves the shared limiter for nested collectors", () => {
   const limiter = createLimiter(1);
-  const options = awsExecutionOptions({ profile: "prod", region: "us-east-1", timeoutMs: 1234, awsLimiter: limiter });
+  const options = /** @type {{ profile: string, timeoutMs: number, awsLimiter: Function, region?: string }} */ (
+    awsExecutionOptions({ profile: "prod", region: "us-east-1", timeoutMs: 1234, awsLimiter: limiter })
+  );
 
   assert.equal(options.profile, "prod");
   assert.equal(options.timeoutMs, 1234);

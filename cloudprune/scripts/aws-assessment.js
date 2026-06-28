@@ -218,7 +218,7 @@ async function runAwsJson(commandArgs, options = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve({ ok: false, error: error.code === "ENOENT" ? "AWS CLI is not installed or not on PATH." : error.message });
+      resolve({ ok: false, error: /** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT" ? "AWS CLI is not installed or not on PATH." : error.message });
     });
     child.on("close", (code) => {
       if (settled) return;
