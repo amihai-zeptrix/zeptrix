@@ -166,6 +166,10 @@ function savedAwsConnectionRegions(connection = state.workspace?.connections?.aw
   return regions.length ? regions : selectedAwsRegions();
 }
 
+function awsRegionSummary(connection = state.workspace?.connections?.aws) {
+  return savedAwsConnectionRegions(connection).join(", ");
+}
+
 let scanProgressTimer = null;
 
 function stopScanProgress() {
@@ -202,6 +206,28 @@ async function scanAws() {
     completeAwsScan(body.scan);
   } catch (error) {
     stopScanProgress();
+    state.awsScan = { status: "error", progress: 100, message: error.message };
+  }
+  render();
+}
+
+async function stopAwsScan() {
+  stopScanProgress();
+  state.awsScan = {
+    ...state.awsScan,
+    status: "scanning",
+    message: "Stopping AWS scan...",
+  };
+  render();
+  try {
+    const response = await fetch(`${basePath()}/api/cloud-connections/aws/scan/stop`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "Could not stop AWS scan.");
+    completeAwsScan(body.scan);
+  } catch (error) {
     state.awsScan = { status: "error", progress: 100, message: error.message };
   }
   render();
@@ -605,6 +631,8 @@ function renderAwsScanPanel(awsConnection) {
   const scan = scanResult();
   const active = state.awsScan.status === "scanning" || scan?.status === "running";
   const counts = scan?.counts || {};
+  const stopped = scan?.status === "stopped";
+  const failed = scan?.status === "failed";
   const progress = active ? Number(scan?.progress ?? state.awsScan.progress ?? 0) : scan ? 100 : 0;
   const clampedProgress = Math.max(0, Math.min(100, progress));
   const progressWidth = active ? Math.max(5, clampedProgress) : clampedProgress;
@@ -623,7 +651,7 @@ function renderAwsScanPanel(awsConnection) {
     <div class="scan-panel">
       <div>
         <span class="eyebrow">AWS scan</span>
-        <h3>${active ? "Scanning account..." : scan ? scan.status === "failed" ? "Latest scan failed" : "Latest scan complete" : "Run first inventory scan"}</h3>
+        <h3>${active ? "Scanning account..." : scan ? failed ? "Latest scan failed" : stopped ? "Latest scan stopped" : "Latest scan complete" : "Run first inventory scan"}</h3>
         <p>${active ? escapeHtml(scan?.message || state.awsScan.message || "AWS scan is running.") : scan ? escapeHtml(scan.message || `AWS scan complete. Read ${scanTotalEntities(scan).toLocaleString()} entities from AWS account ${scan.awsAccountId || awsConnection.awsAccountId}.`) : "Collect inventory counts and current-month spend using the saved read-only role."}</p>
       </div>
       <div class="scan-progress-row">
@@ -634,6 +662,7 @@ function renderAwsScanPanel(awsConnection) {
       </div>
       <div class="scan-actions">
         <button data-action="scan-aws" ${active ? "disabled" : ""}>${active ? "Scanning..." : scan ? "Scan again" : "Scan AWS"}</button>
+        ${active ? `<button class="secondary-connect" data-action="stop-scan" type="button">Stop scan</button>` : ""}
         <strong>${scan ? money(scan.monthlyCost) : "$0"} <small>month spend</small></strong>
       </div>
       ${scan && !active ? `<ul class="scan-counts">${countRows}</ul>${errors}` : ""}
@@ -707,6 +736,7 @@ function renderEmptyWorkspace() {
             <span>AWS account</span><strong>${escapeHtml(awsConnection.awsAccountId)}</strong>
             <span>Role ARN</span><code>${escapeHtml(awsConnection.roleArn)}</code>
             <span>External ID</span><code>${escapeHtml(awsConnection.externalId)}</code>
+            <span>Regions</span><code>${escapeHtml(awsRegionSummary(awsConnection))}</code>
           </div>
           <div class="empty-actions">
             <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Update role</button>
@@ -1044,6 +1074,12 @@ document.addEventListener("click", (event) => {
   if (scanButton) {
     if (scanButton.disabled) return;
     scanAws();
+    return;
+  }
+  const stopScanButton = event.target.closest("[data-action='stop-scan']");
+  if (stopScanButton) {
+    if (stopScanButton.disabled) return;
+    stopAwsScan();
     return;
   }
   const regionButton = event.target.closest("[data-action='toggle-region-picker']");

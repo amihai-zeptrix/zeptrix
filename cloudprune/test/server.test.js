@@ -299,6 +299,7 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
             awsAccountId: "123456789012",
             roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
             externalId: "cloudprune-account-1",
+            regions: ["us-east-1", "il-central-1"],
             status: "configured",
           },
         },
@@ -322,6 +323,7 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(app.innerHTML, />Scan again<\/button>/);
+  assert.match(app.innerHTML, /<span>Regions<\/span><code>us-east-1, il-central-1<\/code>/);
 
   for (const handler of listeners.click || []) handler({
     target: {
@@ -332,6 +334,7 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   });
 
   assert.match(app.innerHTML, /<button data-action="scan-aws" disabled>Scanning\.\.\.<\/button>/);
+  assert.match(app.innerHTML, /<button class="secondary-connect" data-action="stop-scan" type="button">Stop scan<\/button>/);
   assert.match(app.innerHTML, /role="progressbar"/);
   assert.match(app.innerHTML, /style="--scan-progress:5%"/);
   assert.match(app.innerHTML, /<strong>0%<\/strong>/);
@@ -579,6 +582,16 @@ test("AWS scan API payload includes persisted progress and completion message", 
   });
   assert.equal(completed.message, "AWS scan complete. Read 5 entities.");
   assert.deepEqual(completed.recommendations, [{ title: "Release idle Elastic IPs" }]);
+
+  const stopped = publicAwsScan({
+    id: "scan-3",
+    status: "stopped",
+    provider_account_id: "123456789012",
+    scan_json: { progress: 100, message: "AWS scan stopped by user.", requestedRegions: ["us-east-1"] },
+  });
+  assert.equal(stopped.status, "stopped");
+  assert.equal(stopped.message, "AWS scan stopped by user.");
+  assert.deepEqual(stopped.regions, ["us-east-1"]);
 });
 
 test("AWS assessment marks regional services failed when every region fails", () => {

@@ -847,6 +847,28 @@ async function getAwsScan(req, scanId) {
   return publicAwsScan(result.rows[0]);
 }
 
+async function stopAwsScan(req) {
+  const user = await userFromSession(req);
+  const result = await pool.query(
+    `update cloudprune_aws_scans
+     set status=$2,
+         scan_json = scan_json || $3::jsonb,
+         updated_at=now()
+     where id = (
+       select id
+       from cloudprune_aws_scans
+       where account_id=$1 and status='running'
+       order by created_at desc
+       limit 1
+     )
+     returning id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at`,
+    [user.account_id, "stopped", { progress: 100, message: "AWS scan stopped by user." }]
+  );
+  if (!result.rows[0]) throw new Error("No running AWS scan was found.");
+  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_stopped", detail: result.rows[0].provider_account_id });
+  return publicAwsScan(result.rows[0]);
+}
+
 async function updateAwsScanProgress(scanId, completedSteps, totalSteps, message, extra = {}) {
   const denominator = Math.max(1, totalSteps);
   const progress = Math.min(99, Math.max(0, Math.round((completedSteps / denominator) * 100)));
@@ -1111,10 +1133,11 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
     const status = errors.length ? "completed_with_errors" : "completed";
     const totalEntities = Object.values(counts).reduce((total, value) => total + Number(value || 0), 0);
     completedSteps += 1;
-    await pool.query(
+    const finalResult = await pool.query(
       `update cloudprune_aws_scans
        set status=$2, monthly_cost=$3, currency=$4, counts=$5, errors=$6, scan_json=$7, updated_at=now()
-       where id=$1`,
+       where id=$1 and status='running'
+       returning id`,
       [scanId, status, cost.amount, cost.currency, counts, errors, {
         regions,
         requestedRegions,
@@ -1134,15 +1157,16 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
         totalSteps,
       }]
     );
-    await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
+    if (finalResult.rows[0]) await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
   } catch (error) {
-    await pool.query(
+    const failureResult = await pool.query(
       `update cloudprune_aws_scans
        set status='failed', errors=$2, scan_json = scan_json || $3::jsonb, updated_at=now()
-       where id=$1`,
+       where id=$1 and status='running'
+       returning id`,
       [scanId, [{ check: "scan", message: error.message }], { progress: 100, message: "AWS scan failed." }]
     );
-    await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_failed", detail: aws.provider_account_id });
+    if (failureResult.rows[0]) await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_failed", detail: aws.provider_account_id });
   }
 }
 
@@ -1220,6 +1244,9 @@ async function handleApi(req, res, requestUrl) {
     }
     if (req.method === "POST" && apiPath === "/api/cloud-connections/aws/scan") {
       return json(res, 202, { scan: await startAwsScan(req) });
+    }
+    if (req.method === "POST" && apiPath === "/api/cloud-connections/aws/scan/stop") {
+      return json(res, 200, { scan: await stopAwsScan(req) });
     }
     const scanMatch = apiPath.match(/^\/api\/cloud-connections\/aws\/scan\/([0-9a-f-]{36})$/i);
     if (req.method === "GET" && scanMatch) {
