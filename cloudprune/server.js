@@ -18,6 +18,7 @@ const awsCliPath = process.env.CLOUDPRUNE_AWS_CLI || "aws";
 const awsCliMaxOutputBytes = Number(process.env.CLOUDPRUNE_AWS_CLI_MAX_OUTPUT_BYTES || 5 * 1024 * 1024);
 const awsScanMaxRegions = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_REGIONS || 12);
 const awsScanMaxInventoryItems = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS || 200);
+const awsScanMaxLogGroups = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_LOG_GROUPS || 50);
 const awsScanMaxSampledResources = Number(process.env.CLOUDPRUNE_AWS_SCAN_MAX_SAMPLED_RESOURCES || 25);
 const googleRedirectUri = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_URI || "https://www.zeptrix.io/api/auth/google/callback";
 const googleClientId = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
@@ -93,6 +94,7 @@ function validateRuntimeConfig() {
   if (isProduction && !cloudFormationTemplateUrl) throw new Error("CLOUDPRUNE_AWS_CLOUDFORMATION_TEMPLATE_URL is required in production.");
   if (!Number.isInteger(awsScanMaxRegions) || awsScanMaxRegions < 1 || awsScanMaxRegions > 30) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_REGIONS must be an integer from 1 to 30.");
   if (!Number.isInteger(awsScanMaxInventoryItems) || awsScanMaxInventoryItems < 1 || awsScanMaxInventoryItems > 5000) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS must be an integer from 1 to 5000.");
+  if (!Number.isInteger(awsScanMaxLogGroups) || awsScanMaxLogGroups < 1 || awsScanMaxLogGroups > 1000) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_LOG_GROUPS must be an integer from 1 to 1000.");
   if (!Number.isInteger(awsScanMaxSampledResources) || awsScanMaxSampledResources < 1 || awsScanMaxSampledResources > 250) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_SAMPLED_RESOURCES must be an integer from 1 to 250.");
 }
 
@@ -887,6 +889,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
   const inventoryLimits = {
     maxRegions: awsScanMaxRegions,
     maxInventoryItems: awsScanMaxInventoryItems,
+    maxLogGroups: awsScanMaxLogGroups,
     maxSampledResources: awsScanMaxSampledResources,
     limitedRegionalChecks: [],
     regionalResults: [],
@@ -966,7 +969,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
       ["elasticIps", "Reading Elastic IP addresses", (region) => ["ec2", "describe-addresses", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Addresses:Addresses[].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId,Tags:Tags},NextToken:NextToken}"]],
       ["lambdas", "Reading Lambda functions", (region) => ["lambda", "list-functions", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Functions:Functions[].{FunctionName:FunctionName},NextToken:NextToken}"]],
       ["rdsInstances", "Reading RDS instances", (region) => ["rds", "describe-db-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{DBInstances:DBInstances[].{DBInstanceIdentifier:DBInstanceIdentifier,DBInstanceClass:DBInstanceClass,Engine:Engine,MultiAZ:MultiAZ,DBInstanceStatus:DBInstanceStatus},NextToken:NextToken}"]],
-      ["logGroups", "Reading CloudWatch log groups", (region) => ["logs", "describe-log-groups", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{logGroups:logGroups[].{logGroupName:logGroupName,retentionInDays:retentionInDays,storedBytes:storedBytes},NextToken:NextToken}"]],
+      ["logGroups", "Reading CloudWatch log groups", (region) => ["logs", "describe-log-groups", "--region", region, "--max-items", String(awsScanMaxLogGroups), "--page-size", String(Math.min(50, awsScanMaxLogGroups)), "--query", "{logGroups:logGroups[].{logGroupName:logGroupName,retentionInDays:retentionInDays,storedBytes:storedBytes},NextToken:NextToken}"]],
       ["loadBalancers", "Reading load balancers", (region) => ["elbv2", "describe-load-balancers", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{LoadBalancers:LoadBalancers[].{LoadBalancerName:LoadBalancerName,LoadBalancerArn:LoadBalancerArn,Type:Type,State:State},NextToken:NextToken}"]],
       ["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations", (region) => ["compute-optimizer", "get-ec2-instance-recommendations", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{instanceRecommendations:instanceRecommendations[].{instanceArn:instanceArn,instanceName:instanceName,finding:finding,currentInstanceType:currentInstanceType},NextToken:NextToken}"]],
     ];
@@ -979,13 +982,14 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
     await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Scanning ${regions.length} selected AWS region${regions.length === 1 ? "" : "s"}.`, { requestedRegions, regions, skippedRegions });
 
     for (const [id, label, args] of globalChecks) {
+      await updateAwsScanProgress(scanId, completedSteps, totalSteps, label);
       try {
         results[id] = await runAwsJson(args, { env: scanEnv, timeoutMs: 60000 });
       } catch (error) {
         errors.push({ check: id, message: error.message });
       }
       completedSteps += 1;
-      await updateAwsScanProgress(scanId, completedSteps, totalSteps, label);
+      await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed ${label.replace(/\.$/, "").toLowerCase()}.`);
     }
     if (results.s3Buckets?.NextToken || (results.s3Buckets?.Buckets || []).length > awsScanMaxInventoryItems) {
       const returnedCount = Math.min(results.s3Buckets.Buckets.length, awsScanMaxInventoryItems);
@@ -1024,6 +1028,8 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
     const concurrency = 5;
     for (let index = 0; index < jobs.length; index += concurrency) {
       const batch = jobs.slice(index, index + concurrency);
+      const batchLabel = batch.map(({ region, label }) => `${label.replace(/^Reading /, "")} in ${region}`).join("; ");
+      await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Starting ${batchLabel}.`);
       await Promise.all(batch.map(async ({ region, id, label, command }) => {
         try {
           const data = await runAwsJson(command(region), { env: scanEnv, timeoutMs: 45000 });
@@ -1045,7 +1051,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
           errors.push({ check: `${id}:${region}`, message: error.message });
         }
         completedSteps += 1;
-        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `${label} in ${region}.`);
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed ${label.replace(/^Reading /, "").toLowerCase()} in ${region}.`);
       }));
     }
     const rdsMetricJobs = mergeAwsCollection(results.rdsInstances, "DBInstances").DBInstances.slice(0, awsScanMaxSampledResources).flatMap((instance) => [
@@ -1147,6 +1153,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
         limits: {
           maxRegions: awsScanMaxRegions,
           maxInventoryItems: awsScanMaxInventoryItems,
+          maxLogGroups: awsScanMaxLogGroups,
           maxSampledResources: awsScanMaxSampledResources,
         },
         inventoryLimits,
