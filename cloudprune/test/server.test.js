@@ -937,3 +937,12 @@ test("returns 400 for malformed percent encoding", async () => {
     assert.equal(await response.text(), "Bad request");
   });
 });
+
+test("compiled server can resolve copied CloudPrune assets", () => {
+  const builtServerPath = path.join(__dirname, "../dist/server.js");
+  if (!fs.existsSync(builtServerPath)) throw new Error("Run npm run build before this test.");
+  const { staticFilePathForUrlPath: builtStaticFilePathForUrlPath } = require(builtServerPath);
+  const appPath = builtStaticFilePathForUrlPath("/cloudprune/app.js");
+  assert.match(appPath, /dist[/\\]cloudprune[/\\]app\.js$/);
+  assert.equal(fs.existsSync(appPath), true);
+});
