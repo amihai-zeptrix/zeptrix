@@ -42,7 +42,25 @@ const fixtureAssessment = {
     ec2Instances: {
       service: "EC2",
       ok: true,
-      data: { Reservations: [{ Instances: [{ InstanceId: "i-stopped", State: { Name: "stopped" } }] }] },
+      data: {
+        Reservations: [{
+          Instances: [
+            { InstanceId: "i-app-a", InstanceType: "t3.small", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", VpcId: "vpc-1", State: { Name: "running" }, Tags: [{ Key: "Name", Value: "app-a" }] },
+            { InstanceId: "i-app-b", InstanceType: "t3.small", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", VpcId: "vpc-1", State: { Name: "running" }, Tags: [{ Key: "Name", Value: "app-b" }] },
+            { InstanceId: "i-stopped", State: { Name: "stopped" } },
+          ],
+        }],
+      },
+    },
+    ec2Metrics: {
+      service: "CloudWatch EC2 Metrics",
+      ok: true,
+      data: {
+        instances: [
+          { id: "i-app-a", averageCpu: 8.2, maximumCpu: 28, memoryStatus: "observed", maximumMemory: 41, diskStatus: "observed", maximumDisk: 52 },
+          { id: "i-app-b", averageCpu: 6.4, maximumCpu: 22, memoryStatus: "observed", maximumMemory: 38, diskStatus: "observed", maximumDisk: 47 },
+        ],
+      },
     },
     ebsVolumes: {
       service: "EBS",
@@ -128,6 +146,7 @@ test("buildReport creates impact-aware AWS recommendations", () => {
   assert.ok(ids.includes("idle-elastic-ips"));
   assert.ok(ids.includes("idle-load-balancers"));
   assert.ok(ids.includes("ec2-rightsizing"));
+  assert.ok(ids.includes("ec2-app-consolidation"));
   assert.ok(ids.includes("rds-rightsizing"));
   assert.ok(ids.includes("compute-commitments"));
   assert.ok(ids.includes("storage-lifecycle"));
@@ -153,6 +172,13 @@ test("buildReport creates impact-aware AWS recommendations", () => {
   const ec2 = report.findings.find((finding) => finding.id === "ec2-rightsizing");
   assert.ok(ec2.resources.includes("arn:aws:ec2:us-east-1:123456789012:instance/i-over"));
   assert.ok(!ec2.resources.includes("arn:aws:ec2:us-east-1:123456789012:instance/i-ok"));
+
+  const consolidation = report.findings.find((finding) => finding.id === "ec2-app-consolidation");
+  assert.equal(consolidation.statistics["Running instances"], "2");
+  assert.equal(consolidation.statistics["Combined avg CPU"], "14.6% instance-capacity");
+  assert.equal(consolidation.statistics["Memory usage"], "38-41%");
+  assert.ok(consolidation.resources.includes("app-a"));
+  assert.ok(consolidation.resources.includes("app-b"));
 });
 
 test("renderMarkdown includes permission and impact sections", () => {
@@ -180,7 +206,7 @@ test("S3 lifecycle findings ignore buckets with unknown lifecycle status", () =>
         ok: true,
         data: {
           buckets: [
-            { name: "missing-lifecycle", lifecycleStatus: "missing" },
+            { name: "missing-lifecycle", lifecycleStatus: "missing", storageStats: { totalStorageBytes: 100 * 1024 ** 3, coldStorageBytes: 20 * 1024 ** 3 } },
             { name: "unknown-lifecycle", lifecycleStatus: "unknown", lifecycleError: "AccessDenied | nope" },
           ],
         },
@@ -191,6 +217,31 @@ test("S3 lifecycle findings ignore buckets with unknown lifecycle status", () =>
 
   assert.ok(storage.resources.includes("s3://missing-lifecycle"));
   assert.ok(!storage.resources.includes("s3://unknown-lifecycle"));
+});
+
+test("S3 lifecycle findings require at least 10 percent cold or old measured S3 data", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [] } },
+      logGroups: { service: "CloudWatch Logs", ok: true, data: { logGroups: [] } },
+      s3Lifecycle: {
+        service: "S3 Lifecycle",
+        ok: true,
+        data: {
+          buckets: [
+            { name: "hot-bucket", lifecycleStatus: "missing", storageStats: { totalStorageBytes: 100 * 1024 ** 3, coldStorageBytes: 9 * 1024 ** 3 } },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(report.findings.some((finding) => finding.id === "storage-lifecycle"), false);
 });
 
 test("load balancer no-data is treated as idle but unavailable metrics are not", () => {

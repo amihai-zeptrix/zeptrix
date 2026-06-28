@@ -709,6 +709,47 @@ function s3StorageStatsFromMetricData(data) {
   };
 }
 
+async function cloudWatchAgentMetricSummary(scanEnv, region, instanceId, metricName) {
+  const listed = await runAwsJsonCheck([
+    "cloudwatch", "list-metrics",
+    "--namespace", "CWAgent",
+    "--metric-name", metricName,
+    "--dimensions", `Name=InstanceId,Value=${instanceId}`,
+    "--region", region,
+  ], { env: scanEnv, timeoutMs: 30000 });
+  const metrics = listed.ok ? (listed.data?.Metrics || []).slice(0, 5) : [];
+  if (!metrics.length) return { status: listed.ok ? "missing" : "unavailable", average: null, maximum: null, error: listed.ok ? null : listed.error?.message };
+  const summaries = [];
+  const { start, end } = monthStartEnd();
+  for (const metric of metrics) {
+    const data = await runAwsJsonCheck([
+      "cloudwatch", "get-metric-statistics",
+      "--namespace", "CWAgent",
+      "--metric-name", metricName,
+      "--start-time", `${start}T00:00:00Z`,
+      "--end-time", `${end}T00:00:00Z`,
+      "--period", "86400",
+      "--statistics", "Average", "Maximum",
+      "--dimensions", ...cloudWatchDimensionsArgs(metric.Dimensions),
+      "--region", region,
+    ], { env: scanEnv, timeoutMs: 30000 });
+    if (data.ok) {
+      summaries.push({
+        average: metricAverage(data.data?.Datapoints),
+        maximum: metricMaximum(data.data?.Datapoints),
+      });
+    }
+  }
+  const averages = summaries.map((summary) => summary.average).filter((value) => value != null);
+  const maximums = summaries.map((summary) => summary.maximum).filter((value) => value != null);
+  return {
+    status: averages.length || maximums.length ? "observed" : "no-data",
+    average: averages.length ? Math.max(...averages) : null,
+    maximum: maximums.length ? Math.max(...maximums) : null,
+    error: null,
+  };
+}
+
 function costFromCostExplorer(data) {
   const total = data?.ResultsByTime?.[0]?.Total?.UnblendedCost || {};
   return {
@@ -784,6 +825,7 @@ function buildAwsAssessment(results, regions, errors) {
       costByService: awsCheck("Cost Explorer", results.costByService, checkError(errors, "costByService")),
       savingsPlansRecommendation: awsCheck("Cost Explorer", results.savingsPlansRecommendation, checkError(errors, "savingsPlansRecommendation")),
       ec2Instances: awsCheck("EC2", mergeAwsReservations(results.ec2Instances), regionalCheckError(errors, "ec2Instances", regions, results.ec2Instances)),
+      ec2Metrics: awsCheck("CloudWatch EC2 Metrics", { instances: results.ec2Metrics || [] }, null),
       ebsVolumes: awsCheck("EBS", mergeAwsCollection(results.ebsVolumes, "Volumes"), regionalCheckError(errors, "ebsVolumes", regions, results.ebsVolumes)),
       elasticIps: awsCheck("EC2", mergeAwsCollection(results.elasticIps, "Addresses"), regionalCheckError(errors, "elasticIps", regions, results.elasticIps)),
       rdsInstances: awsCheck("RDS", mergeAwsCollection(results.rdsInstances, "DBInstances"), regionalCheckError(errors, "rdsInstances", regions, results.rdsInstances)),
@@ -829,6 +871,12 @@ function metricAverage(datapoints) {
   return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
+function metricMaximum(datapoints) {
+  const values = (datapoints || []).map((point) => Number(point.Maximum)).filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return Math.max(...values);
+}
+
 function metricSum(datapoints) {
   const values = (datapoints || []).map((point) => Number(point.Sum)).filter((value) => Number.isFinite(value));
   if (!values.length) return null;
@@ -839,6 +887,10 @@ function loadBalancerDimension(loadBalancerArn) {
   const marker = ":loadbalancer/";
   const index = String(loadBalancerArn || "").indexOf(marker);
   return index === -1 ? null : String(loadBalancerArn).slice(index + marker.length);
+}
+
+function cloudWatchDimensionsArgs(dimensions) {
+  return (dimensions || []).map((dimension) => `Name=${dimension.Name || dimension.name},Value=${dimension.Value || dimension.value}`);
 }
 
 function addRegionToAwsResult(id, data, region) {
@@ -1125,7 +1177,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
       ]],
     ];
     const regionalChecks = [
-      ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Reservations:Reservations[].{Instances:Instances[].{InstanceId:InstanceId,InstanceType:InstanceType,State:State,Tags:Tags}},NextToken:NextToken}"]],
+      ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Reservations:Reservations[].{Instances:Instances[].{InstanceId:InstanceId,InstanceType:InstanceType,Architecture:Architecture,PlatformDetails:PlatformDetails,VpcId:VpcId,SubnetId:SubnetId,State:State,Tags:Tags}},NextToken:NextToken}"]],
       ["ebsVolumes", "Reading EBS volumes", (region) => ["ec2", "describe-volumes", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Volumes:Volumes[].{VolumeId:VolumeId,State:State,Size:Size,VolumeType:VolumeType,Tags:Tags},NextToken:NextToken}"]],
       ["elasticIps", "Reading Elastic IP addresses", (region) => ["ec2", "describe-addresses", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Addresses:Addresses[].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId,Tags:Tags},NextToken:NextToken}"]],
       ["lambdas", "Reading Lambda functions", (region) => ["lambda", "list-functions", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Functions:Functions[].{FunctionName:FunctionName},NextToken:NextToken}"]],
@@ -1240,19 +1292,67 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
         await updateAwsScanProgress(scanId, completedSteps, totalSteps, runningScanMessage(activeSteps));
       }));
     }
+    const ec2MetricJobs = mergeAwsReservations(results.ec2Instances).Reservations
+      .flatMap((reservation) => reservation.Instances || [])
+      .filter((instance) => instance.InstanceId && instance.State?.Name === "running")
+      .slice(0, awsScanMaxSampledResources)
+      .map((instance) => ({ instance }));
     const rdsMetricJobs = mergeAwsCollection(results.rdsInstances, "DBInstances").DBInstances.slice(0, awsScanMaxSampledResources).flatMap((instance) => [
       { instance, metricName: "CPUUtilization", statistic: "Average" },
       { instance, metricName: "DatabaseConnections", statistic: "Average" },
     ]);
     const loadBalancerMetricJobs = mergeAwsCollection(results.loadBalancers, "LoadBalancers").LoadBalancers.slice(0, awsScanMaxSampledResources).map((loadBalancer) => ({ loadBalancer }));
-    if (rdsMetricJobs.length || loadBalancerMetricJobs.length) {
-      totalSteps += rdsMetricJobs.length + loadBalancerMetricJobs.length;
+    if (ec2MetricJobs.length || rdsMetricJobs.length || loadBalancerMetricJobs.length) {
+      totalSteps += ec2MetricJobs.length + rdsMetricJobs.length + loadBalancerMetricJobs.length;
+      results.ec2Metrics = [];
       results.rdsMetrics = [];
       results.loadBalancerMetrics = [];
       const metricPeriod = String(86400);
       const startTime = `${start}T00:00:00Z`;
       const endTime = `${end}T00:00:00Z`;
       await updateAwsScanProgress(scanId, completedSteps, totalSteps, "Reading CloudWatch utilization metrics.");
+      for (const { instance } of ec2MetricJobs) {
+        const id = instance.InstanceId;
+        const region = instance.Region || awsScanRegion;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading EC2 utilization for ${id}.`);
+        const cpu = await runAwsJsonCheck([
+          "cloudwatch", "get-metric-statistics",
+          "--namespace", "AWS/EC2",
+          "--metric-name", "CPUUtilization",
+          "--start-time", startTime,
+          "--end-time", endTime,
+          "--period", metricPeriod,
+          "--statistics", "Average", "Maximum",
+          "--dimensions", `Name=InstanceId,Value=${id}`,
+          "--region", region,
+        ], { env: scanEnv, timeoutMs: 45000 });
+        const memory = await cloudWatchAgentMetricSummary(scanEnv, region, id, "mem_used_percent");
+        const disk = await cloudWatchAgentMetricSummary(scanEnv, region, id, "disk_used_percent");
+        results.ec2Metrics.push({
+          id,
+          type: instance.InstanceType,
+          architecture: instance.Architecture,
+          platform: instance.PlatformDetails,
+          state: instance.State?.Name,
+          region,
+          vpcId: instance.VpcId,
+          subnetId: instance.SubnetId,
+          averageCpu: cpu.ok ? metricAverage(cpu.data?.Datapoints) : null,
+          maximumCpu: cpu.ok ? metricMaximum(cpu.data?.Datapoints) : null,
+          cpuStatus: cpu.ok ? (cpu.data?.Datapoints?.length ? "observed" : "no-data") : "unavailable",
+          cpuError: cpu.ok ? null : cpu.error?.message,
+          averageMemory: memory.average,
+          maximumMemory: memory.maximum,
+          memoryStatus: memory.status,
+          memoryError: memory.error,
+          averageDisk: disk.average,
+          maximumDisk: disk.maximum,
+          diskStatus: disk.status,
+          diskError: disk.error,
+        });
+        completedSteps += 1;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed EC2 utilization for ${id}.`);
+      }
       const rdsById = new Map();
       for (const job of rdsMetricJobs) {
         const id = job.instance.DBInstanceIdentifier;

@@ -541,7 +541,59 @@ function storageLifecycleStatistics(infiniteLogGroups, bucketsWithoutLifecycle) 
   const sentence = totalBytes
     ? `Observed ${formatBytes(totalBytes)} across sampled storage targets: ${formatBytes(s3Bytes)} in measured S3 buckets and ${formatBytes(logBytes)} in infinite-retention CloudWatch log groups. Cold/old-tier S3 data is ${formatBytes(coldS3Bytes)}${coldS3Percent == null ? "" : ` (${formatPercent(coldS3Percent)} of measured S3)`}.`
     : "Storage quantity metrics were not available for the sampled targets; the finding is based on missing lifecycle/retention policies and cost signals.";
-  return { statistics, sentence };
+  return { statistics, sentence, totalBytes, s3Bytes, coldS3Bytes, coldS3Percent, logBytes };
+}
+
+function instanceName(instance) {
+  return (instance.Tags || []).find((tag) => tag.Key === "Name")?.Value || instance.InstanceId || "unknown";
+}
+
+function metricRange(values, key) {
+  const numbers = values.map((item) => Number(item[key])).filter((value) => Number.isFinite(value));
+  if (!numbers.length) return null;
+  return { min: Math.min(...numbers), max: Math.max(...numbers), sum: numbers.reduce((total, value) => total + value, 0) };
+}
+
+function formatMetricRange(range, suffix = "%") {
+  if (!range) return "not available";
+  if (Math.abs(range.min - range.max) < 0.05) return `${range.max.toFixed(1).replace(/\.0$/, "")}${suffix}`;
+  return `${range.min.toFixed(1).replace(/\.0$/, "")}-${range.max.toFixed(1).replace(/\.0$/, "")}${suffix}`;
+}
+
+function ec2ConsolidationCandidate(instances, metrics, ec2Cost) {
+  const running = instances.filter((instance) => instance.State?.Name === "running");
+  const metricsById = new Map(metrics.map((item) => [item.id, item]));
+  const measured = running.map((instance) => ({ instance, metrics: metricsById.get(instance.InstanceId) })).filter((item) => item.metrics?.averageCpu != null);
+  if (measured.length < 2) return null;
+  const cpuAverage = metricRange(measured.map((item) => item.metrics), "averageCpu");
+  const cpuMaximum = metricRange(measured.map((item) => item.metrics), "maximumCpu");
+  const memoryAverage = metricRange(measured.map((item) => item.metrics).filter((item) => item.averageMemory != null), "averageMemory");
+  const memoryMaximum = metricRange(measured.map((item) => item.metrics).filter((item) => item.maximumMemory != null), "maximumMemory");
+  const diskMaximum = metricRange(measured.map((item) => item.metrics).filter((item) => item.maximumDisk != null), "maximumDisk");
+  const missingMemory = measured.filter((item) => item.metrics.memoryStatus !== "observed").length;
+  const missingDisk = measured.filter((item) => item.metrics.diskStatus !== "observed").length;
+  const sameVpc = new Set(measured.map((item) => item.instance.VpcId).filter(Boolean)).size <= 1;
+  const sameArchitecture = new Set(measured.map((item) => item.instance.Architecture).filter(Boolean)).size <= 1;
+  const samePlatform = new Set(measured.map((item) => item.instance.PlatformDetails).filter(Boolean)).size <= 1;
+  const cpuLooksConsolidatable = cpuAverage.sum <= 55 && (!cpuMaximum || cpuMaximum.max <= 75);
+  const memoryLooksSafe = !memoryMaximum || memoryMaximum.max <= 75;
+  const diskLooksSafe = !diskMaximum || diskMaximum.max <= 80;
+  if (!cpuLooksConsolidatable || !memoryLooksSafe || !diskLooksSafe || !sameVpc || !sameArchitecture) return null;
+  const estimatedSavings = ec2Cost && running.length > 1 ? dollars(ec2Cost / running.length) : null;
+  return {
+    measured,
+    estimatedSavings,
+    confidence: missingMemory || missingDisk ? "low" : samePlatform ? "medium" : "low",
+    statistics: {
+      "Running instances": String(running.length),
+      "Measured instances": String(measured.length),
+      "Combined avg CPU": `${cpuAverage.sum.toFixed(1).replace(/\.0$/, "")}% instance-capacity`,
+      "Peak CPU range": formatMetricRange(cpuMaximum),
+      "Memory usage": missingMemory ? `not available for ${missingMemory}/${measured.length}` : formatMetricRange(memoryMaximum),
+      "Disk usage": missingDisk ? `not available for ${missingDisk}/${measured.length}` : formatMetricRange(diskMaximum),
+      "Compatibility": `${sameVpc ? "same VPC" : "different VPCs"}, ${sameArchitecture ? "same architecture" : "mixed architecture"}, ${samePlatform ? "same platform" : "mixed platform"}`,
+    },
+  };
 }
 
 function addFinding(findings, finding) {
@@ -583,6 +635,8 @@ function buildFindings(assessment) {
   const highTrafficNatGateways = natMetrics.filter((gateway) => gateway.state === "available" && Number(gateway.bytesOutToDestination || 0) > 1024 ** 3);
   const ec2Cost = costs.find((item) => /Elastic Compute Cloud|EC2/i.test(item.service))?.amount || 0;
   const s3Cost = costs.find((item) => /Simple Storage Service|S3/i.test(item.service))?.amount || 0;
+  const ec2Metrics = checks.ec2Metrics?.ok ? checks.ec2Metrics.data?.instances || [] : [];
+  const ec2Consolidation = ec2ConsolidationCandidate(instances, ec2Metrics, ec2Cost);
   const savingsPlanSavings = estimatedSavingsFromSavingsPlans(checks.savingsPlansRecommendation);
 
   if (unattachedVolumes.length) {
@@ -675,6 +729,26 @@ function buildFindings(assessment) {
     });
   }
 
+  if (ec2Consolidation) {
+    const names = ec2Consolidation.measured.map(({ instance }) => instanceName(instance));
+    addFinding(findings, {
+      id: "ec2-app-consolidation",
+      strategy: "Workload consolidation",
+      title: `Assess consolidating ${ec2Consolidation.measured.length} low-utilization EC2 instance${ec2Consolidation.measured.length === 1 ? "" : "s"}`,
+      estimatedMonthlySavings: ec2Consolidation.estimatedSavings,
+      confidence: ec2Consolidation.confidence,
+      blastRadius: "Application processes, ports, host-level dependencies, IAM instance profile, security groups, DNS, and deployment scripts on the candidate EC2 instances.",
+      operationalRisk: "medium",
+      downtimeRisk: "possible during app migration or DNS cutover",
+      impactAnalysis: `Observed CPU indicates the sampled apps may fit on fewer EC2 instances. Memory and disk safety depend on CloudWatch Agent coverage: ${ec2Consolidation.statistics["Memory usage"]} memory, ${ec2Consolidation.statistics["Disk usage"]} disk.`,
+      minimizeImpact: "Inventory running services and ports, move one app at a time, keep the source instance stopped but restorable during a rollback window, and monitor CPU, memory, disk, latency, and error rate before terminating anything.",
+      rollbackPath: "Restart the original instance or restore from AMI/snapshot, revert DNS/load-balancer targets, and move the app process back to its original host.",
+      validationWindow: "Run both apps on the target host through at least one normal traffic cycle; require CPU, memory, disk, latency, and errors to remain within agreed thresholds before terminating a source instance.",
+      statistics: ec2Consolidation.statistics,
+      resources: names,
+    });
+  }
+
   if (lowUseRds.length) {
     addFinding(findings, {
       id: "rds-rightsizing",
@@ -711,8 +785,11 @@ function buildFindings(assessment) {
     });
   }
 
-  if (infiniteLogGroups.length || bucketsWithoutLifecycle.length || s3Cost > Math.max(50, totalCost * 0.1)) {
-    const storageStats = storageLifecycleStatistics(infiniteLogGroups, bucketsWithoutLifecycle);
+  const storageStats = storageLifecycleStatistics(infiniteLogGroups, bucketsWithoutLifecycle);
+  const hasStorageLifecycleEvidence = storageStats.s3Bytes > 0
+    ? storageStats.coldS3Percent >= 10
+    : storageStats.logBytes > 0;
+  if ((infiniteLogGroups.length || bucketsWithoutLifecycle.length || s3Cost > Math.max(50, totalCost * 0.1)) && hasStorageLifecycleEvidence) {
     addFinding(findings, {
       id: "storage-lifecycle",
       strategy: "Storage lifecycle optimization",
