@@ -593,6 +593,7 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   display: grid;
   width: 100%;
   max-width: 760px;
+  align-items: center;
   grid-template-columns: 140px minmax(0, 1fr);
   gap: 8px 14px;
   padding: 14px;
@@ -679,6 +680,8 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
 
 .region-picker[data-region-picker="connection"] > button {
   justify-content: flex-start;
+  min-height: 28px;
+  padding: 0 8px;
 }
 
 .region-picker[data-region-picker="connection"] > button strong {
