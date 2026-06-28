@@ -7,17 +7,21 @@ const vm = require("node:vm");
 const { awsScanCounts, buildAwsAssessment, costFromCostExplorer } = require("../src/aws-scan-report");
 const { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
-async function withServer(callback) {
-  server.listen(0);
-  await once(server, "listening");
-  const address = server.address();
+async function withHttpServer(testServer, callback) {
+  testServer.listen(0);
+  await once(testServer, "listening");
+  const address = testServer.address();
   if (!address || typeof address === "string") throw new Error("Expected local test server to listen on a TCP port.");
   const { port } = address;
   try {
     await callback(`http://127.0.0.1:${port}`);
   } finally {
-    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise((resolve, reject) => testServer.close((error) => (error ? reject(error) : resolve())));
   }
+}
+
+async function withServer(callback) {
+  await withHttpServer(server, callback);
 }
 
 function sessionToken(payload) {
@@ -137,6 +141,23 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
     const shortDemo = await fetch(`${baseUrl}/cp/demo`);
     assert.equal(shortDemo.status, 200);
     assert.match(await shortDemo.text(), /<div id="app"><\/div>/);
+  });
+});
+
+test("compiled server serves app shell and copied assets", async () => {
+  const builtServerPath = path.join(__dirname, "../dist/server.js");
+  if (!fs.existsSync(builtServerPath)) throw new Error("Run npm run build before this test.");
+  const { server: builtServer } = require(builtServerPath);
+
+  await withHttpServer(builtServer, async (baseUrl) => {
+    const root = await fetch(`${baseUrl}/cloudprune/`);
+    assert.equal(root.status, 200);
+    assert.match(root.headers.get("content-type"), /text\/html/);
+    assert.match(await root.text(), /CloudPrune \| Cloud Cost Workspace/);
+
+    const script = await fetch(`${baseUrl}/cloudprune/app.js`);
+    assert.equal(script.status, 200);
+    assert.match(script.headers.get("content-type"), /application\/javascript/);
   });
 });
 
