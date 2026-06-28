@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudPrune read-only cross-account role for cost and optimization assessment.
+
+Parameters:
+  CloudPrunePrincipalArn:
+    Type: String
+    Description: CloudPrune AWS principal allowed to assume this role.
+    AllowedPattern: "^arn:aws[a-z-]*:iam::[0-9]{12}:.+"
+  ExternalId:
+    Type: String
+    Description: CloudPrune-generated external ID for confused-deputy protection.
+    MinLength: 8
+  RoleName:
+    Type: String
+    Description: IAM role name to create for CloudPrune.
+    Default: CloudPruneReadOnlyRole
+    AllowedPattern: "^[A-Za-z0-9+=,.@_-]{1,64}$"
+
+Resources:
+  CloudPruneReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Read-only role used by CloudPrune for cloud cost and optimization assessment.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref CloudPrunePrincipalArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/ReadOnlyAccess
+      Policies:
+        - PolicyName: CloudPruneCostReadOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CostAndBillingReadOnly
+                Effect: Allow
+                Action:
+                  - account:Get*
+                  - budgets:Describe*
+                  - budgets:ViewBudget
+                  - ce:Describe*
+                  - ce:Get*
+                  - ce:List*
+                  - cur:Describe*
+                  - pricing:DescribeServices
+                  - pricing:GetAttributeValues
+                  - pricing:GetProducts
+                  - savingsplans:Describe*
+                Resource: "*"
+
+Outputs:
+  AccountId:
+    Description: Paste this value into CloudPrune after the stack is created.
+    Value: !Ref AWS::AccountId
+  RoleArn:
+    Description: IAM role ARN created by this stack.
+    Value: !GetAtt CloudPruneReadOnlyRole.Arn
+  ExternalId:
+    Description: External ID CloudPrune will use when assuming this role.
+    Value: !Ref ExternalId
