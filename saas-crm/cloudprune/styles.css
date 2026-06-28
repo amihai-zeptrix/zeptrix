@@ -641,6 +641,87 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   line-height: 1.5;
 }
 
+.region-picker {
+  position: relative;
+  width: min(100%, 360px);
+}
+
+.region-picker > button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.region-picker > button span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.region-picker > button strong {
+  font-size: 13px;
+}
+
+.region-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  display: grid;
+  width: min(88vw, 420px);
+  max-height: 320px;
+  overflow: auto;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(25, 45, 38, .16);
+}
+
+.region-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.region-choice:hover {
+  background: #f1f7f4;
+}
+
+.region-choice input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green);
+}
+
+.region-choice span {
+  display: grid;
+  gap: 2px;
+}
+
+.region-choice strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.region-choice small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .scan-progress-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -117,6 +117,18 @@ function normalizeAwsRoleArn(roleArn) {
   return { roleArn: value, awsAccountId: match[1] };
 }
 
+function normalizeAwsScanRegions(regions) {
+  const values = Array.isArray(regions) ? regions : [];
+  const selected = values.map((region) => String(region || "").trim()).filter(Boolean);
+  const normalized = selected.length ? selected : [awsScanRegion];
+  const unique = Array.from(new Set(normalized));
+  if (unique.length > awsScanMaxRegions) throw new Error(`Select up to ${awsScanMaxRegions} AWS regions for one scan.`);
+  for (const region of unique) {
+    if (!/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(region)) throw new Error("Select valid AWS regions to scan.");
+  }
+  return unique;
+}
+
 function publicCloudConnection(row) {
   if (!row) return null;
   return {
@@ -141,6 +153,7 @@ function publicAwsScan(row) {
     counts: row.counts || {},
     errors: row.errors || [],
     recommendations: scanJson.recommendations || [],
+    regions: scanJson.regions || scanJson.requestedRegions || [],
     progress: Number(scanJson.progress || (row.status === "running" ? 0 : 100)),
     message: scanJson.message || "",
     scannedAt: row.created_at,
@@ -760,8 +773,9 @@ async function exchangeOauthCode(payload) {
   return { token: signSession(user), user: publicUser(user) };
 }
 
-async function startAwsScan(req) {
+async function startAwsScan(req, payload = {}) {
   const user = await userFromSession(req);
+  const requestedRegions = normalizeAwsScanRegions(payload.regions);
   const connection = await pool.query(
     `select provider_account_id, role_arn, external_id
      from cloudprune_cloud_connections
@@ -792,7 +806,7 @@ async function startAwsScan(req) {
         `insert into cloudprune_aws_scans (account_id, provider_account_id, status, scan_json)
          values ($1,$2,'running',$3)
          returning id, provider_account_id, status, monthly_cost, currency, counts, errors, scan_json, created_at, updated_at`,
-        [user.account_id, aws.provider_account_id, { progress: 0, message: "Starting AWS scan." }]
+        [user.account_id, aws.provider_account_id, { progress: 0, message: "Starting AWS scan.", requestedRegions }]
       );
       startedRow = inserted.rows[0];
       isNewScan = true;
@@ -807,7 +821,7 @@ async function startAwsScan(req) {
 
   if (!isNewScan) return publicAwsScan(startedRow);
   setImmediate(() => {
-    performAwsScan(startedRow.id, user, aws).catch((error) => {
+    performAwsScan(startedRow.id, user, aws, requestedRegions).catch((error) => {
       console.error("CloudPrune AWS scan failed", error);
     });
   });
@@ -838,7 +852,7 @@ async function updateAwsScanProgress(scanId, completedSteps, totalSteps, message
   );
 }
 
-async function performAwsScan(scanId, user, aws) {
+async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegion]) {
   const sessionName = `CloudPruneScan-${Date.now()}`;
   const results = {};
   const errors = [];
@@ -873,21 +887,22 @@ async function performAwsScan(scanId, user, aws) {
       AWS_DEFAULT_REGION: awsScanRegion,
     };
     const { start, end } = monthStartEnd();
-    let regions = [awsScanRegion];
+    let regions = requestedRegions;
+    let skippedRegions = [];
     try {
       const regionResult = await runAwsJson(["ec2", "describe-regions", "--all-regions", "--region", awsScanRegion], { env: scanEnv, timeoutMs: 45000 });
-      regions = (regionResult.Regions || [])
+      const enabledRegions = new Set((regionResult.Regions || [])
         .filter((region) => !region.OptInStatus || region.OptInStatus === "opt-in-not-required" || region.OptInStatus === "opted-in")
         .map((region) => region.RegionName)
-        .filter(Boolean);
-      if (!regions.length) regions = [awsScanRegion];
-      if (regions.length > awsScanMaxRegions) {
-        errors.push({ check: "regions", message: `Scan limited to ${awsScanMaxRegions} of ${regions.length} enabled AWS regions.` });
-        regions = regions.slice(0, awsScanMaxRegions);
-      }
+        .filter(Boolean));
+      skippedRegions = requestedRegions.filter((region) => !enabledRegions.has(region));
+      regions = requestedRegions.filter((region) => enabledRegions.has(region));
+      if (skippedRegions.length) errors.push({ check: "regions", message: `Skipped disabled or unavailable selected AWS regions: ${skippedRegions.join(", ")}.` });
     } catch (error) {
       errors.push({ check: "regions", message: error.message });
+      regions = requestedRegions;
     }
+    if (!regions.length) throw new Error("None of the selected AWS regions are enabled for this account.");
     completedSteps += 1;
 
     const globalChecks = [
@@ -933,7 +948,7 @@ async function performAwsScan(scanId, user, aws) {
     ]);
     const jobs = regions.flatMap((region) => regionalChecks.map(([id, label, command]) => ({ region, id, label, command })));
     totalSteps = completedSteps + globalChecks.length + jobs.length + 1;
-    await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Discovered ${regions.length} enabled AWS region${regions.length === 1 ? "" : "s"}.`);
+    await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Scanning ${regions.length} selected AWS region${regions.length === 1 ? "" : "s"}.`, { requestedRegions, regions, skippedRegions });
 
     for (const [id, label, args] of globalChecks) {
       try {
@@ -1096,6 +1111,8 @@ async function performAwsScan(scanId, user, aws) {
        where id=$1`,
       [scanId, status, cost.amount, cost.currency, counts, errors, {
         regions,
+        requestedRegions,
+        skippedRegions,
         checks: Object.keys(results),
         recommendations,
         limits: {
@@ -1196,7 +1213,7 @@ async function handleApi(req, res, requestUrl) {
       return json(res, 200, { connection: await saveAwsConnection(req, await readJson(req)) });
     }
     if (req.method === "POST" && apiPath === "/api/cloud-connections/aws/scan") {
-      return json(res, 202, { scan: await startAwsScan(req) });
+      return json(res, 202, { scan: await startAwsScan(req, await readJson(req)) });
     }
     const scanMatch = apiPath.match(/^\/api\/cloud-connections\/aws\/scan\/([0-9a-f-]{36})$/i);
     if (req.method === "GET" && scanMatch) {
@@ -1309,4 +1326,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { awsScanCounts, buildAwsAssessment, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, publicAwsScan, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
+module.exports = { awsScanCounts, buildAwsAssessment, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };

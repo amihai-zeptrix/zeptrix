@@ -17,6 +17,24 @@ const SERVICES = [
   { provider: "data", name: "Snowflake", owner: "Data", month: 28800, forecast: 37100, waste: 9100, trend: 31, score: 79 },
 ];
 
+const AWS_REGIONS = [
+  { id: "us-east-1", label: "US East (N. Virginia)" },
+  { id: "us-east-2", label: "US East (Ohio)" },
+  { id: "us-west-1", label: "US West (N. California)" },
+  { id: "us-west-2", label: "US West (Oregon)" },
+  { id: "eu-west-1", label: "Europe (Ireland)" },
+  { id: "eu-west-2", label: "Europe (London)" },
+  { id: "eu-central-1", label: "Europe (Frankfurt)" },
+  { id: "eu-north-1", label: "Europe (Stockholm)" },
+  { id: "ap-south-1", label: "Asia Pacific (Mumbai)" },
+  { id: "ap-southeast-1", label: "Asia Pacific (Singapore)" },
+  { id: "ap-southeast-2", label: "Asia Pacific (Sydney)" },
+  { id: "ap-northeast-1", label: "Asia Pacific (Tokyo)" },
+  { id: "ca-central-1", label: "Canada (Central)" },
+  { id: "sa-east-1", label: "South America (Sao Paulo)" },
+  { id: "il-central-1", label: "Israel (Tel Aviv)" },
+];
+
 const RECOMMENDATIONS = [
   { cloud: "kubernetes", title: "Right-size production namespace requests", impact: 14200, effort: "Medium", risk: "Low", owner: "SRE", status: "Ready", detail: "CPU requests exceed p95 usage by 48% across 31 deployments." },
   { cloud: "aws", title: "Move steady EC2 baseline into Savings Plans", impact: 11800, effort: "Low", risk: "Low", owner: "Platform", status: "Approve", detail: "62% of compute has stable hourly usage for the last 45 days." },
@@ -80,9 +98,12 @@ let state = {
   connectMessage: "",
   awsConnectDraft: { awsAccountId: "", roleArn: "", externalId: "" },
   awsScan: { status: "idle", progress: 0, message: "" },
+  awsScanRegions: ["us-east-1"],
+  awsRegionPickerOpen: false,
 };
 
 const registerDraftKey = "cloudprune.registerDraft";
+const awsScanRegionsKey = "cloudprune.awsScanRegions";
 
 function money(value) {
   return `$${Math.round(value).toLocaleString()}`;
@@ -111,6 +132,35 @@ function scanTotalEntities(scan) {
   return Object.values(counts).reduce((total, value) => total + Number(value || 0), 0);
 }
 
+function loadAwsScanRegions() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(awsScanRegionsKey) || "[]");
+    const valid = Array.isArray(saved) ? saved.filter((region) => AWS_REGIONS.some((item) => item.id === region)) : [];
+    return valid.length ? valid : ["us-east-1"];
+  } catch {
+    return ["us-east-1"];
+  }
+}
+
+state.awsScanRegions = loadAwsScanRegions();
+
+function selectedAwsRegions() {
+  return state.awsScanRegions.length ? state.awsScanRegions : ["us-east-1"];
+}
+
+function saveAwsScanRegions() {
+  localStorage.setItem(awsScanRegionsKey, JSON.stringify(selectedAwsRegions()));
+}
+
+function toggleAwsScanRegion(region, checked) {
+  if (!AWS_REGIONS.some((item) => item.id === region)) return;
+  const selected = new Set(selectedAwsRegions());
+  if (checked) selected.add(region);
+  if (!checked && selected.size > 1) selected.delete(region);
+  state.awsScanRegions = AWS_REGIONS.map((item) => item.id).filter((id) => selected.has(id));
+  saveAwsScanRegions();
+}
+
 let scanProgressTimer = null;
 
 function stopScanProgress() {
@@ -134,7 +184,8 @@ async function scanAws() {
   try {
     const response = await fetch(`${basePath()}/api/cloud-connections/aws/scan`, {
       method: "POST",
-      headers: authHeaders(),
+      headers: authHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({ regions: selectedAwsRegions() }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "AWS scan failed.");
@@ -545,6 +596,8 @@ function renderAwsScanPanel(awsConnection) {
   const scan = scanResult();
   const active = state.awsScan.status === "scanning" || scan?.status === "running";
   const counts = scan?.counts || {};
+  const regions = selectedAwsRegions();
+  const regionSummary = regions.length === 1 ? regions[0] : `${regions.length} regions`;
   const progress = active ? Number(scan?.progress ?? state.awsScan.progress ?? 0) : scan ? 100 : 0;
   const clampedProgress = Math.max(0, Math.min(100, progress));
   const progressWidth = active ? Math.max(5, clampedProgress) : clampedProgress;
@@ -565,6 +618,22 @@ function renderAwsScanPanel(awsConnection) {
         <span class="eyebrow">AWS scan</span>
         <h3>${active ? "Scanning account..." : scan ? scan.status === "failed" ? "Latest scan failed" : "Latest scan complete" : "Run first inventory scan"}</h3>
         <p>${active ? escapeHtml(scan?.message || state.awsScan.message || "AWS scan is running.") : scan ? escapeHtml(scan.message || `AWS scan complete. Read ${scanTotalEntities(scan).toLocaleString()} entities from AWS account ${scan.awsAccountId || awsConnection.awsAccountId}.`) : "Collect inventory counts and current-month spend using the saved read-only role."}</p>
+      </div>
+      <div class="region-picker">
+        <button type="button" data-action="toggle-region-picker" aria-expanded="${state.awsRegionPickerOpen ? "true" : "false"}" ${active ? "disabled" : ""}>
+          <span>Regions</span>
+          <strong>${escapeHtml(regionSummary)}</strong>
+        </button>
+        ${state.awsRegionPickerOpen && !active ? `
+          <div class="region-menu" role="group" aria-label="AWS regions to scan">
+            ${AWS_REGIONS.map((region) => `
+              <label class="region-choice">
+                <input type="checkbox" data-region-choice="${region.id}" ${regions.includes(region.id) ? "checked" : ""} ${regions.length === 1 && regions.includes(region.id) ? "data-last-selected='true'" : ""}>
+                <span><strong>${region.id}</strong><small>${escapeHtml(region.label)}</small></span>
+              </label>
+            `).join("")}
+          </div>
+        ` : ""}
       </div>
       <div class="scan-progress-row">
         <div class="scan-progress ${active ? "active" : ""}" aria-label="AWS scan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(clampedProgress)}" role="progressbar" style="--scan-progress:${progressWidth}%">
@@ -959,6 +1028,13 @@ document.addEventListener("click", (event) => {
     scanAws();
     return;
   }
+  const regionButton = event.target.closest("[data-action='toggle-region-picker']");
+  if (regionButton) {
+    if (regionButton.disabled) return;
+    state.awsRegionPickerOpen = !state.awsRegionPickerOpen;
+    render();
+    return;
+  }
   const cancelConnect = event.target.closest("[data-action='cancel-connect']");
   if (cancelConnect) {
     state.connectFormVisible = false;
@@ -1000,6 +1076,13 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  const regionChoice = event.target.closest("[data-region-choice]");
+  if (regionChoice) {
+    toggleAwsScanRegion(regionChoice.dataset.regionChoice, regionChoice.checked);
+    state.awsRegionPickerOpen = true;
+    render();
+    return;
+  }
   if (event.target.matches("[data-action='toggle-automation']")) {
     state.automation = event.target.checked;
     render();

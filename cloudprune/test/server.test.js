@@ -4,7 +4,7 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { awsScanCounts, buildAwsAssessment, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
+const { awsScanCounts, buildAwsAssessment, cloudpruneOAuthState, cookieValue, costFromCostExplorer, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require("../server");
 
 async function withServer(callback) {
   server.listen(0);
@@ -285,7 +285,7 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
     companyName: "Zeptrix",
     exp: Date.now() + 10000,
   });
-  const { app, listeners } = bootCloudPruneApp("/cloudprune/", session, (url, options = {}) => {
+  const { app, fetchCalls, listeners } = bootCloudPruneApp("/cloudprune/", session, (url, options = {}) => {
     if (String(url).endsWith("/api/workspace")) {
       return jsonResponse({
         user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
@@ -332,6 +332,10 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   assert.match(app.innerHTML, /style="--scan-progress:5%"/);
   assert.match(app.innerHTML, /<strong>0%<\/strong>/);
   assert.doesNotMatch(app.innerHTML, />Scan again<\/button>/);
+  const scanCall = fetchCalls.find((call) => String(call.url).endsWith("/api/cloud-connections/aws/scan"));
+  assert.ok(scanCall);
+  assert.deepEqual(JSON.parse(scanCall.options.body), { regions: ["us-east-1"] });
+  assert.equal(scanCall.options.headers["content-type"], "application/json");
 });
 
 test("CloudPrune recommendations route renders saved scan recommendations", async () => {
@@ -524,6 +528,12 @@ test("AWS scan summary counts entities and monthly cost", () => {
   }), { amount: 123.45, currency: "USD" });
 });
 
+test("AWS scan region selection normalizes and validates regions", () => {
+  assert.deepEqual(normalizeAwsScanRegions(["us-east-1", "us-east-1", "il-central-1"]), ["us-east-1", "il-central-1"]);
+  assert.deepEqual(normalizeAwsScanRegions([]), ["us-east-1"]);
+  assert.throws(() => normalizeAwsScanRegions(["us-east-1; rm -rf /"]), /valid AWS regions/);
+});
+
 test("AWS scan API payload includes persisted progress and completion message", () => {
   assert.deepEqual(publicAwsScan({
     id: "scan-1",
@@ -533,7 +543,7 @@ test("AWS scan API payload includes persisted progress and completion message", 
     currency: "USD",
     counts: {},
     errors: [],
-    scan_json: { progress: 42, message: "Reading EC2 instances in us-east-1." },
+    scan_json: { progress: 42, message: "Reading EC2 instances in us-east-1.", regions: ["us-east-1"] },
     created_at: "created",
     updated_at: "updated",
   }), {
@@ -545,6 +555,7 @@ test("AWS scan API payload includes persisted progress and completion message", 
     counts: {},
     errors: [],
     recommendations: [],
+    regions: ["us-east-1"],
     progress: 42,
     message: "Reading EC2 instances in us-east-1.",
     scannedAt: "created",
