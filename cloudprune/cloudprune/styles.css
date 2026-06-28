@@ -601,7 +601,7 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   background: #fff;
 }
 
-.connection-summary span,
+.connection-summary > span,
 .trust-policy span {
   color: var(--muted);
   font-size: 11px;
@@ -617,6 +617,14 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.connection-region-control {
+  min-width: 0;
+}
+
+.connection-region-control .region-picker {
+  width: min(100%, 360px);
 }
 
 .scan-panel {

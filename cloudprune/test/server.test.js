@@ -323,7 +323,8 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(app.innerHTML, />Scan again<\/button>/);
-  assert.match(app.innerHTML, /<span>Regions<\/span><code>us-east-1, il-central-1<\/code>/);
+  assert.match(app.innerHTML, /<span>Region\(s\)<\/span><div class="connection-region-control">/);
+  assert.match(app.innerHTML, /data-region-picker="connection"/);
 
   for (const handler of listeners.click || []) handler({
     target: {
@@ -343,6 +344,65 @@ test("CloudPrune AWS scan disables the button and shows visible in-progress stat
   assert.ok(scanCall);
   assert.equal(scanCall.options.body, undefined);
   assert.equal(scanCall.options.headers["content-type"], undefined);
+});
+
+test("CloudPrune AWS connected regions can be changed from the summary", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const { fetchCalls, listeners } = bootCloudPruneApp("/cloudprune/", session, (url, options = {}) => {
+    if (String(url).endsWith("/api/workspace")) {
+      return jsonResponse({
+        user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
+        connections: {
+          aws: {
+            provider: "aws",
+            awsAccountId: "123456789012",
+            roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+            externalId: "cloudprune-account-1",
+            regions: ["us-east-1"],
+            status: "configured",
+          },
+        },
+        awsScan: null,
+        awsSetup: {},
+      });
+    }
+    if (String(url).endsWith("/api/cloud-connections/aws") && options.method === "POST") {
+      const payload = JSON.parse(options.body);
+      return jsonResponse({
+        connection: {
+          provider: "aws",
+          awsAccountId: "123456789012",
+          roleArn: payload.roleArn,
+          externalId: payload.externalId,
+          regions: payload.regions,
+          status: "configured",
+        },
+      });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  for (const handler of listeners.change || []) handler({
+    target: {
+      checked: true,
+      dataset: { regionChoice: "il-central-1", regionContext: "connection" },
+      closest(selector) {
+        return selector === "[data-region-choice]" ? this : null;
+      },
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const saveCall = fetchCalls.find((call) => String(call.url).endsWith("/api/cloud-connections/aws") && call.options.method === "POST");
+  assert.ok(saveCall);
+  assert.deepEqual(JSON.parse(saveCall.options.body).regions, ["us-east-1", "il-central-1"]);
 });
 
 test("CloudPrune recommendations route renders saved scan recommendations", async () => {

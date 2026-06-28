@@ -170,6 +170,34 @@ function awsRegionSummary(connection = state.workspace?.connections?.aws) {
   return savedAwsConnectionRegions(connection).join(", ");
 }
 
+async function saveAwsConnectionRegions() {
+  const connection = state.workspace?.connections?.aws;
+  if (!connection) return;
+  try {
+    const response = await fetch(`${basePath()}/api/cloud-connections/aws`, {
+      method: "POST",
+      headers: authHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({
+        roleArn: connection.roleArn,
+        externalId: connection.externalId,
+        regions: selectedAwsRegions(),
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "Could not save AWS regions.");
+    state.workspace = {
+      ...(state.workspace || {}),
+      connections: { ...((state.workspace || {}).connections || {}), aws: body.connection },
+    };
+    state.awsScanRegions = savedAwsConnectionRegions(body.connection);
+    saveAwsScanRegions();
+    render();
+  } catch (error) {
+    state.connectMessage = error.message;
+    render();
+  }
+}
+
 let scanProgressTimer = null;
 
 function stopScanProgress() {
@@ -736,7 +764,7 @@ function renderEmptyWorkspace() {
             <span>AWS account</span><strong>${escapeHtml(awsConnection.awsAccountId)}</strong>
             <span>Role ARN</span><code>${escapeHtml(awsConnection.roleArn)}</code>
             <span>External ID</span><code>${escapeHtml(awsConnection.externalId)}</code>
-            <span>Regions</span><code>${escapeHtml(awsRegionSummary(awsConnection))}</code>
+            <span>Region(s)</span><div class="connection-region-control">${renderAwsRegionPicker("connection")}</div>
           </div>
           <div class="empty-actions">
             <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Update role</button>
@@ -785,20 +813,20 @@ function renderEmptyWorkspace() {
   `;
 }
 
-function renderAwsRegionPicker() {
+function renderAwsRegionPicker(context = "form") {
   const regions = selectedAwsRegions();
   const regionSummary = regions.length === 1 ? regions[0] : `${regions.length} regions`;
   return `
-    <div class="region-picker">
+    <div class="region-picker" data-region-picker="${context}">
       <button type="button" data-action="toggle-region-picker" aria-expanded="${state.awsRegionPickerOpen ? "true" : "false"}">
-        <span>Regions to scan</span>
+        <span>${context === "connection" ? "Region(s)" : "Regions to scan"}</span>
         <strong>${escapeHtml(regionSummary)}</strong>
       </button>
       ${state.awsRegionPickerOpen ? `
         <div class="region-menu" role="group" aria-label="AWS regions to scan">
           ${AWS_REGIONS.map((region) => `
             <label class="region-choice">
-              <input type="checkbox" data-region-choice="${region.id}" ${regions.includes(region.id) ? "checked" : ""}>
+              <input type="checkbox" data-region-choice="${region.id}" data-region-context="${context}" ${regions.includes(region.id) ? "checked" : ""}>
               <span><strong>${region.id}</strong><small>${escapeHtml(region.label)}</small></span>
             </label>
           `).join("")}
@@ -852,7 +880,7 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUr
           <div>
             <strong>Enter AWS account ID</strong>
             <label>AWS account ID<input name="awsAccountId" value="${draftAccountId}" inputmode="numeric" maxlength="12" placeholder="123456789012" /></label>
-            ${renderAwsRegionPicker()}
+            ${renderAwsRegionPicker("form")}
             <p>Copy the <strong>AccountId</strong> value from the CloudFormation stack Outputs.</p>
             <p class="derived-role" data-derived-role>${draftRoleArn || "Role ARN will be derived automatically."}</p>
           </div>
@@ -1135,6 +1163,7 @@ document.addEventListener("change", (event) => {
     toggleAwsScanRegion(regionChoice.dataset.regionChoice, regionChoice.checked);
     state.awsRegionPickerOpen = true;
     render();
+    if (regionChoice.dataset.regionContext === "connection") saveAwsConnectionRegions();
     return;
   }
   if (event.target.matches("[data-action='toggle-automation']")) {
