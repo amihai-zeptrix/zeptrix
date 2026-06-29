@@ -35,6 +35,35 @@ const {
   staticFilePathForUrlPath,
 } = require("./src/http-utils");
 
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+type RoutePrefix = "/cloudprune" | "/cp";
+
+interface OAuthUserRow {
+  id: string;
+  account_id: string;
+  name: string;
+  email: string;
+  provider?: string;
+  company_name: string;
+}
+
+interface GoogleProfile {
+  sub?: string;
+  email?: string;
+  name?: string;
+  hd?: string;
+}
+
+interface OAuthCodePayload {
+  code?: unknown;
+}
+
+interface OAuthCodeInput {
+  user?: OAuthUserRow | null;
+  registration?: GoogleProfile | null;
+}
+
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -45,11 +74,11 @@ const mimeTypes = {
   ".yml": "text/yaml; charset=utf-8",
 };
 
-function hashOauthCode(code) {
+function hashOauthCode(code: unknown): string {
   return crypto.createHash("sha256").update(String(code)).digest("hex");
 }
 
-async function createOauthCode({ user = null, registration = null }) {
+async function createOauthCode({ user = null, registration = null }: OAuthCodeInput): Promise<string> {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const code = crypto.randomBytes(32).toString("base64url");
   await pool.query(
@@ -60,7 +89,7 @@ async function createOauthCode({ user = null, registration = null }) {
   return code;
 }
 
-async function exchangeOauthCode(payload) {
+async function exchangeOauthCode(payload: OAuthCodePayload) {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const codeHash = hashOauthCode(payload.code || "");
   const result = await pool.query(
@@ -97,7 +126,7 @@ async function exchangeOauthCode(payload) {
   return { token: signSession(user), user: publicUser(user) };
 }
 
-async function googleProfileFromCode(code) {
+async function googleProfileFromCode(code: string | null) {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -110,14 +139,14 @@ async function googleProfileFromCode(code) {
     }),
   });
   if (!tokenResponse.ok) throw new Error("Google token exchange failed.");
-  const token = /** @type {{ id_token?: string }} */ (await tokenResponse.json());
+  const token = await tokenResponse.json() as { id_token?: string };
   const profileResponse = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token.id_token || "")}`);
   if (!profileResponse.ok) throw new Error("Google identity verification failed.");
   const profile = await profileResponse.json();
   return validateGoogleProfile(profile);
 }
 
-async function googleUserFromProfile(profile) {
+async function googleUserFromProfile(profile: GoogleProfile): Promise<OAuthUserRow | null> {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const email = normalizeEmail(profile.email);
   const existing = await pool.query(
@@ -135,7 +164,7 @@ async function googleUserFromProfile(profile) {
   return null;
 }
 
-async function handleApi(req, res, requestUrl) {
+async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: URL): Promise<void> {
   const pathname = requestUrl.pathname;
   const prefix = routePrefix(pathname);
   const apiPath = prefix ? pathname.slice(prefix.length) : pathname;
@@ -185,7 +214,7 @@ async function handleApi(req, res, requestUrl) {
         res.end();
         return;
       }
-      const state = cloudpruneOAuthState(prefix);
+      const state = cloudpruneOAuthState(prefix as RoutePrefix);
       const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
       url.searchParams.set("client_id", googleClientId);
       url.searchParams.set("redirect_uri", googleRedirectUri);
@@ -216,12 +245,12 @@ async function handleApi(req, res, requestUrl) {
       return;
     }
     return json(res, 404, { error: "Not found" });
-  } catch (error) {
+  } catch (error: any) {
     return json(res, 400, { error: error.message || "CloudPrune request failed." });
   }
 }
 
-function serveStatic(req, res) {
+function serveStatic(req: IncomingMessage, res: ServerResponse): void {
   const requestUrl = new URL(req.url, `http://localhost:${port}`);
   let urlPath;
   try {
@@ -244,7 +273,7 @@ function serveStatic(req, res) {
     return;
   }
 
-  let filePath = staticFilePathForUrlPath(urlPath);
+  let filePath: string | null = staticFilePathForUrlPath(urlPath);
   if (!filePath) {
     res.writeHead(403);
     res.end("Forbidden");
@@ -255,7 +284,7 @@ function serveStatic(req, res) {
     const stat = fs.statSync(filePath);
     if (stat.isDirectory()) filePath = path.join(filePath, "index.html");
     const ext = path.extname(filePath);
-    const headers = {
+    const headers: Record<string, string> = {
       "content-type": mimeTypes[ext] || "application/octet-stream",
       "cache-control": routePrefix(urlPath) ? "no-store" : "public, max-age=300",
     };
@@ -281,10 +310,10 @@ if (require.main === module) {
         if (!googleClientId || !googleClientSecret) console.log("Google SSO is not configured for CloudPrune.");
       });
     })
-    .catch((error) => {
+    .catch((error: unknown) => {
       console.error("Failed to initialize CloudPrune database", error);
       process.exit(1);
     });
 }
 
-module.exports = { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
+export { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, hashPassword, initDatabase, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, registerUser, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, validateRuntimeConfig, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifyPassword, verifySession };
