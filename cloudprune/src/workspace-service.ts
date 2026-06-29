@@ -28,15 +28,6 @@ interface AwsConnectionPayload {
   regions?: unknown;
 }
 
-interface AwsConnectionRow {
-  provider_account_id: string;
-  role_arn: string;
-  external_id: string;
-  metadata?: {
-    regions?: unknown;
-  } | null;
-}
-
 interface AwsScanRow {
   id: string;
   provider_account_id: string;
