@@ -568,8 +568,14 @@ function applicationInventorySummary(ssmApplications) {
     managedInstances,
     withApps,
     appNames,
-    label: managedInstances.length ? `${withApps.length}/${managedInstances.length} SSM-managed instance${managedInstances.length === 1 ? "" : "s"} with application inventory` : "not available",
+    label: managedInstances.length ? `${withApps.length}/${managedInstances.length} SSM-managed instance${managedInstances.length === 1 ? "" : "s"} with application inventory` : "SSM Inventory not enabled",
   };
+}
+
+function missingTelemetryLabel(kind, missing, total) {
+  if (!missing) return "";
+  const source = kind === "memory" ? "CloudWatch Agent memory metrics" : "CloudWatch Agent disk metrics";
+  return `${source} missing for ${missing}/${total}`;
 }
 
 function trafficMappingSummary(albTargetMappings, apiGatewayV2, apiGatewayRest, instanceIds) {
@@ -609,6 +615,11 @@ function ec2ConsolidationCandidate(instances, metrics, ec2Cost, signals = {}) {
   const measuredIds = measured.map((item) => item.instance.InstanceId);
   const appInventory = applicationInventorySummary(signals.ssmApplications || []);
   const traffic = trafficMappingSummary(signals.albTargetMappings || [], signals.apiGatewayV2 || [], signals.apiGatewayRest || [], measuredIds);
+  const telemetryGaps = [
+    missingTelemetryLabel("memory", missingMemory, measured.length),
+    missingTelemetryLabel("disk", missingDisk, measured.length),
+    appInventory.managedInstances.length ? "" : "SSM Managed Instance inventory not enabled",
+  ].filter(Boolean);
   return {
     measured,
     estimatedSavings,
@@ -621,10 +632,11 @@ function ec2ConsolidationCandidate(instances, metrics, ec2Cost, signals = {}) {
       "Measured instances": String(measured.length),
       "Combined avg CPU": `${cpuAverage.sum.toFixed(1).replace(/\.0$/, "")}% instance-capacity`,
       "Peak CPU range": formatMetricRange(cpuMaximum),
-      "Memory usage": missingMemory ? `not available for ${missingMemory}/${measured.length}` : formatMetricRange(memoryMaximum),
-      "Disk usage": missingDisk ? `not available for ${missingDisk}/${measured.length}` : formatMetricRange(diskMaximum),
+      "Memory usage": missingMemory ? missingTelemetryLabel("memory", missingMemory, measured.length) : formatMetricRange(memoryMaximum),
+      "Disk usage": missingDisk ? missingTelemetryLabel("disk", missingDisk, measured.length) : formatMetricRange(diskMaximum),
       "Traffic mapping": traffic.label,
       "App inventory": appInventory.label,
+      "Telemetry gap": telemetryGaps.length ? telemetryGaps.join("; ") : "none",
       "Compatibility": `${sameVpc ? "same VPC" : "different VPCs"}, ${sameArchitecture ? "same architecture" : "mixed architecture"}, ${samePlatform ? "same platform" : "mixed platform"}`,
     },
   };
@@ -796,8 +808,8 @@ function buildFindings(assessment) {
       blastRadius: "Application processes, ports, host-level dependencies, IAM instance profile, security groups, DNS, and deployment scripts on the candidate EC2 instances.",
       operationalRisk: "medium",
       downtimeRisk: "possible during app migration or DNS cutover",
-      impactAnalysis: `Observed average CPU indicates the sampled apps may fit on fewer EC2 instances, but this is an assessment candidate, not an automatic termination recommendation. ${ec2Consolidation.hasCpuSpikes ? `CPU has spikes (${ec2Consolidation.statistics["Peak CPU range"]}), so validate peak-hour behavior before moving anything. ` : ""}Memory and disk safety depend on CloudWatch Agent coverage: ${ec2Consolidation.statistics["Memory usage"]} memory, ${ec2Consolidation.statistics["Disk usage"]} disk.`,
-      minimizeImpact: "Inventory running services and ports, move one app at a time, keep the source instance stopped but restorable during a rollback window, and monitor CPU, memory, disk, latency, and error rate before terminating anything.",
+      impactAnalysis: `Observed average CPU indicates the sampled apps may fit on fewer EC2 instances, but this is an assessment candidate, not an automatic termination recommendation. ${ec2Consolidation.hasCpuSpikes ? `CPU has spikes (${ec2Consolidation.statistics["Peak CPU range"]}), so validate peak-hour behavior before moving anything. ` : ""}Memory/disk and application inventory require guest telemetry: ${ec2Consolidation.statistics["Telemetry gap"]}.`,
+      minimizeImpact: "Before moving apps, enable CloudWatch Agent memory/disk metrics and SSM Inventory on candidate instances, inventory running services and ports, move one app at a time, keep the source instance stopped but restorable during a rollback window, and monitor CPU, memory, disk, latency, and error rate before terminating anything.",
       rollbackPath: "Restart the original instance or restore from AMI/snapshot, revert DNS/load-balancer targets, and move the app process back to its original host.",
       validationWindow: "Run both apps on the target host through at least one normal traffic cycle; require CPU, memory, disk, latency, and errors to remain within agreed thresholds before terminating a source instance.",
       statistics: ec2Consolidation.statistics,

@@ -326,8 +326,12 @@ test("EC2 consolidation finding is shown for low average CPU even with peak spik
   assert.equal(consolidation.confidence, "low");
   assert.equal(consolidation.statistics["Combined avg CPU"], "3.6% instance-capacity");
   assert.equal(consolidation.statistics["Peak CPU range"], "66.7-96.7%");
-  assert.equal(consolidation.statistics["Memory usage"], "not available for 2/2");
+  assert.equal(consolidation.statistics["Memory usage"], "CloudWatch Agent memory metrics missing for 2/2");
+  assert.equal(consolidation.statistics["Disk usage"], "CloudWatch Agent disk metrics missing for 2/2");
+  assert.equal(consolidation.statistics["App inventory"], "SSM Inventory not enabled");
+  assert.equal(consolidation.statistics["Telemetry gap"], "CloudWatch Agent memory metrics missing for 2/2; CloudWatch Agent disk metrics missing for 2/2; SSM Managed Instance inventory not enabled");
   assert.match(consolidation.impactAnalysis, /CPU has spikes/);
+  assert.match(consolidation.minimizeImpact, /enable CloudWatch Agent memory\/disk metrics and SSM Inventory/);
   assert.equal(report.findings.some((finding) => finding.id === "ec2-to-lambda-assessment"), false);
 });
 
