@@ -875,7 +875,7 @@ test("AWS scan database writes serialize JSONB payloads", () => {
   const source = [
     fs.readFileSync(path.join(__dirname, "../server.ts"), "utf8"),
     fs.readFileSync(path.join(__dirname, "../src/workspace-service.ts"), "utf8"),
-    fs.readFileSync(path.join(__dirname, "../src/aws-scan-runner.js"), "utf8"),
+    fs.readFileSync(path.join(__dirname, "../src/aws-scan-runner.ts"), "utf8"),
   ].join("\n");
 
   assert.match(source, /values \(\$1,\$2,'running',\$3\)[\s\S]*jsonb\(\{ progress: 0, message: "Starting AWS scan\.", requestedRegions \}\)/);
@@ -892,7 +892,7 @@ test("AWS scan database writes serialize JSONB payloads", () => {
 });
 
 test("AWS scan source collects traffic mapping and app inventory signals", () => {
-  const source = fs.readFileSync(path.join(__dirname, "../src/aws-scan-runner.js"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "../src/aws-scan-runner.ts"), "utf8");
 
   assert.match(source, /\["targetGroups", "Reading ALB target groups"/);
   assert.match(source, /"elbv2", "describe-target-groups"/);

@@ -20,7 +20,10 @@ const {
   publicRecommendation,
 } = require("./aws-scan-report");
 
-function runAwsCli(args, { env = {}, timeoutMs = 60000, maxOutputBytes = awsCliMaxOutputBytes } = {}) {
+type GlobalCheck = [string, string, string[]];
+type RegionalCheck = [string, string, (region: string) => string[]];
+
+function runAwsCli(args: string[], { env = {}, timeoutMs = 60000, maxOutputBytes = awsCliMaxOutputBytes }: { env?: Record<string, string>; timeoutMs?: number; maxOutputBytes?: number } = {}): Promise<string> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const child = spawn(awsCliPath, args, {
@@ -30,7 +33,7 @@ function runAwsCli(args, { env = {}, timeoutMs = 60000, maxOutputBytes = awsCliM
     let stdout = "";
     let stderr = "";
     let outputBytes = 0;
-    function fail(error) {
+    function fail(error: Error) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -63,12 +66,12 @@ function runAwsCli(args, { env = {}, timeoutMs = 60000, maxOutputBytes = awsCliM
   });
 }
 
-async function runAwsJson(args, options = {}) {
+async function runAwsJson(args: string[], options: any = {}) {
   const stdout = await runAwsCli([...args, "--output", "json"], options);
   return stdout.trim() ? JSON.parse(stdout) : {};
 }
 
-async function runAwsJsonCheck(args, options = {}) {
+async function runAwsJsonCheck(args: string[], options: any = {}) {
   try {
     return { ok: true, data: await runAwsJson(args, options) };
   } catch (error) {
@@ -95,13 +98,13 @@ function s3MetricWindow() {
   };
 }
 
-function normalizeS3BucketRegion(locationConstraint) {
+function normalizeS3BucketRegion(locationConstraint: unknown): string {
   if (!locationConstraint || locationConstraint === "None") return "us-east-1";
   if (locationConstraint === "EU") return "eu-west-1";
-  return locationConstraint;
+  return String(locationConstraint);
 }
 
-function latestMetricDataValue(result) {
+function latestMetricDataValue(result: any): number | null {
   const timestamps = result?.Timestamps || [];
   const values = result?.Values || [];
   let latestIndex = -1;
@@ -117,7 +120,7 @@ function latestMetricDataValue(result) {
   return latestIndex === -1 ? null : Number(values[latestIndex]);
 }
 
-function s3StorageMetricQueries(bucketName) {
+function s3StorageMetricQueries(bucketName: string) {
   const storageTypes = [
     "StandardStorage",
     "StandardIAStorage",
@@ -169,7 +172,7 @@ function s3StorageMetricQueries(bucketName) {
   ];
 }
 
-function s3StorageStatsFromMetricData(data) {
+function s3StorageStatsFromMetricData(data: any) {
   const results = data?.MetricDataResults || [];
   const byLabel = Object.fromEntries(results.map((result) => [result.Label, latestMetricDataValue(result)]));
   const storageBreakdown = Object.fromEntries(Object.entries(byLabel)
@@ -188,7 +191,7 @@ function s3StorageStatsFromMetricData(data) {
   };
 }
 
-async function cloudWatchAgentMetricSummary(scanEnv, region, instanceId, metricName) {
+async function cloudWatchAgentMetricSummary(scanEnv: Record<string, string>, region: string, instanceId: string, metricName: string) {
   const listed = await runAwsJsonCheck([
     "cloudwatch", "list-metrics",
     "--namespace", "CWAgent",
@@ -229,35 +232,35 @@ async function cloudWatchAgentMetricSummary(scanEnv, region, instanceId, metricN
   };
 }
 
-function metricAverage(datapoints) {
+function metricAverage(datapoints: any): number | null {
   const values = (datapoints || []).map((point) => Number(point.Average)).filter((value) => Number.isFinite(value));
   if (!values.length) return null;
   return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
-function metricMaximum(datapoints) {
+function metricMaximum(datapoints: any): number | null {
   const values = (datapoints || []).map((point) => Number(point.Maximum)).filter((value) => Number.isFinite(value));
   if (!values.length) return null;
   return Math.max(...values);
 }
 
-function metricSum(datapoints) {
+function metricSum(datapoints: any): number | null {
   const values = (datapoints || []).map((point) => Number(point.Sum)).filter((value) => Number.isFinite(value));
   if (!values.length) return null;
   return values.reduce((total, value) => total + value, 0);
 }
 
-function loadBalancerDimension(loadBalancerArn) {
+function loadBalancerDimension(loadBalancerArn: unknown): string | null {
   const marker = ":loadbalancer/";
   const index = String(loadBalancerArn || "").indexOf(marker);
   return index === -1 ? null : String(loadBalancerArn).slice(index + marker.length);
 }
 
-function cloudWatchDimensionsArgs(dimensions) {
+function cloudWatchDimensionsArgs(dimensions: any): string[] {
   return (dimensions || []).map((dimension) => `Name=${dimension.Name || dimension.name},Value=${dimension.Value || dimension.value}`);
 }
 
-function addRegionToAwsResult(id, data, region) {
+function addRegionToAwsResult(id: string, data: any, region: string): any {
   const collectionById = {
     ec2Instances: "Reservations",
     ebsVolumes: "Volumes",
@@ -279,7 +282,7 @@ function addRegionToAwsResult(id, data, region) {
   };
 }
 
-function awsCollectionCount(id, data) {
+function awsCollectionCount(id: string, data: any): number {
   if (id === "ec2Instances") {
     return (data?.Reservations || []).reduce((total, reservation) => total + (reservation.Instances || []).length, 0);
   }
@@ -300,7 +303,7 @@ function awsCollectionCount(id, data) {
   return collectionKey ? (data?.[collectionKey] || []).length : 0;
 }
 
-async function updateAwsScanProgress(scanId, completedSteps, totalSteps, message, extra = {}) {
+async function updateAwsScanProgress(scanId: string, completedSteps: number, totalSteps: number, message: string, extra: Record<string, unknown> = {}) {
   const denominator = Math.max(1, totalSteps);
   const progress = Math.min(99, Math.max(0, Math.round((completedSteps / denominator) * 100)));
   await pool.query(
@@ -311,22 +314,22 @@ async function updateAwsScanProgress(scanId, completedSteps, totalSteps, message
   );
 }
 
-function scanStepLabel(label, region) {
+function scanStepLabel(label: string, region?: string): string {
   const step = String(label || "").replace(/^Reading /, "").replace(/\.$/, "");
   return region ? `${step} in ${region}` : step;
 }
 
-function runningScanMessage(activeSteps) {
+function runningScanMessage(activeSteps: Set<string>): string {
   const steps = Array.from(activeSteps);
   if (!steps.length) return "Finishing current scan batch.";
   const visibleSteps = steps.slice(0, 3).join("; ");
   return `Running ${visibleSteps}${steps.length > 3 ? ` and ${steps.length - 3} more` : ""}.`;
 }
 
-async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegion], { recordAuthEvent = async (_event) => {} } = {}) {
+async function performAwsScan(scanId: string, user: any, aws: any, requestedRegions: string[] = [awsScanRegion], { recordAuthEvent = async (_event: any) => {} }: { recordAuthEvent?: (event: any) => Promise<void> } = {}) {
   const sessionName = `CloudPruneScan-${Date.now()}`;
-  const results = {};
-  const errors = [];
+  const results: any = {};
+  const errors: Array<{ check: string; message: string }> = [];
   const inventoryLimits = {
     maxRegions: awsScanMaxRegions,
     maxInventoryItems: awsScanMaxInventoryItems,
@@ -359,8 +362,8 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
       AWS_DEFAULT_REGION: awsScanRegion,
     };
     const { start, end } = monthStartEnd();
-    let regions = requestedRegions;
-    let skippedRegions = [];
+    let regions: string[] = requestedRegions;
+    let skippedRegions: string[] = [];
     try {
       const regionResult = await runAwsJson(["ec2", "describe-regions", "--all-regions", "--region", awsScanRegion], { env: scanEnv, timeoutMs: 45000 });
       const enabledRegions = new Set((regionResult.Regions || [])
@@ -377,8 +380,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
     if (!regions.length) throw new Error("None of the selected AWS regions are enabled for this account.");
     completedSteps += 1;
 
-    /** @type {Array<[string, string, string[]]>} */
-    const globalChecks = [
+    const globalChecks: GlobalCheck[] = [
       ["identity", "Reading AWS account identity.", ["sts", "get-caller-identity"]],
       ["s3Buckets", "Reading S3 buckets.", ["s3api", "list-buckets", "--max-items", String(awsScanMaxInventoryItems)]],
       ["cost", "Reading Cost Explorer spend.", [
@@ -405,8 +407,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
         "--region", "us-east-1",
       ]],
     ];
-    /** @type {Array<[string, string, (region: string) => string[]]>} */
-    const regionalChecks = [
+    const regionalChecks: RegionalCheck[] = [
       ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Reservations:Reservations[].{Instances:Instances[].{InstanceId:InstanceId,InstanceType:InstanceType,Architecture:Architecture,PlatformDetails:PlatformDetails,VpcId:VpcId,SubnetId:SubnetId,State:State,Tags:Tags}},NextToken:NextToken}"]],
       ["ebsVolumes", "Reading EBS volumes", (region) => ["ec2", "describe-volumes", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Volumes:Volumes[].{VolumeId:VolumeId,State:State,Size:Size,VolumeType:VolumeType,Tags:Tags},NextToken:NextToken}"]],
       ["elasticIps", "Reading Elastic IP addresses", (region) => ["ec2", "describe-addresses", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Addresses:Addresses[].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId,Tags:Tags},NextToken:NextToken}"]],
@@ -432,7 +433,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
       await updateAwsScanProgress(scanId, completedSteps, totalSteps, label);
       try {
         results[id] = await runAwsJson(args, { env: scanEnv, timeoutMs: 60000 });
-      } catch (error) {
+      } catch (error: any) {
         errors.push({ check: id, message: error.message });
       }
       completedSteps += 1;
@@ -518,7 +519,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
             });
           }
           results[id] = [...(results[id] || []), addRegionToAwsResult(id, data, region)];
-        } catch (error) {
+        } catch (error: any) {
           errors.push({ check: `${id}:${region}`, message: error.message });
         }
         completedSteps += 1;
@@ -654,7 +655,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
         completedSteps += 1;
         await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed EC2 utilization for ${id}.`);
       }
-      const rdsById = new Map();
+      const rdsById = new Map<string, any>();
       for (const job of rdsMetricJobs) {
         const id = job.instance.DBInstanceIdentifier;
         const region = job.instance.Region || awsScanRegion;
@@ -726,7 +727,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
     const assessment = buildAwsAssessment(results, regions, errors);
     const recommendations = buildReport(assessment).findings.slice(0, 20).map(publicRecommendation);
     const status = errors.length ? "completed_with_errors" : "completed";
-    const totalEntities = Object.values(counts).reduce((total, value) => total + Number(value || 0), 0);
+    const totalEntities = Object.values(counts).reduce((total: number, value) => total + Number(value || 0), 0);
     completedSteps += 1;
     const finalResult = await pool.query(
       `update cloudprune_aws_scans
@@ -754,7 +755,7 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
       })]
     );
     if (finalResult.rows[0]) await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
-  } catch (error) {
+  } catch (error: any) {
     const failureResult = await pool.query(
       `update cloudprune_aws_scans
        set status='failed', errors=$2, scan_json = scan_json || $3::jsonb, updated_at=now()
@@ -766,6 +767,6 @@ async function performAwsScan(scanId, user, aws, requestedRegions = [awsScanRegi
   }
 }
 
-module.exports = {
+export {
   performAwsScan,
 };
