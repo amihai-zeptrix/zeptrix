@@ -16,7 +16,24 @@ const { performAwsScan } = require("./aws-scan-runner");
 const { publicUser } = require("./auth");
 const { recordAuthEvent, userFromSession } = require("./user-service");
 
-async function expireStaleAwsScans(accountId = null) {
+interface RequestLike {
+  headers: {
+    authorization?: string;
+  };
+}
+
+interface AwsConnectionPayload {
+  roleArn?: unknown;
+  externalId?: unknown;
+  regions?: unknown;
+}
+
+interface AwsScanRow {
+  id: string;
+  provider_account_id: string;
+}
+
+async function expireStaleAwsScans(accountId: string | null = null): Promise<number> {
   if (!pool) return 0;
   const message = "AWS scan worker stopped before completion. Start a new scan.";
   const params = [`${awsScanStaleAfterSeconds} seconds`, jsonb([{ check: "scan", message }]), jsonb({ progress: 100, message })];
@@ -38,7 +55,7 @@ async function expireStaleAwsScans(accountId = null) {
   return result.rowCount || 0;
 }
 
-async function failOrphanedAwsScansOnStartup() {
+async function failOrphanedAwsScansOnStartup(): Promise<number> {
   if (!pool) return 0;
   const message = "CloudPrune restarted before this AWS scan completed. Start a new scan.";
   const result = await pool.query(
@@ -53,7 +70,7 @@ async function failOrphanedAwsScansOnStartup() {
   return result.rowCount || 0;
 }
 
-async function workspaceForRequest(req) {
+async function workspaceForRequest(req: RequestLike) {
   const user = await userFromSession(req);
   await expireStaleAwsScans(user.account_id);
   const connections = await pool.query(
@@ -85,7 +102,7 @@ async function workspaceForRequest(req) {
   };
 }
 
-async function saveAwsConnection(req, payload) {
+async function saveAwsConnection(req: RequestLike, payload: AwsConnectionPayload) {
   const user = await userFromSession(req);
   const { roleArn, awsAccountId } = normalizeAwsRoleArn(payload.roleArn);
   const externalId = String(payload.externalId || externalIdForAccount(user.account_id)).trim();
@@ -107,7 +124,7 @@ async function saveAwsConnection(req, payload) {
   return publicCloudConnection(result.rows[0]);
 }
 
-async function startAwsScan(req) {
+async function startAwsScan(req: RequestLike) {
   const user = await userFromSession(req);
   await expireStaleAwsScans(user.account_id);
   const connection = await pool.query(
@@ -120,7 +137,7 @@ async function startAwsScan(req) {
   if (!aws) throw new Error("Connect AWS before scanning.");
   const requestedRegions = normalizeAwsScanRegions(aws.metadata?.regions);
 
-  let startedRow;
+  let startedRow: AwsScanRow | null = null;
   let isNewScan = false;
   const client = await pool.connect();
   try {
@@ -164,7 +181,7 @@ async function startAwsScan(req) {
   return publicAwsScan(startedRow);
 }
 
-async function getAwsScan(req, scanId) {
+async function getAwsScan(req: RequestLike, scanId: string) {
   const user = await userFromSession(req);
   await expireStaleAwsScans(user.account_id);
   const result = await pool.query(
@@ -177,7 +194,7 @@ async function getAwsScan(req, scanId) {
   return publicAwsScan(result.rows[0]);
 }
 
-async function stopAwsScan(req) {
+async function stopAwsScan(req: RequestLike) {
   const user = await userFromSession(req);
   const result = await pool.query(
     `update cloudprune_aws_scans
@@ -199,7 +216,7 @@ async function stopAwsScan(req) {
   return publicAwsScan(result.rows[0]);
 }
 
-module.exports = {
+export {
   expireStaleAwsScans,
   failOrphanedAwsScansOnStartup,
   getAwsScan,
