@@ -5,33 +5,83 @@ const {
   tokenSecret,
 } = require("./config");
 
-function normalizeEmail(email) {
+interface UserRecord {
+  id: string;
+  account_id: string;
+  name: string;
+  email: string;
+  company_name: string;
+}
+
+interface PublicUserRecord {
+  name: string;
+  email: string;
+  company_name: string;
+}
+
+interface GoogleProfile {
+  aud?: string;
+  sub?: string;
+  email?: string;
+  email_verified?: boolean | string;
+  name?: string;
+  hd?: string;
+}
+
+interface SessionPayload {
+  sub: string;
+  email: string;
+  name: string;
+  accountId: string;
+  companyName: string;
+  exp: number;
+}
+
+interface GoogleRegistrationPayload {
+  sub: string;
+  email: string;
+  name: string;
+  companyName: string;
+  exp: number;
+}
+
+interface OAuthStatePayload {
+  prefix: "/cp" | "/cloudprune";
+  nonce: string;
+  exp: number;
+}
+
+function decodeJson<T>(body: string): T {
+  return JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+}
+
+export function normalizeEmail(email: unknown): string {
   return String(email || "").trim().toLowerCase();
 }
 
-function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+export function hashPassword(password: unknown, salt = crypto.randomBytes(16).toString("hex")): string {
   const hash = crypto.pbkdf2Sync(String(password), salt, 210000, 32, "sha256").toString("hex");
   return `${salt}:${hash}`;
 }
 
-function verifyPassword(password, stored) {
+export function verifyPassword(password: unknown, stored: unknown): boolean {
   const [salt, expected] = String(stored || "").split(":");
   if (!salt || !expected) return false;
   const actual = hashPassword(password, salt).split(":")[1];
   return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
 }
 
-function secureEqual(actual, expected) {
+function secureEqual(actual: unknown, expected: unknown): boolean {
   const actualBuffer = Buffer.from(String(actual || ""));
   const expectedBuffer = Buffer.from(String(expected || ""));
   return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
-function publicUser(user) {
+export function publicUser(user: PublicUserRecord): { name: string; email: string; companyName: string } {
   return { name: user.name, email: user.email, companyName: user.company_name };
 }
 
-function signSession(user) {
+export function signSession(user: UserRecord): string {
   const payload = {
     sub: user.id,
     email: user.email,
@@ -45,22 +95,22 @@ function signSession(user) {
   return `${body}.${sig}`;
 }
 
-function verifySession(token) {
+export function verifySession(token: unknown): SessionPayload | null {
   const parts = String(token || "").split(".");
   if (parts.length !== 2) return null;
   const expected = crypto.createHmac("sha256", tokenSecret).update(parts[0]).digest("base64url");
   if (!secureEqual(parts[1], expected)) return null;
-  const payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+  const payload = decodeJson<SessionPayload>(parts[0]);
   if (!payload.sub || (payload.exp && Number(payload.exp) < Date.now())) return null;
   return payload;
 }
 
-function bearerToken(req) {
+export function bearerToken(req: { headers: { authorization?: string } }): string {
   const match = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i);
   return match ? match[1] : "";
 }
 
-function signGoogleRegistration(profile) {
+export function signGoogleRegistration(profile: GoogleProfile): string {
   const email = normalizeEmail(profile.email);
   const payload = {
     sub: profile.sub,
@@ -74,23 +124,23 @@ function signGoogleRegistration(profile) {
   return `${body}.${sig}`;
 }
 
-function verifyGoogleRegistration(token) {
+export function verifyGoogleRegistration(token: unknown): GoogleRegistrationPayload | null {
   const parts = String(token || "").split(".");
   if (parts.length !== 2) return null;
   const expected = crypto.createHmac("sha256", tokenSecret).update(parts[0]).digest("base64url");
   if (!secureEqual(parts[1], expected)) return null;
-  const payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+  const payload = decodeJson<GoogleRegistrationPayload>(parts[0]);
   if (!payload.sub || !payload.email || (payload.exp && Number(payload.exp) < Date.now())) return null;
   return payload;
 }
 
-function validateGoogleProfile(profile) {
+export function validateGoogleProfile(profile: GoogleProfile): GoogleProfile {
   if (profile.aud !== googleClientId || !profile.email) throw new Error("Google identity is not valid for this client.");
   if (profile.email_verified !== true && profile.email_verified !== "true") throw new Error("Google email must be verified.");
   return profile;
 }
 
-function cloudpruneOAuthState(prefix) {
+export function cloudpruneOAuthState(prefix: "/cp" | "/cloudprune"): string {
   const body = Buffer.from(JSON.stringify({
     prefix,
     nonce: crypto.randomBytes(18).toString("base64url"),
@@ -100,18 +150,18 @@ function cloudpruneOAuthState(prefix) {
   return `cloudprune.${body}.${sig}`;
 }
 
-function verifyCloudpruneOAuthState(state) {
+export function verifyCloudpruneOAuthState(state: unknown): OAuthStatePayload | null {
   const parts = String(state || "").split(".");
   if (parts.length !== 3 || parts[0] !== "cloudprune") return null;
   const expected = crypto.createHmac("sha256", tokenSecret).update(parts[1]).digest("base64url");
   if (!secureEqual(parts[2], expected)) return null;
-  const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  const payload = decodeJson<OAuthStatePayload>(parts[1]);
   if (payload.exp && Number(payload.exp) < Date.now()) return null;
   if (payload.prefix !== "/cp" && payload.prefix !== "/cloudprune") return null;
   return payload;
 }
 
-function cookieValue(req, name) {
+export function cookieValue(req: { headers: { cookie?: string } }, name: string): string | null {
   return String(req.headers.cookie || "")
     .split(";")
     .map((part) => part.trim())
@@ -124,24 +174,7 @@ function cookieValue(req, name) {
     }, null);
 }
 
-function cloudpruneOAuthCookie(value, prefix, extra = "") {
+export function cloudpruneOAuthCookie(value: string, prefix: string, extra = ""): string {
   const domain = cloudpruneOauthCookieDomain ? `; Domain=${cloudpruneOauthCookieDomain}` : "";
   return `cloudprune_oauth_state=${value}; Path=${prefix}${domain}; HttpOnly; SameSite=Lax; Secure${extra}`;
 }
-
-module.exports = {
-  bearerToken,
-  cloudpruneOAuthCookie,
-  cloudpruneOAuthState,
-  cookieValue,
-  hashPassword,
-  normalizeEmail,
-  publicUser,
-  signGoogleRegistration,
-  signSession,
-  validateGoogleProfile,
-  verifyCloudpruneOAuthState,
-  verifyGoogleRegistration,
-  verifyPassword,
-  verifySession,
-};
