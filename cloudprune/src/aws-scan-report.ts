@@ -1,6 +1,35 @@
 const { awsScanMaxSampledResources, awsScanRegion } = require("./config");
 
-function costFromCostExplorer(data) {
+type AwsJson = Record<string, any>;
+
+interface AwsScanErrors {
+  check?: string;
+}
+
+interface CostExplorerCost {
+  amount: number;
+  currency: string;
+}
+
+interface Finding {
+  id: string;
+  title: string;
+  impactAnalysis: string;
+  estimatedMonthlySavings?: number;
+  operationalRisk?: string;
+  strategy: string;
+  executionMode?: string;
+  confidence?: string;
+  downtimeRisk?: string;
+  blastRadius?: string;
+  minimizeImpact?: string;
+  rollbackPath?: string;
+  validationWindow?: string;
+  statistics?: Record<string, string>;
+  resources?: unknown[];
+}
+
+export function costFromCostExplorer(data: AwsJson): CostExplorerCost {
   const total = data?.ResultsByTime?.[0]?.Total?.UnblendedCost || {};
   return {
     amount: Number(total.Amount || 0),
@@ -8,15 +37,16 @@ function costFromCostExplorer(data) {
   };
 }
 
-function scanCountValue(value, collectionKey) {
+function scanCountValue(value: unknown, collectionKey: string): number {
   if (typeof value === "number") return value;
   if (Array.isArray(value)) return value.reduce((total, item) => total + scanCountValue(item, collectionKey), 0);
   if (!value) return 0;
-  if (collectionKey === "Reservations") return (value.Reservations || []).reduce((total, reservation) => total + (reservation.Instances || []).length, 0);
-  return (value[collectionKey] || []).length;
+  const record = value as AwsJson;
+  if (collectionKey === "Reservations") return (record.Reservations || []).reduce((total: number, reservation: AwsJson) => total + (reservation.Instances || []).length, 0);
+  return (record[collectionKey] || []).length;
 }
 
-function awsScanCounts(results) {
+export function awsScanCounts(results: AwsJson): Record<string, number> {
   return {
     ec2Instances: scanCountValue(results.ec2Instances, "Reservations"),
     lambdas: scanCountValue(results.lambdas, "Functions"),
@@ -27,7 +57,7 @@ function awsScanCounts(results) {
   };
 }
 
-function awsCheck(service, data, error = null) {
+function awsCheck(service: string, data: unknown, error: any = null) {
   return {
     service,
     ok: !error,
@@ -36,25 +66,25 @@ function awsCheck(service, data, error = null) {
   };
 }
 
-function mergeAwsCollection(items, collectionKey) {
+export function mergeAwsCollection(items: unknown, collectionKey: string): AwsJson {
   if (!Array.isArray(items)) return items || {};
   return {
     [collectionKey]: items.flatMap((item) => item?.[collectionKey] || []),
   };
 }
 
-function mergeAwsReservations(items) {
+export function mergeAwsReservations(items: unknown): AwsJson {
   if (!Array.isArray(items)) return items || {};
   return {
     Reservations: items.flatMap((item) => item?.Reservations || []),
   };
 }
 
-function checkError(errors, id) {
+function checkError(errors: AwsScanErrors[], id: string): AwsScanErrors | null {
   return errors.find((error) => error.check === id) || null;
 }
 
-function regionalCheckError(errors, id, regions, resultItems) {
+function regionalCheckError(errors: AwsScanErrors[], id: string, regions: string[], resultItems: unknown): Error | null {
   const failures = errors.filter((error) => String(error.check || "").startsWith(`${id}:`));
   if (!failures.length) return null;
   if (!Array.isArray(resultItems) || resultItems.length === 0 || failures.length >= regions.length) {
@@ -63,7 +93,7 @@ function regionalCheckError(errors, id, regions, resultItems) {
   return null;
 }
 
-function buildAwsAssessment(results, regions, errors) {
+export function buildAwsAssessment(results: AwsJson, regions: string[], errors: AwsScanErrors[]) {
   return {
     generatedAt: new Date().toISOString(),
     region: awsScanRegion,
@@ -96,7 +126,7 @@ function buildAwsAssessment(results, regions, errors) {
   };
 }
 
-function publicRecommendation(finding) {
+export function publicRecommendation(finding: Finding) {
   return {
     id: finding.id,
     cloud: "aws",
@@ -119,12 +149,3 @@ function publicRecommendation(finding) {
     resources: finding.resources || [],
   };
 }
-
-module.exports = {
-  awsScanCounts,
-  buildAwsAssessment,
-  costFromCostExplorer,
-  mergeAwsCollection,
-  mergeAwsReservations,
-  publicRecommendation,
-};
