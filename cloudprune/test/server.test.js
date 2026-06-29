@@ -873,7 +873,7 @@ test("AWS scan API payload includes persisted progress and completion message", 
 
 test("AWS scan database writes serialize JSONB payloads", () => {
   const source = [
-    fs.readFileSync(path.join(__dirname, "../server.js"), "utf8"),
+    fs.readFileSync(path.join(__dirname, "../server.ts"), "utf8"),
     fs.readFileSync(path.join(__dirname, "../src/workspace-service.ts"), "utf8"),
     fs.readFileSync(path.join(__dirname, "../src/aws-scan-runner.js"), "utf8"),
   ].join("\n");
@@ -938,11 +938,11 @@ test("AWS assessment marks regional services failed when every region fails", ()
 
 test("rejects encoded traversal outside the public app directory", async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/cloudprune/%2e%2e/server.js`);
+    const response = await fetch(`${baseUrl}/cloudprune/%2e%2e/server.ts`);
     assert.equal(response.status, 403);
     assert.doesNotMatch(await response.text(), /createServer/);
 
-    const shortResponse = await fetch(`${baseUrl}/cp/%2e%2e/server.js`);
+    const shortResponse = await fetch(`${baseUrl}/cp/%2e%2e/server.ts`);
     assert.equal(shortResponse.status, 403);
     assert.doesNotMatch(await shortResponse.text(), /createServer/);
   });
