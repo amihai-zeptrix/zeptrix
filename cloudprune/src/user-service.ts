@@ -8,7 +8,42 @@ const {
 } = require("./auth");
 const { pool } = require("./db");
 
-async function userFromSession(req) {
+type AuthProvider = "password" | "google";
+
+interface RequestLike {
+  headers: {
+    authorization?: string;
+  };
+}
+
+interface UserPayload {
+  name?: unknown;
+  company?: unknown;
+  companyName?: unknown;
+  email?: unknown;
+  password?: unknown;
+  googleSubject?: unknown;
+  googleRegistrationToken?: unknown;
+}
+
+interface UserRow {
+  id: string;
+  account_id: string;
+  name: string;
+  email: string;
+  password_hash?: string | null;
+  provider: string;
+  company_name: string;
+}
+
+interface AuthEvent {
+  userId?: string | null;
+  email?: string | null;
+  eventType: string;
+  detail?: string | null;
+}
+
+async function userFromSession(req: RequestLike): Promise<UserRow> {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const session = verifySession(bearerToken(req));
   if (!session) throw new Error("CloudPrune session is invalid.");
@@ -23,7 +58,7 @@ async function userFromSession(req) {
   return result.rows[0];
 }
 
-async function recordAuthEvent({ userId = null, email = null, eventType, detail = null }) {
+async function recordAuthEvent({ userId = null, email = null, eventType, detail = null }: AuthEvent): Promise<void> {
   if (!pool) return;
   await pool.query(
     `insert into cloudprune_auth_events (user_id, email, event_type, detail) values ($1,$2,$3,$4)`,
@@ -31,7 +66,7 @@ async function recordAuthEvent({ userId = null, email = null, eventType, detail 
   );
 }
 
-async function registerUser(payload, provider = "password") {
+async function registerUser(payload: UserPayload, provider: AuthProvider = "password"): Promise<UserRow> {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const name = String(payload.name || "").trim();
   const company = String(payload.company || payload.companyName || "").trim();
@@ -56,7 +91,7 @@ async function registerUser(payload, provider = "password") {
     );
     await client.query("commit");
     return user.rows[0];
-  } catch (error) {
+  } catch (error: any) {
     await client.query("rollback");
     if (error.code === "23505") throw new Error("A CloudPrune user already exists for this email.");
     throw error;
@@ -65,7 +100,7 @@ async function registerUser(payload, provider = "password") {
   }
 }
 
-async function loginUser(payload) {
+async function loginUser(payload: UserPayload): Promise<UserRow> {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const email = normalizeEmail(payload.email);
   const result = await pool.query(
@@ -85,7 +120,7 @@ async function loginUser(payload) {
   return user;
 }
 
-async function completeGoogleRegistration(payload) {
+async function completeGoogleRegistration(payload: UserPayload): Promise<UserRow> {
   const registration = verifyGoogleRegistration(payload.googleRegistrationToken);
   if (!registration) throw new Error("Google registration expired. Please continue with Google again.");
   return registerUser({
@@ -96,7 +131,7 @@ async function completeGoogleRegistration(payload) {
   }, "google");
 }
 
-async function updateUserProfile(req, payload) {
+async function updateUserProfile(req: RequestLike, payload: UserPayload): Promise<UserRow> {
   const user = await userFromSession(req);
   const name = String(payload.name || "").trim();
   const company = String(payload.company || payload.companyName || "").trim();
@@ -112,7 +147,7 @@ async function updateUserProfile(req, payload) {
   return { ...user, name, company_name: company };
 }
 
-module.exports = {
+export {
   completeGoogleRegistration,
   loginUser,
   recordAuthEvent,
