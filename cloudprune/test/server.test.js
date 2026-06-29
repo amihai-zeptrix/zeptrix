@@ -874,7 +874,7 @@ test("AWS scan API payload includes persisted progress and completion message", 
 test("AWS scan database writes serialize JSONB payloads", () => {
   const source = [
     fs.readFileSync(path.join(__dirname, "../server.js"), "utf8"),
-    fs.readFileSync(path.join(__dirname, "../src/workspace-service.js"), "utf8"),
+    fs.readFileSync(path.join(__dirname, "../src/workspace-service.ts"), "utf8"),
     fs.readFileSync(path.join(__dirname, "../src/aws-scan-runner.js"), "utf8"),
   ].join("\n");
 
