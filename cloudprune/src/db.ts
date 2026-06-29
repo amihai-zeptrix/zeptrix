@@ -1,14 +1,16 @@
 const { Pool } = require("pg");
 const { databaseUrl } = require("./config");
 
-const pool = databaseUrl
+import type { Pool as PgPool } from "pg";
+
+export const pool: PgPool | null = databaseUrl
   ? new Pool({
       connectionString: databaseUrl,
       ssl: process.env.CLOUDPRUNE_DATABASE_SSL === "true" || process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
     })
   : null;
 
-async function initDatabase() {
+export async function initDatabase(): Promise<void> {
   if (!pool) return;
   await pool.query(`create extension if not exists pgcrypto`);
   await pool.query(`create extension if not exists citext`);
@@ -84,5 +86,3 @@ async function initDatabase() {
     )
   `);
 }
-
-module.exports = { initDatabase, pool };
