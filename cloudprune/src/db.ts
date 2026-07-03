@@ -30,10 +30,12 @@ export async function initDatabase(): Promise<void> {
       password_hash text,
       google_subject text unique,
       provider text not null default 'password',
+      session_version integer not null default 1,
       last_login_at timestamptz,
       created_at timestamptz not null default now()
     )
   `);
+  await pool.query(`alter table cloudprune_users add column if not exists session_version integer not null default 1`);
   await pool.query(`
     create table if not exists cloudprune_auth_events (
       id uuid primary key default gen_random_uuid(),

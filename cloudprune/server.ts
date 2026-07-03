@@ -47,6 +47,7 @@ interface OAuthUserRow {
   email: string;
   provider?: string;
   company_name: string;
+  session_version?: number;
 }
 
 interface GoogleProfile {
@@ -108,7 +109,7 @@ async function exchangeOauthCode(payload: OAuthCodePayload) {
     return { googleRegistration: signGoogleRegistration(row.registration) };
   }
   const userResult = await pool.query(
-    `select u.id, u.account_id, u.name, u.email, u.provider, a.company_name
+    `select u.id, u.account_id, u.name, u.email, u.provider, u.session_version, a.company_name
      from cloudprune_users u
      join cloudprune_accounts a on a.id = u.account_id
      where u.id=$1`,
@@ -122,6 +123,7 @@ async function exchangeOauthCode(payload: OAuthCodePayload) {
     name: userRow.name,
     email: userRow.email,
     provider: userRow.provider,
+    session_version: userRow.session_version,
     company_name: userRow.company_name,
   };
   return { token: signSession(user), user: publicUser(user) };
@@ -151,7 +153,7 @@ async function googleUserFromProfile(profile: GoogleProfile): Promise<OAuthUserR
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const email = normalizeEmail(profile.email);
   const existing = await pool.query(
-    `select u.id, u.account_id, u.name, u.email, u.provider, a.company_name
+    `select u.id, u.account_id, u.name, u.email, u.provider, u.session_version, a.company_name
      from cloudprune_users u
      join cloudprune_accounts a on a.id = u.account_id
      where u.email=$1 or u.google_subject=$2`,
