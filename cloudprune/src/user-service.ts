@@ -6,6 +6,7 @@ const {
   verifyPassword,
   verifySession,
 } = require("./auth");
+const { adminPassword } = require("./config");
 const { pool } = require("./db");
 
 type AuthProvider = "password" | "google";
@@ -34,6 +35,7 @@ interface UserRow {
   password_hash?: string | null;
   provider: string;
   company_name: string;
+  role?: string;
 }
 
 interface AuthEvent {
@@ -56,6 +58,18 @@ async function userFromSession(req: RequestLike): Promise<UserRow> {
   );
   if (!result.rows[0]) throw new Error("CloudPrune session user was not found.");
   return result.rows[0];
+}
+
+function adminUser(): UserRow {
+  return {
+    id: "cloudprune-admin",
+    account_id: "cloudprune-admin",
+    name: "CloudPrune Admin",
+    email: "admin",
+    provider: "admin",
+    company_name: "CloudPrune Admin",
+    role: "admin",
+  };
 }
 
 async function recordAuthEvent({ userId = null, email = null, eventType, detail = null }: AuthEvent): Promise<void> {
@@ -101,8 +115,13 @@ async function registerUser(payload: UserPayload, provider: AuthProvider = "pass
 }
 
 async function loginUser(payload: UserPayload): Promise<UserRow> {
-  if (!pool) throw new Error("CloudPrune database is not configured.");
   const email = normalizeEmail(payload.email);
+  const password = String(payload.password || "");
+  if (adminPassword && email === "admin" && password.trim() === adminPassword) {
+    await recordAuthEvent({ email, eventType: "login", detail: "admin" });
+    return adminUser();
+  }
+  if (!pool) throw new Error("CloudPrune database is not configured.");
   const result = await pool.query(
     `select u.id, u.account_id, u.name, u.email, u.password_hash, u.provider, a.company_name
      from cloudprune_users u
@@ -111,7 +130,7 @@ async function loginUser(payload: UserPayload): Promise<UserRow> {
     [email]
   );
   const user = result.rows[0];
-  if (!user || !user.password_hash || !verifyPassword(payload.password || "", user.password_hash)) {
+  if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
     await recordAuthEvent({ email, eventType: "login_failed", detail: "invalid_credentials" });
     throw new Error("Invalid email or password.");
   }

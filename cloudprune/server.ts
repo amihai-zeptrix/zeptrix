@@ -19,6 +19,7 @@ const {
 } = require("./src/auth");
 const { externalIdForAccount, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan } = require("./src/aws-models");
 const { initDatabase, pool } = require("./src/db");
+const { adminOverview, adminResetUserPassword, adminSpoofUser, adminTenantUsers, submitFeedback } = require("./src/feedback-service");
 const { completeGoogleRegistration, loginUser, recordAuthEvent, registerUser, updateUserProfile, userFromSession } = require("./src/user-service");
 const { failOrphanedAwsScansOnStartup, getAwsScan, saveAwsConnection, startAwsScan, stopAwsScan, workspaceForRequest } = require("./src/workspace-service");
 const {
@@ -194,6 +195,24 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: 
     }
     if (req.method === "GET" && apiPath === "/api/workspace") {
       return json(res, 200, await workspaceForRequest(req));
+    }
+    if (req.method === "POST" && apiPath === "/api/feedback") {
+      return json(res, 201, { feedback: await submitFeedback(req, await readJson(req)) });
+    }
+    if (req.method === "GET" && apiPath === "/api/admin/overview") {
+      return json(res, 200, await adminOverview(req));
+    }
+    const adminTenantUsersMatch = apiPath.match(/^\/api\/admin\/tenants\/([0-9a-f-]{36})\/users$/i);
+    if (req.method === "GET" && adminTenantUsersMatch) {
+      return json(res, 200, await adminTenantUsers(req, adminTenantUsersMatch[1]));
+    }
+    const adminPasswordMatch = apiPath.match(/^\/api\/admin\/users\/([0-9a-f-]{36})\/password$/i);
+    if (req.method === "POST" && adminPasswordMatch) {
+      return json(res, 200, { user: await adminResetUserPassword(req, adminPasswordMatch[1], await readJson(req)) });
+    }
+    const adminSpoofMatch = apiPath.match(/^\/api\/admin\/users\/([0-9a-f-]{36})\/spoof$/i);
+    if (req.method === "POST" && adminSpoofMatch) {
+      return json(res, 200, await adminSpoofUser(req, adminSpoofMatch[1]));
     }
     if (req.method === "POST" && apiPath === "/api/cloud-connections/aws") {
       return json(res, 200, { connection: await saveAwsConnection(req, await readJson(req)) });

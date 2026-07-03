@@ -85,4 +85,18 @@ export async function initDatabase(): Promise<void> {
       created_at timestamptz not null default now()
     )
   `);
+  await pool.query(`
+    create table if not exists cloudprune_feedback_reports (
+      id uuid primary key default gen_random_uuid(),
+      account_id uuid not null references cloudprune_accounts(id) on delete cascade,
+      user_id uuid not null references cloudprune_users(id) on delete cascade,
+      report_type text not null,
+      details text not null,
+      attachment_name text,
+      attachment_type text,
+      attachment_size integer,
+      attachment_content_base64 text,
+      created_at timestamptz not null default now()
+    )
+  `);
 }

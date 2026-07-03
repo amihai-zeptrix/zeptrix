@@ -178,6 +178,10 @@ main { min-width: 0; padding: 28px; }
 }
 
 .top-actions { display: flex; align-items: center; gap: 10px; }
+.feedback-button {
+  color: var(--forest);
+  background: var(--sky-soft);
+}
 button {
   min-height: 36px;
   border: 0;
@@ -188,6 +192,7 @@ button {
   font-weight: 800;
 }
 button:hover { background: #1e4d43; }
+.feedback-button:hover { background: #d3effd; }
 
 .sidebar-action {
   display: inline-flex;
@@ -371,6 +376,7 @@ button:hover { background: #1e4d43; }
   border-bottom: 1px solid var(--line);
 }
 .recommendation:hover { background: #fbfefd; }
+.recommendation.active-action { background: linear-gradient(135deg, #ffffff, #f6fbf8); }
 .recommendation:last-child { border-bottom: 0; }
 .rec-icon {
   display: grid;
@@ -435,6 +441,239 @@ button:hover { background: #1e4d43; }
   min-height: 30px;
   color: #13402f;
   background: var(--green-soft);
+}
+.demo-action-panel {
+  grid-column: 2 / 4;
+  display: grid;
+  gap: 14px;
+  margin-top: 2px;
+  padding: 16px;
+  border: 1px solid #cbe8d5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 24px rgba(19, 64, 47, .08);
+}
+.demo-action-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.demo-action-head h4 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+.demo-action-head button {
+  min-height: 30px;
+  color: var(--muted);
+  background: #f4f7f5;
+}
+.demo-action-panel > p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+.demo-action-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 10px;
+}
+.demo-action-grid > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbf9;
+}
+.demo-action-grid strong,
+.demo-action-grid span {
+  display: block;
+}
+.demo-action-grid strong {
+  margin-bottom: 7px;
+  color: var(--forest);
+}
+.demo-action-grid span,
+.demo-action-grid li {
+  color: var(--muted);
+  line-height: 1.45;
+}
+.demo-action-grid ol {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+.demo-action-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.demo-action-footer span,
+.demo-action-footer strong {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--forest);
+  font-size: 12px;
+  font-weight: 800;
+}
+.demo-action-footer button {
+  margin-left: auto;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 24, 20, .42);
+}
+.feedback-dialog {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border: 1px solid rgba(220,228,223,.9);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(5, 24, 20, .32);
+}
+.dialog-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.dialog-head button {
+  color: var(--muted);
+  background: #f4f7f5;
+}
+.feedback-form {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+.feedback-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.feedback-form select,
+.feedback-form textarea,
+.feedback-form input[type="file"] {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: #fff;
+}
+.feedback-form textarea {
+  min-height: 180px;
+  resize: vertical;
+}
+.feedback-form select:focus,
+.feedback-form textarea:focus {
+  border-color: #8fd9aa;
+  box-shadow: 0 0 0 3px rgba(47,182,109,.16);
+  outline: 0;
+}
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.admin-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+.admin-users-table-row td {
+  height: auto;
+  padding: 0 14px 14px;
+  background: #fbfdfc;
+}
+.admin-user-list {
+  display: grid;
+  gap: 10px;
+}
+.admin-user-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(280px, 420px) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.admin-user-row span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.admin-reset-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  gap: 8px;
+}
+.admin-reset-form input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: #fff;
+}
+.feedback-list {
+  display: grid;
+}
+.feedback-report {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.feedback-report:last-child { border-bottom: 0; }
+.feedback-report span {
+  display: inline-flex;
+  margin-bottom: 7px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--forest);
+  background: var(--green-soft);
+  font-size: 11px;
+  font-weight: 800;
+}
+.feedback-report p {
+  margin-top: 8px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+.feedback-report aside {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.feedback-report aside strong {
+  color: var(--ink);
+}
+.feedback-report aside em {
+  margin-top: 6px;
+  color: var(--forest);
+  font-style: normal;
+  font-weight: 800;
 }
 
 table {
@@ -1261,6 +1500,18 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   .recommendation { grid-template-columns: 42px minmax(0, 1fr); }
   .rec-meta { grid-column: 2; }
   .rec-meta { justify-items: start; }
+  .demo-action-panel { grid-column: 1 / -1; }
+  .demo-action-grid { grid-template-columns: 1fr; }
+  .demo-action-footer button {
+    width: 100%;
+    margin-left: 0;
+  }
+  .feedback-report { grid-template-columns: 1fr; }
+  .admin-user-row,
+  .admin-reset-form {
+    grid-template-columns: 1fr;
+  }
+  .dialog-actions button { width: 100%; }
   table { min-width: 680px; }
   .table-panel { overflow-x: auto; }
   .auth-visual { padding: 24px 18px; }

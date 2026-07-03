@@ -19,11 +19,13 @@ export const googleRedirectUri: string = process.env.CLOUDPRUNE_GOOGLE_REDIRECT_
 export const googleClientId: string = process.env.CLOUDPRUNE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
 export const googleClientSecret: string = process.env.CLOUDPRUNE_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
 export const tokenSecret: string = process.env.CLOUDPRUNE_TOKEN_SECRET || process.env.CRM_TOKEN_SECRET || (databaseUrl || isProduction ? "" : "local-cloudprune-token-secret");
+export const adminPassword: string = process.env.CLOUDPRUNE_ADMIN_PASSWORD || "";
 export const awsPrincipalArn: string = process.env.CLOUDPRUNE_AWS_PRINCIPAL_ARN || "";
 export const cloudpruneOauthCookieDomain: string = process.env.CLOUDPRUNE_OAUTH_COOKIE_DOMAIN || "zeptrix.io";
 
 export function validateRuntimeConfig(): void {
   if ((databaseUrl || isProduction) && !tokenSecret) throw new Error("CLOUDPRUNE_TOKEN_SECRET or CRM_TOKEN_SECRET is required when persistence is enabled.");
+  if (isProduction && !adminPassword) throw new Error("CLOUDPRUNE_ADMIN_PASSWORD is required in production.");
   if (isProduction && !cloudFormationTemplateUrl) throw new Error("CLOUDPRUNE_AWS_CLOUDFORMATION_TEMPLATE_URL is required in production.");
   if (!Number.isInteger(awsScanMaxRegions) || awsScanMaxRegions < 1 || awsScanMaxRegions > 30) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_REGIONS must be an integer from 1 to 30.");
   if (!Number.isInteger(awsScanMaxInventoryItems) || awsScanMaxInventoryItems < 1 || awsScanMaxInventoryItems > 5000) throw new Error("CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS must be an integer from 1 to 5000.");

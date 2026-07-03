@@ -4,7 +4,9 @@ const { once } = require("node:events");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-const { awsScanCounts, buildAwsAssessment, costFromCostExplorer } = require(path.join(__dirname, "../dist/src/aws-scan-report.js"));
+process.env.CLOUDPRUNE_ADMIN_PASSWORD = "cloudprune-test-admin-password";
+const { buildReport } = require("../scripts/aws-assessment");
+const { awsScanCounts, buildAwsAssessment, costFromCostExplorer, publicRecommendation } = require(path.join(__dirname, "../dist/src/aws-scan-report.js"));
 const { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require(path.join(__dirname, "../dist/server.js"));
 
 async function withHttpServer(testServer, callback) {
@@ -51,6 +53,14 @@ function bootCloudPruneApp(pathname, session = null, fetchHandler = null) {
     URL,
     URLSearchParams,
     atob: (value) => Buffer.from(value, "base64").toString("binary"),
+    FormData: class {
+      constructor(form) {
+        this.form = form;
+      }
+      entries() {
+        return Object.entries(this.form.__entries || {});
+      }
+    },
     fetch: async (url, options = {}) => {
       fetchCalls.push({ url, options });
       if (fetchHandler) return fetchHandler(url, options);
@@ -87,6 +97,123 @@ function bootCloudPruneApp(pathname, session = null, fetchHandler = null) {
   };
   vm.runInNewContext(script, context, { filename: "cloudprune/app.js" });
   return { app, fetchCalls, listeners, store };
+}
+
+function recommendationAssessmentFixture() {
+  return {
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    concurrency: 6,
+    maxResources: 25,
+    checks: {
+      identity: {
+        service: "STS",
+        ok: true,
+        required: true,
+        data: { Account: "123456789012", Arn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole" },
+      },
+      costByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: {
+          ResultsByTime: [{
+            Groups: [
+              { Keys: ["Amazon Elastic Compute Cloud - Compute"], Metrics: { UnblendedCost: { Amount: "1200", Unit: "USD" } } },
+              { Keys: ["Amazon Simple Storage Service"], Metrics: { UnblendedCost: { Amount: "180", Unit: "USD" } } },
+            ],
+          }],
+        },
+      },
+      savingsPlansRecommendation: {
+        service: "Cost Explorer",
+        ok: true,
+        data: {
+          SavingsPlansPurchaseRecommendation: {
+            SavingsPlansPurchaseRecommendationDetails: [{ EstimatedMonthlySavingsAmount: "212.40" }],
+          },
+        },
+      },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [
+              { InstanceId: "i-app-a", InstanceType: "t3.small", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", VpcId: "vpc-1", State: { Name: "running" }, Tags: [{ Key: "Name", Value: "app-a" }] },
+              { InstanceId: "i-app-b", InstanceType: "t3.small", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", VpcId: "vpc-1", State: { Name: "running" }, Tags: [{ Key: "Name", Value: "app-b" }] },
+            ],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: {
+          instances: [
+            { id: "i-app-a", averageCpu: 8.2, maximumCpu: 28, memoryStatus: "observed", maximumMemory: 41, diskStatus: "observed", maximumDisk: 52 },
+            { id: "i-app-b", averageCpu: 6.4, maximumCpu: 22, memoryStatus: "observed", maximumMemory: 38, diskStatus: "observed", maximumDisk: 47 },
+          ],
+        },
+      },
+      ebsVolumes: {
+        service: "EBS",
+        ok: true,
+        data: { Volumes: [{ VolumeId: "vol-1", State: "available", Size: 100, VolumeType: "gp3" }] },
+      },
+      elasticIps: { service: "EC2", ok: true, data: { Addresses: [] } },
+      logGroups: {
+        service: "CloudWatch Logs",
+        ok: true,
+        data: { logGroups: [{ logGroupName: "/aws/lambda/no-retention", storedBytes: 10 * 1024 ** 3 }] },
+      },
+      s3Lifecycle: {
+        service: "S3 Lifecycle",
+        ok: true,
+        data: {
+          buckets: [{
+            name: "logs-bucket",
+            lifecycleStatus: "missing",
+            lifecycleConfigured: false,
+            storageStats: {
+              objectCount: 123456,
+              totalStorageBytes: 200 * 1024 ** 3,
+              coldStorageBytes: 80 * 1024 ** 3,
+              coldStoragePercent: 40,
+            },
+          }],
+        },
+      },
+      computeOptimizerEc2: { service: "Compute Optimizer", ok: true, data: { instanceRecommendations: [] } },
+      rdsMetrics: { service: "CloudWatch RDS Metrics", ok: true, data: { instances: [] } },
+      loadBalancerMetrics: { service: "CloudWatch ELB Metrics", ok: true, data: { loadBalancers: [] } },
+      albTargetMappings: {
+        service: "ELBv2 Target Mapping",
+        ok: true,
+        data: {
+          targetGroups: [{
+            name: "apps",
+            targetType: "instance",
+            protocol: "HTTP",
+            port: 80,
+            targets: [{ id: "i-app-a", state: "healthy" }, { id: "i-app-b", state: "healthy" }],
+          }],
+        },
+      },
+      apiGatewayV2: { service: "API Gateway HTTP APIs", ok: true, data: { Items: [{ ApiId: "api-1", Name: "public-api", ProtocolType: "HTTP" }] } },
+      apiGatewayRest: { service: "API Gateway REST APIs", ok: true, data: { items: [] } },
+      ssmApplications: {
+        service: "SSM Application Inventory",
+        ok: true,
+        data: {
+          instances: [
+            { id: "i-app-a", applications: [{ name: "nodejs" }, { name: "nginx" }] },
+            { id: "i-app-b", applications: [{ name: "python3" }] },
+          ],
+        },
+      },
+    },
+  };
 }
 
 test("maps CloudPrune app routes to the public index", () => {
@@ -176,9 +303,335 @@ test("authenticated CloudPrune workspace starts empty while demo data remains in
   const demo = renderCloudPruneApp("/cloudprune/demo");
   assert.match(demo, /\$402,150/);
   assert.match(demo, /Prioritized recommendations/);
-  assert.match(demo, /Move steady EC2 baseline into Savings Plans/);
+  assert.match(demo, /Review AWS Savings Plans purchase recommendation/);
   assert.match(demo, /BigQuery query scans/);
   assert.doesNotMatch(demo, /No cloud data yet/);
+});
+
+test("CloudPrune demo includes example recommendations for every AWS engine type", () => {
+  const demo = renderCloudPruneApp("/cloudprune/demo/recommendations");
+  const titles = [
+    "Review AWS Savings Plans purchase recommendation",
+    "Review 128 unattached EBS volumes",
+    "Release 43 unassociated Elastic IP addresses",
+    "Add retention and lifecycle policies for storage targets",
+    "Assess consolidating 2 low-utilization EC2 instances",
+    "Investigate 3 load balancers with no observed traffic",
+    "Evaluate 9 EC2 Compute Optimizer recommendations",
+    "Assess whether low-utilization EC2 app entrypoints can move to Lambda",
+    "Review 4 low-utilization RDS instances",
+    "Review 2 NAT gateways for endpoint opportunities",
+  ];
+
+  for (const title of titles) assert.match(demo, new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(demo, /Partition high-scan BigQuery tables/);
+  assert.match(demo, /Consolidate underused AKS node pools/);
+  assert.match(demo, /Right-size production namespace requests/);
+});
+
+test("CloudPrune demo recommendation status buttons open workflow previews", () => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
+  const click = (action, dataset = {}) => {
+    for (const handler of listeners.click || []) handler({
+      target: {
+        closest(selector) {
+          return selector === `[data-action='${action}']` ? { disabled: false, dataset } : null;
+        },
+      },
+    });
+  };
+
+  click("stage", { recommendationId: "compute-commitments" });
+  assert.match(app.innerHTML, /Open evidence review/);
+  assert.match(app.innerHTML, /Open review/);
+  assert.match(app.innerHTML, /Commit only to a conservative baseline/);
+
+  click("stage", { recommendationId: "idle-ebs-volumes" });
+  assert.match(app.innerHTML, /Stage safe execution/);
+  assert.match(app.innerHTML, /Add to queue/);
+  assert.doesNotMatch(app.innerHTML, /Open evidence review/);
+
+  click("stage", { recommendationId: "storage-lifecycle" });
+  assert.match(app.innerHTML, /Build rollout plan/);
+  assert.match(app.innerHTML, /Create plan/);
+  assert.doesNotMatch(app.innerHTML, /Stage safe execution/);
+
+  click("close-demo-action");
+  assert.doesNotMatch(app.innerHTML, /Build rollout plan/);
+});
+
+test("CloudPrune feedback button opens a typed report dialog", () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/", session, (url) => {
+    if (String(url).endsWith("/api/workspace")) {
+      return jsonResponse({
+        user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
+        connections: { aws: null },
+        awsScan: null,
+        awsSetup: {},
+      });
+    }
+    return jsonResponse({});
+  });
+
+  assert.match(app.innerHTML, /Send feedback/);
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='open-feedback']" ? { disabled: false } : null;
+      },
+    },
+  });
+
+  assert.match(app.innerHTML, /Product feedback/);
+  assert.match(app.innerHTML, /<option>Issue<\/option>/);
+  assert.match(app.innerHTML, /<option>Feature request<\/option>/);
+  assert.match(app.innerHTML, /<textarea name="details"/);
+  assert.match(app.innerHTML, /name="attachment" type="file"/);
+});
+
+test("CloudPrune login form sends normal user credentials and stores the returned session", async () => {
+  const session = sessionToken({
+    sub: "t1-user",
+    email: "t1@example.com",
+    accountId: "22222222-2222-4222-8222-222222222222",
+    companyName: "Tenant One",
+    exp: Date.now() + 10000,
+  });
+  const { fetchCalls, listeners, store } = bootCloudPruneApp("/cloudprune/", null, (url, options = {}) => {
+    if (String(url).endsWith("/api/login")) {
+      assert.equal(options.method, "POST");
+      assert.deepEqual(JSON.parse(options.body), { email: "t1@example.com", password: "tenant-password" });
+      return jsonResponse({ token: session, user: { email: "t1@example.com", companyName: "Tenant One" } });
+    }
+    return jsonResponse({});
+  });
+  const form = { dataset: { authForm: "login" }, __entries: { email: "t1@example.com", password: "tenant-password" } };
+  for (const handler of listeners.submit || []) await handler({
+    preventDefault() {},
+    target: {
+      closest(selector) {
+        return selector === "[data-auth-form]" ? form : null;
+      },
+    },
+  });
+
+  assert.equal(store.get("cloudprune.session"), session);
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/login")));
+});
+
+test("CloudPrune login form accepts admin credentials and stores an admin session", async () => {
+  const adminPassword = "cloudprune-test-admin-password";
+  const session = sessionToken({
+    sub: "cloudprune-admin",
+    email: "admin",
+    accountId: "cloudprune-admin",
+    companyName: "CloudPrune Admin",
+    role: "admin",
+    exp: Date.now() + 10000,
+  });
+  const { fetchCalls, listeners, store } = bootCloudPruneApp("/cloudprune/", null, (url, options = {}) => {
+    if (String(url).endsWith("/api/login")) {
+      assert.equal(options.method, "POST");
+      assert.deepEqual(JSON.parse(options.body), { email: "admin", password: adminPassword });
+      return jsonResponse({ token: session, user: { email: "admin", companyName: "CloudPrune Admin", role: "admin" } });
+    }
+    return jsonResponse({});
+  });
+  const form = { dataset: { authForm: "login" }, __entries: { email: "admin", password: adminPassword } };
+  for (const handler of listeners.submit || []) await handler({
+    preventDefault() {},
+    target: {
+      closest(selector) {
+        return selector === "[data-auth-form]" ? form : null;
+      },
+    },
+  });
+
+  assert.equal(store.get("cloudprune.session"), session);
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/login")));
+});
+
+test("CloudPrune login form accepts admin username format", () => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/");
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-auth-mode]" ? { dataset: { authMode: "login" } } : null;
+      },
+    },
+  });
+
+  assert.match(app.innerHTML, /Email or username/);
+  assert.match(app.innerHTML, /name="email" type="text" autocomplete="username"/);
+  assert.doesNotMatch(app.innerHTML, /name="email" type="email" autocomplete="email" required/);
+});
+
+test("CloudPrune admin route renders tenants and feedback reports", async () => {
+  const session = sessionToken({
+    sub: "cloudprune-admin",
+    email: "admin",
+    accountId: "cloudprune-admin",
+    companyName: "CloudPrune Admin",
+    role: "admin",
+    exp: Date.now() + 10000,
+  });
+  const userId = "11111111-1111-4111-8111-111111111111";
+  const { app, listeners, fetchCalls } = bootCloudPruneApp("/cloudprune/admin", session, (url) => {
+    if (String(url).endsWith("/api/admin/overview")) {
+      return jsonResponse({
+        tenants: [{
+          id: "22222222-2222-4222-8222-222222222222",
+          companyName: "Zeptrix",
+          userCount: 2,
+          connections: 1,
+          createdAt: "2026-07-03T08:00:00.000Z",
+        }],
+        feedback: [{
+          id: "feedback-1",
+          type: "Issue",
+          details: "The scan progress looked stuck.",
+          tenant: "Zeptrix",
+          user: "Ami",
+          email: "ami@example.com",
+          createdAt: "2026-07-03T08:30:00.000Z",
+          attachment: { name: "scan.png", type: "image/png", size: 2048 },
+        }],
+      });
+    }
+    if (String(url).endsWith("/api/admin/tenants/22222222-2222-4222-8222-222222222222/users")) {
+      return jsonResponse({
+        tenant: { id: "22222222-2222-4222-8222-222222222222", companyName: "Zeptrix" },
+        users: [{
+          id: userId,
+          name: "Ami",
+          email: "ami@example.com",
+          provider: "google",
+          hasPassword: false,
+          createdAt: "2026-07-03T08:10:00.000Z",
+        }],
+      });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.match(app.innerHTML, /CloudPrune admin/);
+  assert.match(app.innerHTML, /Zeptrix/);
+  assert.match(app.innerHTML, /Show users/);
+  assert.doesNotMatch(app.innerHTML, /Reset password/);
+  assert.doesNotMatch(app.innerHTML, /data-action="admin-spoof-user"/);
+
+  await listeners.click[0]({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='toggle-admin-tenant-users']"
+          ? { dataset: { tenantId: "22222222-2222-4222-8222-222222222222" } }
+          : null;
+      },
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.match(app.innerHTML, /ami@example\.com/);
+  assert.match(app.innerHTML, /Reset password/);
+  assert.match(app.innerHTML, /Spoof/);
+  assert.match(app.innerHTML, /The scan progress looked stuck/);
+  assert.match(app.innerHTML, /scan\.png/);
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/admin/tenants/22222222-2222-4222-8222-222222222222/users")));
+});
+
+test("CloudPrune admin can reset user password and spoof a tenant user", async () => {
+  const adminSession = sessionToken({
+    sub: "cloudprune-admin",
+    email: "admin",
+    accountId: "cloudprune-admin",
+    companyName: "CloudPrune Admin",
+    role: "admin",
+    exp: Date.now() + 10000,
+  });
+  const userSession = sessionToken({
+    sub: "11111111-1111-4111-8111-111111111111",
+    email: "ami@example.com",
+    accountId: "22222222-2222-4222-8222-222222222222",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const userId = "11111111-1111-4111-8111-111111111111";
+  const { listeners, store, fetchCalls } = bootCloudPruneApp("/cloudprune/admin", adminSession, (url, options = {}) => {
+    if (String(url).endsWith("/api/admin/overview")) {
+      return jsonResponse({
+        tenants: [{
+          id: "22222222-2222-4222-8222-222222222222",
+          companyName: "Zeptrix",
+          userCount: 1,
+          connections: 1,
+          createdAt: "2026-07-03T08:00:00.000Z",
+        }],
+        feedback: [],
+      });
+    }
+    if (String(url).endsWith(`/api/admin/tenants/22222222-2222-4222-8222-222222222222/users`)) {
+      return jsonResponse({
+        tenant: { id: "22222222-2222-4222-8222-222222222222", companyName: "Zeptrix" },
+        users: [{ id: userId, name: "Ami", email: "ami@example.com", provider: "password", hasPassword: true }],
+      });
+    }
+    if (String(url).endsWith(`/api/admin/users/${userId}/password`)) {
+      assert.equal(options.method, "POST");
+      assert.equal(JSON.parse(options.body).password, "new-password-123");
+      return jsonResponse({ user: { id: userId, email: "ami@example.com" } });
+    }
+    if (String(url).endsWith(`/api/admin/users/${userId}/spoof`)) {
+      assert.equal(options.method, "POST");
+      return jsonResponse({ token: userSession, user: { email: "ami@example.com", companyName: "Zeptrix" } });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await listeners.click[0]({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='toggle-admin-tenant-users']"
+          ? { dataset: { tenantId: "22222222-2222-4222-8222-222222222222" } }
+          : null;
+      },
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const resetForm = {
+    dataset: { adminResetForm: userId },
+    elements: { password: { value: "new-password-123" } },
+  };
+  await listeners.submit[0]({
+    preventDefault() {},
+    target: {
+      closest(selector) {
+        return selector === "[data-admin-reset-form]" ? resetForm : null;
+      },
+    },
+  });
+
+  await listeners.click[0]({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='admin-spoof-user']"
+          ? { disabled: false, dataset: { userId } }
+          : null;
+      },
+    },
+  });
+
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith(`/api/admin/users/${userId}/password`)));
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith(`/api/admin/users/${userId}/spoof`)));
+  assert.equal(store.get("cloudprune.session"), userSession);
 });
 
 test("CloudPrune empty workspace opens AWS assume-role setup", () => {
@@ -679,6 +1132,121 @@ test("CloudPrune recommendations route renders saved scan recommendations", asyn
   assert.doesNotMatch(app.innerHTML, /Move steady EC2 baseline into Savings Plans/);
 });
 
+test("CloudPrune saved recommendation Review button opens workflow preview", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/recommendations", session, (url) => {
+    if (String(url).endsWith("/api/workspace")) {
+      return jsonResponse({
+        user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
+        connections: {
+          aws: {
+            provider: "aws",
+            awsAccountId: "123456789012",
+            roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+            externalId: "cloudprune-account-1",
+            status: "configured",
+          },
+        },
+        awsScan: {
+          id: "scan-1",
+          status: "completed",
+          awsAccountId: "123456789012",
+          monthlyCost: 125,
+          counts: { ebsVolumes: 1 },
+          errors: [],
+          progress: 100,
+          message: "AWS scan complete. Read 1 entity.",
+          recommendations: [{
+            id: "idle-ebs-volumes",
+            cloud: "aws",
+            title: "Review 1 unattached EBS volume",
+            detail: "Deleting a detached volume has no compute downtime.",
+            impact: 8,
+            effort: "Low",
+            risk: "Low",
+            owner: "Idle resource cleanup",
+            status: "Review",
+            minimizeImpact: "Snapshot first and delete in small batches.",
+            rollbackPath: "Create a new EBS volume from the retained snapshot.",
+          }],
+        },
+        awsSetup: {},
+      });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-action='stage']" ? { disabled: false, dataset: { recommendationId: "idle-ebs-volumes" } } : null;
+      },
+    },
+  });
+
+  assert.match(app.innerHTML, /Open evidence review/);
+  assert.match(app.innerHTML, /Snapshot first and delete in small batches/);
+  assert.match(app.innerHTML, /Create a new EBS volume from the retained snapshot/);
+});
+
+test("CloudPrune recommendations route renders the top generated recommendation first", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const generatedRecommendations = buildReport(recommendationAssessmentFixture()).findings.slice(0, 20).map(publicRecommendation);
+
+  assert.equal(generatedRecommendations[0].id, "compute-commitments");
+  assert.equal(generatedRecommendations[0].title, "Review AWS Savings Plans purchase recommendation");
+
+  const { app } = bootCloudPruneApp("/cloudprune/recommendations", session, (url) => {
+    if (String(url).endsWith("/api/workspace")) {
+      return jsonResponse({
+        user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
+        connections: {
+          aws: {
+            provider: "aws",
+            awsAccountId: "123456789012",
+            roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+            externalId: "cloudprune-account-1",
+            status: "configured",
+          },
+        },
+        awsScan: {
+          id: "scan-1",
+          status: "completed",
+          awsAccountId: "123456789012",
+          monthlyCost: 1380,
+          counts: { ec2Instances: 2, ebsVolumes: 1, logGroups: 1, s3Buckets: 1 },
+          errors: [],
+          progress: 100,
+          message: "AWS scan complete. Read 5 entities.",
+          recommendations: generatedRecommendations,
+        },
+        awsSetup: {},
+      });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const firstRecommendation = app.innerHTML.match(/<article class="recommendation[^"]*">[\s\S]*?<h3>(.*?)<\/h3>/)?.[1];
+
+  assert.equal(firstRecommendation, "Review AWS Savings Plans purchase recommendation");
+  assert.match(app.innerHTML, /Commit only to a conservative baseline/);
+  assert.match(app.innerHTML, /Review 1 unattached EBS volume/);
+  assert.ok(app.innerHTML.indexOf("Review AWS Savings Plans purchase recommendation") < app.innerHTML.indexOf("Review 1 unattached EBS volume"));
+});
+
 test("CloudPrune exchanges Google auth code without accepting session tokens in URLs", async () => {
   const session = signSession({
     id: "user-1",
@@ -725,6 +1293,35 @@ test("auth API reports missing database instead of dropping requests", async () 
     assert.equal(shortResponse.status, 400);
     assert.match(await shortResponse.text(), /database is not configured/i);
   });
+});
+
+test("CloudPrune admin credentials create an admin session", async () => {
+  await withServer(async (baseUrl) => {
+    for (const password of ["cloudprune-test-admin-password", " cloudprune-test-admin-password "]) {
+      const response = await fetch(`${baseUrl}/cloudprune/api/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "admin", password }),
+      });
+      assert.equal(response.status, 200);
+      const body = JSON.parse(await response.text());
+      assert.equal(body.user.role, "admin");
+      assert.equal(body.user.email, "admin");
+      assert.equal(verifySession(body.token).role, "admin");
+    }
+  });
+});
+
+test("CloudPrune admin password comes from environment, not source", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../src/user-service.ts"), "utf8");
+  assert.match(source, /adminPassword/);
+  assert.doesNotMatch(source, /IdanYuval/);
+});
+
+test("CloudPrune feedback attachment limit is measured server-side", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../src/feedback-service.ts"), "utf8");
+  assert.match(source, /Buffer\.byteLength\(attachmentContent, "base64"\)/);
+  assert.match(source, /measuredAttachmentSize[\s\S]*2 \* 1024 \* 1024/);
 });
 
 test("Google SSO uses the canonical shared callback", () => {
@@ -786,7 +1383,7 @@ test("AWS assume-role onboarding validates role ARNs and derives external IDs", 
     roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
     awsAccountId: "123456789012",
   });
-  assert.equal(externalIdForAccount("tenant-123"), "cloudprune-tenant-123");
+  assert.equal(externalIdForAccount("22222222-2222-4222-8222-22222222222223"), "cloudprune-22222222-2222-4222-8222-22222222222223");
   assert.throws(() => normalizeAwsRoleArn("arn:aws:s3:::bucket"), /valid AWS IAM role ARN/);
   assert.throws(() => normalizeAwsRoleArn("arn:aws:iam::123:role/Bad"), /valid AWS IAM role ARN/);
 });
@@ -894,6 +1491,12 @@ test("AWS scan database writes serialize JSONB payloads", () => {
 test("AWS scan source collects traffic mapping and app inventory signals", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/aws-scan-runner.ts"), "utf8");
 
+  const elasticIpCommand = source.match(/\["elasticIps", "Reading Elastic IP addresses"[\s\S]*?\]\],/)?.[0] || "";
+  const computeOptimizerCommand = source.match(/\["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations"[\s\S]*?\]\],/)?.[0] || "";
+  assert.match(elasticIpCommand, /--max-items/);
+  assert.match(elasticIpCommand, /NextToken/);
+  assert.match(computeOptimizerCommand, /--max-items/);
+  assert.match(computeOptimizerCommand, /NextToken/);
   assert.match(source, /\["targetGroups", "Reading ALB target groups"/);
   assert.match(source, /"elbv2", "describe-target-groups"/);
   assert.match(source, /"elbv2", "describe-target-health"/);
