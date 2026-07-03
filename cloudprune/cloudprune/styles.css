@@ -676,6 +676,19 @@ button:hover { background: #1e4d43; }
   font-weight: 800;
 }
 
+.audit-log-table td {
+  height: auto;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.audit-log-table td span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

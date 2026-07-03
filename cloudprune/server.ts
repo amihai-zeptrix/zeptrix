@@ -18,6 +18,7 @@ const {
   verifySession,
 } = require("./src/auth");
 const { externalIdForAccount, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan } = require("./src/aws-models");
+const { adminAuditLog } = require("./src/audit-service");
 const { initDatabase, pool } = require("./src/db");
 const { adminOverview, adminResetUserPassword, adminSpoofUser, adminTenantUsers, submitFeedback } = require("./src/feedback-service");
 const { completeGoogleRegistration, loginUser, recordAuthEvent, registerUser, updateUserProfile, userFromSession } = require("./src/user-service");
@@ -149,7 +150,7 @@ async function googleProfileFromCode(code: string | null) {
   return validateGoogleProfile(profile);
 }
 
-async function googleUserFromProfile(profile: GoogleProfile): Promise<OAuthUserRow | null> {
+async function googleUserFromProfile(profile: GoogleProfile, req: IncomingMessage): Promise<OAuthUserRow | null> {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const email = normalizeEmail(profile.email);
   const existing = await pool.query(
@@ -161,7 +162,7 @@ async function googleUserFromProfile(profile: GoogleProfile): Promise<OAuthUserR
   );
   if (existing.rows[0]) {
     await pool.query(`update cloudprune_users set google_subject=$2, provider='google', last_login_at=now() where id=$1`, [existing.rows[0].id, profile.sub]);
-    await recordAuthEvent({ userId: existing.rows[0].id, email, eventType: "login", detail: "google" });
+    await recordAuthEvent({ req, userId: existing.rows[0].id, accountId: existing.rows[0].account_id, email, eventType: "login", detail: "google", targetType: "session", targetId: existing.rows[0].id });
     return existing.rows[0];
   }
   return null;
@@ -173,15 +174,15 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: 
   const apiPath = prefix ? pathname.slice(prefix.length) : pathname;
   try {
     if (req.method === "POST" && apiPath === "/api/register") {
-      const user = await registerUser(await readJson(req));
+      const user = await registerUser(await readJson(req), "password", req);
       return json(res, 201, { token: signSession(user), user: publicUser(user) });
     }
     if (req.method === "POST" && apiPath === "/api/login") {
-      const user = await loginUser(await readJson(req));
+      const user = await loginUser(await readJson(req), req);
       return json(res, 200, { token: signSession(user), user: publicUser(user) });
     }
     if (req.method === "POST" && apiPath === "/api/complete-google-registration") {
-      const user = await completeGoogleRegistration(await readJson(req));
+      const user = await completeGoogleRegistration(await readJson(req), req);
       return json(res, 201, { token: signSession(user), user: publicUser(user) });
     }
     if (req.method === "POST" && apiPath === "/api/auth/google/exchange") {
@@ -203,6 +204,9 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: 
     }
     if (req.method === "GET" && apiPath === "/api/admin/overview") {
       return json(res, 200, await adminOverview(req));
+    }
+    if (req.method === "GET" && apiPath === "/api/admin/audit-log") {
+      return json(res, 200, await adminAuditLog(req));
     }
     const adminTenantUsersMatch = apiPath.match(/^\/api\/admin\/tenants\/([0-9a-f-]{36})\/users$/i);
     if (req.method === "GET" && adminTenantUsersMatch) {
@@ -253,7 +257,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: 
       const state = verifyCloudpruneOAuthState(rawState);
       if (!state || state.prefix !== prefix) throw new Error("Google sign-in state did not match.");
       const profile = await googleProfileFromCode(requestUrl.searchParams.get("code"));
-      const user = await googleUserFromProfile(profile);
+      const user = await googleUserFromProfile(profile, req);
       const authCode = await createOauthCode(user ? { user } : { registration: profile });
       const location = user
         ? `${prefix}/?authCode=${encodeURIComponent(authCode)}`

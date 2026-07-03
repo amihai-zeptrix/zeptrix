@@ -120,7 +120,17 @@ async function saveAwsConnection(req: RequestLike, payload: AwsConnectionPayload
      returning provider, provider_account_id, role_arn, external_id, metadata, status, updated_at`,
     [user.account_id, awsAccountId, roleArn, externalId, { regions }]
   );
-  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_connection_saved", detail: awsAccountId });
+  await recordAuthEvent({
+    req,
+    userId: user.id,
+    accountId: user.account_id,
+    email: user.email,
+    eventType: "aws_connection_saved",
+    detail: `AWS connection saved for account ${awsAccountId}`,
+    targetType: "aws_connection",
+    targetId: awsAccountId,
+    metadata: { regions },
+  });
   return publicCloudConnection(result.rows[0]);
 }
 
@@ -177,7 +187,17 @@ async function startAwsScan(req: RequestLike) {
       console.error("CloudPrune AWS scan failed", error);
     });
   });
-  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_started", detail: aws.provider_account_id });
+  await recordAuthEvent({
+    req,
+    userId: user.id,
+    accountId: user.account_id,
+    email: user.email,
+    eventType: "aws_scan_started",
+    detail: `AWS scan started for account ${aws.provider_account_id}`,
+    targetType: "aws_scan",
+    targetId: startedRow.id,
+    metadata: { awsAccountId: aws.provider_account_id, regions: requestedRegions },
+  });
   return publicAwsScan(startedRow);
 }
 
@@ -212,7 +232,16 @@ async function stopAwsScan(req: RequestLike) {
     [user.account_id, "stopped", jsonb({ progress: 100, message: "AWS scan stopped by user." })]
   );
   if (!result.rows[0]) throw new Error("No running AWS scan was found.");
-  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_stopped", detail: result.rows[0].provider_account_id });
+  await recordAuthEvent({
+    req,
+    userId: user.id,
+    accountId: user.account_id,
+    email: user.email,
+    eventType: "aws_scan_stopped",
+    detail: `AWS scan stopped for account ${result.rows[0].provider_account_id}`,
+    targetType: "aws_scan",
+    targetId: result.rows[0].id,
+  });
   return publicAwsScan(result.rows[0]);
 }
 

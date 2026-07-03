@@ -90,6 +90,17 @@ async function submitFeedback(req: RequestLike, payload: FeedbackPayload) {
        $9::text as company_name, $10::text as user_name, $11::text as email`,
     [user.account_id, user.id, type, details, attachmentName, attachmentType, attachmentSize, attachmentContent, user.company_name, user.name, user.email]
   );
+  await recordAuthEvent({
+    req,
+    userId: user.id,
+    accountId: user.account_id,
+    email: user.email,
+    eventType: "feedback_submitted",
+    detail: `${type}: ${details.slice(0, 160)}`,
+    targetType: "feedback",
+    targetId: result.rows[0].id,
+    metadata: { type, hasAttachment: Boolean(attachmentName) },
+  });
   return publicFeedback(result.rows[0]);
 }
 
@@ -164,7 +175,18 @@ async function adminResetUserPassword(req: RequestLike, userId: string, payload:
   );
   const user = result.rows[0];
   if (!user) throw new Error("CloudPrune user was not found.");
-  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "admin_password_reset", detail: admin.email });
+  await recordAuthEvent({
+    req,
+    userId: user.id,
+    accountId: user.account_id,
+    email: admin.email,
+    role: "admin",
+    eventType: "admin_password_reset",
+    detail: `Admin reset password for ${user.email}`,
+    targetType: "user",
+    targetId: user.id,
+    metadata: { targetEmail: user.email },
+  });
   return publicAdminUser(user);
 }
 
@@ -180,7 +202,18 @@ async function adminSpoofUser(req: RequestLike, userId: string) {
   );
   const user = result.rows[0];
   if (!user) throw new Error("CloudPrune user was not found.");
-  await recordAuthEvent({ userId: user.id, email: user.email, eventType: "admin_spoof", detail: admin.email });
+  await recordAuthEvent({
+    req,
+    userId: user.id,
+    accountId: user.account_id,
+    email: admin.email,
+    role: "admin",
+    eventType: "admin_spoof",
+    detail: `Admin spoofed ${user.email}`,
+    targetType: "user",
+    targetId: user.id,
+    metadata: { targetEmail: user.email },
+  });
   return { token: signSession(user), user: publicUser(user) };
 }
 

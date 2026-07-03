@@ -555,6 +555,42 @@ test("CloudPrune admin route renders tenants and feedback reports", async () => 
   assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/admin/tenants/22222222-2222-4222-8222-222222222222/users")));
 });
 
+test("CloudPrune admin audit log route renders audit events", async () => {
+  const session = sessionToken({
+    sub: "cloudprune-admin",
+    email: "admin",
+    accountId: "cloudprune-admin",
+    companyName: "CloudPrune Admin",
+    role: "admin",
+    exp: Date.now() + 10000,
+  });
+  const { app, fetchCalls } = bootCloudPruneApp("/cloudprune/admin/audit-log", session, (url) => {
+    if (String(url).endsWith("/api/admin/audit-log")) {
+      return jsonResponse({
+        auditLog: [{
+          id: "audit-1",
+          actorEmail: "user@example.com",
+          actorRole: "user",
+          action: "aws_scan_started",
+          tenant: "Zeptrix",
+          targetType: "aws_scan",
+          targetId: "scan-1",
+          summary: "AWS scan started for account 123456789012",
+          createdAt: "2026-07-04T08:30:00.000Z",
+        }],
+      });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.match(app.innerHTML, /Audit log/);
+  assert.match(app.innerHTML, /user@example\.com/);
+  assert.match(app.innerHTML, /aws_scan_started/);
+  assert.match(app.innerHTML, /AWS scan started for account 123456789012/);
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/admin/audit-log")));
+});
+
 test("CloudPrune admin can reset user password and spoof a tenant user", async () => {
   const adminSession = sessionToken({
     sub: "cloudprune-admin",
@@ -1365,6 +1401,19 @@ test("CloudPrune feedback attachment limit is measured server-side", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/feedback-service.ts"), "utf8");
   assert.match(source, /Buffer\.byteLength\(attachmentContent, "base64"\)/);
   assert.match(source, /measuredAttachmentSize[\s\S]*2 \* 1024 \* 1024/);
+});
+
+test("CloudPrune audit log has a dedicated table, admin API, and owner email notification", () => {
+  const dbSource = fs.readFileSync(path.join(__dirname, "../src/db.ts"), "utf8");
+  const serverSource = fs.readFileSync(path.join(__dirname, "../server.ts"), "utf8");
+  const auditSource = fs.readFileSync(path.join(__dirname, "../src/audit-service.ts"), "utf8");
+
+  assert.match(dbSource, /create table if not exists cloudprune_audit_log/);
+  assert.match(serverSource, /api\/admin\/audit-log/);
+  assert.match(auditSource, /actorEmail === auditOwnerEmail/);
+  assert.match(auditSource, /sesv2", "send-email"/);
+  assert.match(auditSource, /cp audit log event|auditEmailSubject/);
+  assert.match(auditSource, /amihaih@gmail\.com/);
 });
 
 test("CloudPrune JSON request bodies are capped before parsing", async () => {
