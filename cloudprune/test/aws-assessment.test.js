@@ -182,6 +182,7 @@ test("buildReport creates impact-aware AWS recommendations", () => {
   assert.ok(ids.includes("idle-elastic-ips"));
   assert.ok(ids.includes("idle-load-balancers"));
   assert.ok(ids.includes("ec2-rightsizing"));
+  assert.ok(ids.includes("ec2-graviton-modernization"));
   assert.ok(ids.includes("ec2-app-consolidation"));
   assert.ok(ids.includes("ec2-to-lambda-assessment"));
   assert.ok(ids.includes("rds-rightsizing"));
@@ -210,6 +211,15 @@ test("buildReport creates impact-aware AWS recommendations", () => {
   assert.ok(ec2.resources.includes("arn:aws:ec2:us-east-1:123456789012:instance/i-over"));
   assert.ok(!ec2.resources.includes("arn:aws:ec2:us-east-1:123456789012:instance/i-ok"));
 
+  const graviton = report.findings.find((finding) => finding.id === "ec2-graviton-modernization");
+  assert.equal(graviton.title, "Assess Graviton migration for 2 x86 EC2 instances");
+  assert.equal(graviton.statistics["Instance families"], "t3.small -> t4g.small");
+  assert.equal(graviton.estimatedMonthlySavings, null);
+  assert.equal(graviton.statistics["Estimated savings"], "Requires candidate-level pricing validation");
+  assert.match(graviton.impactAnalysis, /changes CPU architecture/);
+  assert.match(graviton.minimizeImpact, /arm64 canary/);
+  assert.ok(graviton.resources.includes("app-a (t3.small -> t4g.small)"));
+
   const consolidation = report.findings.find((finding) => finding.id === "ec2-app-consolidation");
   assert.equal(consolidation.statistics["Running instances"], "2");
   assert.equal(consolidation.statistics["Combined avg CPU"], "14.6% instance-capacity");
@@ -222,6 +232,55 @@ test("buildReport creates impact-aware AWS recommendations", () => {
   const serverless = report.findings.find((finding) => finding.id === "ec2-to-lambda-assessment");
   assert.equal(serverless.statistics["Traffic mapping"], "1 ALB target group, 2 healthy EC2 targets, 1 API Gateway API");
   assert.equal(serverless.statistics["App inventory"], "2/2 SSM-managed instances with application inventory");
+});
+
+test("Graviton migration finding only includes compatible Linux x86 instances", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: {
+          ResultsByTime: [{
+            Groups: [{ Keys: ["Amazon Elastic Compute Cloud - Compute"], Metrics: { UnblendedCost: { Amount: "10000", Unit: "USD" } } }],
+          }],
+        },
+      },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [
+              { InstanceId: "i-linux", InstanceType: "m5.large", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", State: { Name: "running" }, Tags: [{ Key: "Name", Value: "api" }] },
+              { InstanceId: "i-rhel", InstanceType: "c5.xlarge", Architecture: "x86_64", PlatformDetails: "Red Hat Enterprise Linux", State: { Name: "running" }, Tags: [{ Key: "Name", Value: "worker" }] },
+              { InstanceId: "i-ubuntu", InstanceType: "r5.2xlarge", Architecture: "x86_64", PlatformDetails: "Ubuntu Pro", State: { Name: "running" }, Tags: [{ Key: "Name", Value: "analytics" }] },
+              { InstanceId: "i-too-large", InstanceType: "m5.24xlarge", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", State: { Name: "running" } },
+              { InstanceId: "i-metal", InstanceType: "m5.metal", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", State: { Name: "running" } },
+              { InstanceId: "i-arm", InstanceType: "m7g.large", Architecture: "arm64", PlatformDetails: "Linux/UNIX", State: { Name: "running" } },
+              { InstanceId: "i-windows", InstanceType: "m5.large", Architecture: "x86_64", PlatformDetails: "Windows", State: { Name: "running" } },
+              { InstanceId: "i-stopped", InstanceType: "m5.large", Architecture: "x86_64", PlatformDetails: "Linux/UNIX", State: { Name: "stopped" } },
+            ],
+          }],
+        },
+      },
+    },
+  });
+  const graviton = report.findings.find((finding) => finding.id === "ec2-graviton-modernization");
+
+  assert.ok(graviton);
+  assert.equal(graviton.resources.length, 3);
+  assert.deepEqual(graviton.resources, [
+    "api (m5.large -> m6g.large)",
+    "worker (c5.xlarge -> c6g.xlarge)",
+    "analytics (r5.2xlarge -> r6g.2xlarge)",
+  ]);
+  assert.equal(graviton.estimatedMonthlySavings, null);
 });
 
 test("renderMarkdown includes permission and impact sections", () => {

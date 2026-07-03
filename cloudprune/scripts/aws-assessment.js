@@ -658,6 +658,50 @@ function serverlessMigrationCandidate(ec2Consolidation) {
   };
 }
 
+function gravitonTargetType(instanceType) {
+  const gravitonSizes = new Set(["nano", "micro", "small", "medium", "large", "xlarge", "2xlarge", "4xlarge", "8xlarge", "12xlarge", "16xlarge"]);
+  const parts = String(instanceType || "").split(".");
+  if (parts.length !== 2) return null;
+  const [family, size] = parts;
+  if (!gravitonSizes.has(size)) return null;
+  const generation = family.match(/^([cmrt])(\d+)([a-z]*)$/i);
+  if (!generation) return null;
+  const [, prefix, generationNumber, suffix] = generation;
+  if (suffix && suffix !== "a" && suffix !== "i") return null;
+  const generationValue = Number(generationNumber);
+  if (!Number.isFinite(generationValue) || generationValue < 3) return null;
+  const targetGeneration = prefix.toLowerCase() === "t" && generationValue <= 3 ? 4 : Math.max(6, generationValue);
+  return `${prefix.toLowerCase()}${targetGeneration}g.${size}`;
+}
+
+function isLinuxPlatform(platformDetails) {
+  const value = String(platformDetails || "").toLowerCase();
+  const linuxSignals = ["linux", "ubuntu", "red hat", "rhel", "suse", "debian", "amazon linux"];
+  return linuxSignals.some((signal) => value.includes(signal)) && !value.includes("windows") && !value.includes("sql server");
+}
+
+function gravitonCandidates(instances) {
+  const candidates = instances
+    .filter((instance) => instance.State?.Name === "running")
+    .filter((instance) => String(instance.Architecture || "").toLowerCase() === "x86_64")
+    .filter((instance) => isLinuxPlatform(instance.PlatformDetails))
+    .map((instance) => ({ instance, targetType: gravitonTargetType(instance.InstanceType) }))
+    .filter((item) => item.targetType);
+  if (!candidates.length) return null;
+  const families = [...new Set(candidates.map((item) => `${item.instance.InstanceType} -> ${item.targetType}`))];
+  return {
+    candidates,
+    statistics: {
+      "Candidate instances": String(candidates.length),
+      "Current architecture": "x86_64",
+      "Target architecture": "AWS Graviton arm64",
+      "Instance families": families.join(", "),
+      "Estimated savings": "Requires candidate-level pricing validation",
+      "Validation required": "AMI, OS packages, native dependencies, agents, and application runtime must support arm64",
+    },
+  };
+}
+
 function addFinding(findings, finding) {
   findings.push({
     confidence: "medium",
@@ -705,6 +749,7 @@ function buildFindings(assessment) {
     ssmApplications: checks.ssmApplications?.ok ? checks.ssmApplications.data?.instances || [] : [],
   });
   const serverlessMigration = serverlessMigrationCandidate(ec2Consolidation);
+  const gravitonMigration = gravitonCandidates(instances);
   const savingsPlanSavings = estimatedSavingsFromSavingsPlans(checks.savingsPlansRecommendation);
 
   if (unattachedVolumes.length) {
@@ -794,6 +839,25 @@ function buildFindings(assessment) {
       minimizeImpact: "Apply one size step at a time, use Auto Scaling rolling replacement where possible, avoid peak windows, and monitor p95 CPU, memory, latency, and error rate.",
       rollbackPath: "Revert to the prior instance type or previous launch template version.",
       resources: resourceSample(notOptimized, (item) => item.instanceArn || item.instanceName || item.instanceId),
+    });
+  }
+
+  if (gravitonMigration) {
+    addFinding(findings, {
+      id: "ec2-graviton-modernization",
+      strategy: "Compute modernization",
+      title: `Assess Graviton migration for ${gravitonMigration.candidates.length} x86 EC2 instance${gravitonMigration.candidates.length === 1 ? "" : "s"}`,
+      estimatedMonthlySavings: null,
+      confidence: "medium",
+      blastRadius: "Per-instance application runtime, AMI, native packages, agents, and deployment pipeline.",
+      operationalRisk: "medium",
+      downtimeRisk: "restart or rolling replacement",
+      impactAnalysis: "Moving from x86 to Graviton changes CPU architecture. Most Linux services migrate cleanly, but native dependencies, agents, container images, and compiled extensions must be validated before cutover.",
+      minimizeImpact: "Launch one arm64 canary or parallel Auto Scaling group first, replay production-like traffic, verify latency/error rates and package compatibility, then roll gradually with an x86 rollback target available.",
+      rollbackPath: "Switch traffic or launch template back to the previous x86 instance type and AMI, then terminate the Graviton canary after validation.",
+      validationWindow: "Run at least one normal traffic cycle on Graviton and compare p95 latency, error rate, CPU, memory, and deployment health against the x86 baseline.",
+      statistics: gravitonMigration.statistics,
+      resources: resourceSample(gravitonMigration.candidates, (item) => `${instanceName(item.instance)} (${item.instance.InstanceType} -> ${item.targetType})`),
     });
   }
 
