@@ -1303,6 +1303,21 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   font-size: 17px;
 }
 
+.auth-campaign-banner {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 18px;
+  padding: 10px 14px;
+  border: 1px solid rgba(245, 182, 66, .48);
+  border-radius: 8px;
+  background: rgba(245, 182, 66, .16);
+  color: #fff7df;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.2;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .16);
+}
+
 .auth-signal-grid {
   position: relative;
   z-index: 1;

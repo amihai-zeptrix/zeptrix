@@ -429,6 +429,11 @@ test("CloudPrune login form sends normal user credentials and stores the returne
   assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/login")));
 });
 
+test("CloudPrune auth page shows the free-until campaign banner", () => {
+  const { app } = bootCloudPruneApp("/cloudprune/");
+  assert.match(app.innerHTML, /Enjoy totally free until September 2026/);
+});
+
 test("CloudPrune login form accepts admin credentials and stores an admin session", async () => {
   const adminPassword = "cloudprune-test-admin-password";
   const session = sessionToken({

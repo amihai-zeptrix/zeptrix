@@ -1451,6 +1451,7 @@ function renderAuth(app) {
           <span class="eyebrow">Cloud cost saving platform</span>
           <h1>Prune cloud waste before it reaches the bill.</h1>
           <p>Connect AWS first, inspect the savings plan, and move from dry-run analysis to controlled automation when the impact is clear.</p>
+          <div class="auth-campaign-banner">Enjoy totally free until September 2026</div>
         </div>
         <div class="auth-signal-grid" aria-label="CloudPrune preview metrics">
           <article><span>Verified waste</span><strong>$89K</strong><em>monthly demo signal</em></article>
