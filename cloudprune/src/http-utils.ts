@@ -3,6 +3,7 @@ const { IncomingMessage, ServerResponse } = require("node:http");
 const { publicRoot } = require("./config");
 
 type JsonPayload = unknown;
+export const maxJsonBodyBytes = 3 * 1024 * 1024;
 
 export function routePrefix(urlPath: string): "/cloudprune" | "/cp" | null {
   if (urlPath === "/cloudprune" || urlPath.startsWith("/cloudprune/")) return "/cloudprune";
@@ -32,7 +33,15 @@ export function jsonb(value: JsonPayload): string {
 
 export async function readJson(req: InstanceType<typeof IncomingMessage>): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk);
+  const contentLength = Number(req.headers["content-length"] || 0);
+  if (contentLength > maxJsonBodyBytes) throw new Error("Request body is too large.");
+  let size = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maxJsonBodyBytes) throw new Error("Request body is too large.");
+    chunks.push(buffer);
+  }
   if (!chunks.length) return {};
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }

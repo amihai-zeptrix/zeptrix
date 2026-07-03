@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 const {
   cloudpruneOauthCookieDomain,
+  adminPassword,
   googleClientId,
   tokenSecret,
 } = require("./config");
@@ -12,6 +13,7 @@ interface UserRecord {
   email: string;
   company_name: string;
   role?: string;
+  session_version?: number;
 }
 
 interface PublicUserRecord {
@@ -37,6 +39,8 @@ interface SessionPayload {
   accountId: string;
   companyName: string;
   role?: string;
+  sessionVersion?: number;
+  adminPasswordVersion?: string;
   exp: number;
 }
 
@@ -84,6 +88,10 @@ export function publicUser(user: PublicUserRecord): { name: string; email: strin
   return { name: user.name, email: user.email, companyName: user.company_name, ...(user.role ? { role: user.role } : {}) };
 }
 
+export function adminSessionVersion(): string {
+  return adminPassword ? crypto.createHmac("sha256", tokenSecret).update(adminPassword).digest("base64url") : "";
+}
+
 export function signSession(user: UserRecord): string {
   const payload = {
     sub: user.id,
@@ -92,6 +100,8 @@ export function signSession(user: UserRecord): string {
     accountId: user.account_id,
     companyName: user.company_name,
     ...(user.role ? { role: user.role } : {}),
+    ...(user.role === "admin" ? { adminPasswordVersion: adminSessionVersion() } : {}),
+    ...(user.role !== "admin" ? { sessionVersion: Number(user.session_version || 1) } : {}),
     exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");

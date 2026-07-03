@@ -1,4 +1,4 @@
-const { bearerToken, hashPassword, publicUser, signSession, verifySession } = require("./auth");
+const { adminSessionVersion, bearerToken, hashPassword, publicUser, signSession, verifySession } = require("./auth");
 const { pool } = require("./db");
 const { recordAuthEvent, userFromSession } = require("./user-service");
 
@@ -26,6 +26,7 @@ const feedbackTypes = new Set(["Issue", "Feature request", "Question", "Billing"
 function requireAdmin(req: RequestLike) {
   const session = verifySession(bearerToken(req));
   if (!session || session.role !== "admin") throw new Error("CloudPrune admin access is required.");
+  if (session.adminPasswordVersion !== adminSessionVersion()) throw new Error("CloudPrune admin session is invalid.");
   return session;
 }
 
@@ -156,9 +157,9 @@ async function adminResetUserPassword(req: RequestLike, userId: string, payload:
   if (password.length < 10) throw new Error("Password must be at least 10 characters.");
   const result = await pool.query(
     `update cloudprune_users
-     set password_hash=$2
+     set password_hash=$2, session_version=session_version + 1
      where id=$1
-     returning id, account_id, name, email, provider, password_hash, last_login_at, created_at`,
+     returning id, account_id, name, email, provider, password_hash, session_version, last_login_at, created_at`,
     [userId, hashPassword(password)]
   );
   const user = result.rows[0];
@@ -171,7 +172,7 @@ async function adminSpoofUser(req: RequestLike, userId: string) {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const admin = requireAdmin(req);
   const result = await pool.query(
-    `select u.id, u.account_id, u.name, u.email, u.provider, a.company_name
+    `select u.id, u.account_id, u.name, u.email, u.provider, u.session_version, a.company_name
      from cloudprune_users u
      join cloudprune_accounts a on a.id = u.account_id
      where u.id=$1`,

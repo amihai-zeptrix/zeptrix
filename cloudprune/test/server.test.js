@@ -2,11 +2,13 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const { once } = require("node:events");
 const path = require("node:path");
+const { Readable } = require("node:stream");
 const test = require("node:test");
 const vm = require("node:vm");
 process.env.CLOUDPRUNE_ADMIN_PASSWORD = "cloudprune-test-admin-password";
 const { buildReport } = require("../scripts/aws-assessment");
 const { awsScanCounts, buildAwsAssessment, costFromCostExplorer, publicRecommendation } = require(path.join(__dirname, "../dist/src/aws-scan-report.js"));
+const { maxJsonBodyBytes, readJson } = require(path.join(__dirname, "../dist/src/http-utils.js"));
 const { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require(path.join(__dirname, "../dist/server.js"));
 
 async function withHttpServer(testServer, callback) {
@@ -1318,10 +1320,53 @@ test("CloudPrune admin password comes from environment, not source", () => {
   assert.doesNotMatch(source, /IdanYuval/);
 });
 
+test("CloudPrune admin sessions are bound to the current admin password version", () => {
+  const token = signSession({
+    id: "cloudprune-admin",
+    email: "admin",
+    name: "CloudPrune Admin",
+    account_id: "cloudprune-admin",
+    company_name: "CloudPrune Admin",
+    role: "admin",
+  });
+  const payload = verifySession(token);
+  assert.equal(payload.role, "admin");
+  assert.match(payload.adminPasswordVersion, /^[A-Za-z0-9_-]+$/);
+});
+
+test("CloudPrune user sessions carry a revocable session version", () => {
+  const token = signSession({
+    id: "user-1",
+    email: "ami@example.com",
+    name: "Ami",
+    account_id: "account-1",
+    company_name: "Zeptrix",
+    session_version: 7,
+  });
+  assert.equal(verifySession(token).sessionVersion, 7);
+
+  const userServiceSource = fs.readFileSync(path.join(__dirname, "../src/user-service.ts"), "utf8");
+  const feedbackSource = fs.readFileSync(path.join(__dirname, "../src/feedback-service.ts"), "utf8");
+  assert.match(userServiceSource, /Number\(session\.sessionVersion\) !== Number\(user\.session_version\)/);
+  assert.match(feedbackSource, /session_version=session_version \+ 1/);
+});
+
 test("CloudPrune feedback attachment limit is measured server-side", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/feedback-service.ts"), "utf8");
   assert.match(source, /Buffer\.byteLength\(attachmentContent, "base64"\)/);
   assert.match(source, /measuredAttachmentSize[\s\S]*2 \* 1024 \* 1024/);
+});
+
+test("CloudPrune JSON request bodies are capped before parsing", async () => {
+  const oversizedByHeader = Object.assign(Readable.from(["{}"]), {
+    headers: { "content-length": String(maxJsonBodyBytes + 1) },
+  });
+  await assert.rejects(() => readJson(oversizedByHeader), /too large/i);
+
+  const oversizedStream = Object.assign(Readable.from([Buffer.alloc(maxJsonBodyBytes + 1, "x")]), {
+    headers: {},
+  });
+  await assert.rejects(() => readJson(oversizedStream), /too large/i);
 });
 
 test("Google SSO uses the canonical shared callback", () => {

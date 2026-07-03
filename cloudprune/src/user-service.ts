@@ -35,6 +35,7 @@ interface UserRow {
   password_hash?: string | null;
   provider: string;
   company_name: string;
+  session_version?: number;
   role?: string;
 }
 
@@ -50,14 +51,16 @@ async function userFromSession(req: RequestLike): Promise<UserRow> {
   const session = verifySession(bearerToken(req));
   if (!session) throw new Error("CloudPrune session is invalid.");
   const result = await pool.query(
-    `select u.id, u.account_id, u.name, u.email, u.provider, a.company_name
+    `select u.id, u.account_id, u.name, u.email, u.provider, u.session_version, a.company_name
      from cloudprune_users u
      join cloudprune_accounts a on a.id = u.account_id
      where u.id=$1`,
     [session.sub]
   );
-  if (!result.rows[0]) throw new Error("CloudPrune session user was not found.");
-  return result.rows[0];
+  const user = result.rows[0];
+  if (!user) throw new Error("CloudPrune session user was not found.");
+  if (Number(session.sessionVersion) !== Number(user.session_version)) throw new Error("CloudPrune session is invalid.");
+  return user;
 }
 
 function adminUser(): UserRow {
@@ -96,7 +99,7 @@ async function registerUser(payload: UserPayload, provider: AuthProvider = "pass
     const user = await client.query(
       `insert into cloudprune_users (account_id, name, email, password_hash, google_subject, provider, last_login_at)
        values ($1,$2,$3,$4,$5,$6,now())
-       returning id, account_id, name, email, provider, $7::text as company_name`,
+       returning id, account_id, name, email, provider, session_version, $7::text as company_name`,
       [account.rows[0].id, name, email, provider === "password" ? hashPassword(password) : null, payload.googleSubject || null, provider, company]
     );
     await client.query(
@@ -123,7 +126,7 @@ async function loginUser(payload: UserPayload): Promise<UserRow> {
   }
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const result = await pool.query(
-    `select u.id, u.account_id, u.name, u.email, u.password_hash, u.provider, a.company_name
+    `select u.id, u.account_id, u.name, u.email, u.password_hash, u.provider, u.session_version, a.company_name
      from cloudprune_users u
      join cloudprune_accounts a on a.id = u.account_id
      where u.email=$1`,
