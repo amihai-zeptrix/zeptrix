@@ -8,6 +8,7 @@ const vm = require("node:vm");
 process.env.CLOUDPRUNE_ADMIN_PASSWORD = "cloudprune-test-admin-password";
 const { buildReport } = require("../scripts/aws-assessment");
 const { awsScanCounts, buildAwsAssessment, costFromCostExplorer, publicRecommendation } = require(path.join(__dirname, "../dist/src/aws-scan-report.js"));
+const { capAwsRegionalResult, computeOptimizerEc2Command, computeOptimizerMaxResults, elasticIpsCommand } = require(path.join(__dirname, "../dist/src/aws-scan-runner.js"));
 const { maxJsonBodyBytes, readJson } = require(path.join(__dirname, "../dist/src/http-utils.js"));
 const { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require(path.join(__dirname, "../dist/server.js"));
 
@@ -1536,12 +1537,10 @@ test("AWS scan database writes serialize JSONB payloads", () => {
 test("AWS scan source collects traffic mapping and app inventory signals", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/aws-scan-runner.ts"), "utf8");
 
-  const elasticIpCommand = source.match(/\["elasticIps", "Reading Elastic IP addresses"[\s\S]*?\]\],/)?.[0] || "";
-  const computeOptimizerCommand = source.match(/\["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations"[\s\S]*?\]\],/)?.[0] || "";
-  assert.match(elasticIpCommand, /--max-items/);
-  assert.match(elasticIpCommand, /NextToken/);
-  assert.match(computeOptimizerCommand, /--max-items/);
-  assert.match(computeOptimizerCommand, /NextToken/);
+  assert.match(source, /function capAwsRegionalResult/);
+  assert.match(source, /elasticIps: "Addresses"/);
+  assert.match(source, /computeOptimizerEc2: "instanceRecommendations"/);
+  assert.match(source, /CloudPruneTruncated/);
   assert.match(source, /\["targetGroups", "Reading ALB target groups"/);
   assert.match(source, /"elbv2", "describe-target-groups"/);
   assert.match(source, /"elbv2", "describe-target-health"/);
@@ -1553,6 +1552,40 @@ test("AWS scan source collects traffic mapping and app inventory signals", () =>
   assert.match(source, /"ssm", "describe-instance-information"/);
   assert.match(source, /"ssm", "list-inventory-entries"/);
   assert.match(source, /"AWS:Application"/);
+});
+
+test("AWS scanner bounds Elastic IP and Compute Optimizer collection commands", () => {
+  const elasticCommand = elasticIpsCommand("us-east-1", 25);
+  assert.deepEqual(elasticCommand.slice(0, 4), ["ec2", "describe-addresses", "--region", "us-east-1"]);
+  assert.ok(!elasticCommand.includes("--max-items"));
+  assert.match(elasticCommand.join(" "), /Addresses\[:25\]/);
+  assert.match(elasticCommand.join(" "), /CloudPruneOriginalCount:length\(Addresses\)/);
+
+  const optimizerCommand = computeOptimizerEc2Command("us-east-1", 5000);
+  assert.deepEqual(optimizerCommand.slice(0, 4), ["compute-optimizer", "get-ec2-instance-recommendations", "--region", "us-east-1"]);
+  assert.ok(optimizerCommand.includes("--no-paginate"));
+  assert.equal(optimizerCommand[optimizerCommand.indexOf("--max-results") + 1], "1000");
+  assert.match(optimizerCommand.join(" "), /nextToken/);
+  assert.equal(computeOptimizerMaxResults(200), 200);
+  assert.equal(computeOptimizerMaxResults(5000), 1000);
+});
+
+test("AWS scanner marks post-query regional result truncation", () => {
+  assert.deepEqual(capAwsRegionalResult("elasticIps", {
+    CloudPruneOriginalCount: 3,
+    Addresses: [{ PublicIp: "1.1.1.1" }, { PublicIp: "2.2.2.2" }],
+  }, 2), {
+    CloudPruneOriginalCount: 3,
+    CloudPruneTruncated: true,
+    Addresses: [{ PublicIp: "1.1.1.1" }, { PublicIp: "2.2.2.2" }],
+  });
+  assert.deepEqual(capAwsRegionalResult("computeOptimizerEc2", {
+    instanceRecommendations: [{ instanceArn: "a" }, { instanceArn: "b" }, { instanceArn: "c" }],
+  }, 2), {
+    CloudPruneOriginalCount: 3,
+    CloudPruneTruncated: true,
+    instanceRecommendations: [{ instanceArn: "a" }, { instanceArn: "b" }],
+  });
 });
 
 test("AWS assessment exposes traffic mapping and app inventory checks", () => {
