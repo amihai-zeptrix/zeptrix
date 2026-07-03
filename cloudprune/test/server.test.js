@@ -1166,17 +1166,18 @@ test("CloudPrune saved recommendation Review button opens workflow preview", asy
           progress: 100,
           message: "AWS scan complete. Read 1 entity.",
           recommendations: [{
-            id: "idle-ebs-volumes",
+            id: "ec2-graviton-modernization",
             cloud: "aws",
-            title: "Review 1 unattached EBS volume",
-            detail: "Deleting a detached volume has no compute downtime.",
-            impact: 8,
-            effort: "Low",
-            risk: "Low",
-            owner: "Idle resource cleanup",
+            title: "Assess Graviton migration for 2 x86 EC2 instances",
+            detail: "Moving from x86 to Graviton changes CPU architecture.",
+            impact: 0,
+            effort: "Medium",
+            risk: "Medium",
+            owner: "Compute modernization",
             status: "Review",
-            minimizeImpact: "Snapshot first and delete in small batches.",
-            rollbackPath: "Create a new EBS volume from the retained snapshot.",
+            statistics: { "Instance families": "t3.micro -> t4g.micro, t3.small -> t4g.small" },
+            minimizeImpact: "Launch one arm64 canary before rolling traffic.",
+            rollbackPath: "Switch traffic back to the previous x86 instance type.",
           }],
         },
         awsSetup: {},
@@ -1185,17 +1186,20 @@ test("CloudPrune saved recommendation Review button opens workflow preview", asy
     return jsonResponse({});
   });
   await new Promise((resolve) => setImmediate(resolve));
+  assert.match(app.innerHTML, /Assess Graviton migration/);
+  assert.match(app.innerHTML, /aria-expanded="false"[^>]*>Review<\/button>/);
   for (const handler of listeners.click || []) handler({
     target: {
       closest(selector) {
-        return selector === "[data-action='stage']" ? { disabled: false, dataset: { recommendationId: "idle-ebs-volumes" } } : null;
+        return selector === "[data-action='stage']" ? { disabled: false, dataset: { recommendationId: "ec2-graviton-modernization" } } : null;
       },
     },
   });
 
   assert.match(app.innerHTML, /Open evidence review/);
-  assert.match(app.innerHTML, /Snapshot first and delete in small batches/);
-  assert.match(app.innerHTML, /Create a new EBS volume from the retained snapshot/);
+  assert.match(app.innerHTML, /aria-expanded="true"[^>]*>Close<\/button>/);
+  assert.match(app.innerHTML, /Launch one arm64 canary before rolling traffic/);
+  assert.match(app.innerHTML, /Switch traffic back to the previous x86 instance type/);
 });
 
 test("CloudPrune recommendations route renders the top generated recommendation first", async () => {
