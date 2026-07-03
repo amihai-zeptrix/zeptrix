@@ -238,7 +238,7 @@ let state = {
   awsScan: { status: "idle", progress: 0, message: "" },
   awsScanRegions: ["us-east-1"],
   awsRegionPickerOpen: false,
-  demoActionId: "",
+  activeRecommendationActionId: "",
   feedbackOpen: false,
   feedbackMessage: "",
   feedbackSubmitting: false,
@@ -454,6 +454,17 @@ function filteredRecommendations() {
 
 function recommendationKey(item) {
   return String(item.id || item.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function toggleRecommendationAction(recommendationId) {
+  const key = String(recommendationId || "");
+  if (!key) return;
+  const visibleKeys = new Set(filteredRecommendations().map(recommendationKey));
+  if (!visibleKeys.has(key)) {
+    state.activeRecommendationActionId = "";
+    return;
+  }
+  state.activeRecommendationActionId = state.activeRecommendationActionId === key ? "" : key;
 }
 
 function demoActionCopy(item) {
@@ -862,8 +873,10 @@ function renderRecommendations() {
   const recommendations = filteredRecommendations();
   return recommendations.map((item) => {
     const key = recommendationKey(item);
+    const isOpen = state.activeRecommendationActionId === key;
+    const actionLabel = isOpen ? "Close" : item.status || "Review";
     return `
-    <article class="recommendation ${state.demoActionId === key ? "active-action" : ""}">
+    <article class="recommendation ${isOpen ? "active-action" : ""}">
       <div class="rec-icon ${item.cloud}">${ICONS.prune}</div>
       <div class="rec-main">
         <span class="cloud-pill">${vendorBadge(item.cloud)}</span>
@@ -878,9 +891,9 @@ function renderRecommendations() {
         <span>${escapeHtml(item.owner || item.strategy || "CloudPrune")}</span>
         <span>${escapeHtml(item.effort || "Medium")} effort</span>
         <span>${escapeHtml(item.risk || "Medium")} risk</span>
-        <button data-action="stage" data-recommendation-id="${escapeHtml(key)}" aria-label="Open ${escapeHtml(item.status || "Review")} workflow for ${escapeHtml(item.title)}">${escapeHtml(item.status || "Review")}</button>
+        <button data-action="stage" data-recommendation-id="${escapeHtml(key)}" aria-expanded="${isOpen ? "true" : "false"}" aria-label="${isOpen ? "Close" : "Open"} ${escapeHtml(item.status || "Review")} workflow for ${escapeHtml(item.title)}">${escapeHtml(actionLabel)}</button>
       </div>
-      ${state.demoActionId === key ? renderDemoRecommendationAction(item) : ""}
+      ${isOpen ? renderRecommendationAction(item) : ""}
     </article>
   `;
   }).join("") || `<div class="empty">${appRoute() === "demo" ? "No recommendations match this cloud." : "No recommendations yet. Run an AWS scan to generate cost-saving findings."}</div>`;
@@ -901,7 +914,7 @@ function renderRecommendationStats(statistics) {
   `;
 }
 
-function renderDemoRecommendationAction(item) {
+function renderRecommendationAction(item) {
   const action = demoActionCopy(item);
   return `
     <div class="demo-action-panel">
@@ -1663,27 +1676,27 @@ document.addEventListener("click", async (event) => {
   const stageButton = event.target.closest("[data-action='stage']");
   if (stageButton) {
     if (stageButton.disabled) return;
-    state.demoActionId = state.demoActionId === stageButton.dataset.recommendationId ? "" : stageButton.dataset.recommendationId;
+    toggleRecommendationAction(stageButton.dataset.recommendationId);
     render();
     return;
   }
   const closeDemoAction = event.target.closest("[data-action='close-demo-action']");
   if (closeDemoAction) {
-    state.demoActionId = "";
+    state.activeRecommendationActionId = "";
     render();
     return;
   }
   const cloudButton = event.target.closest("[data-cloud]");
   if (cloudButton) {
     state.cloud = cloudButton.dataset.cloud;
-    state.demoActionId = "";
+    state.activeRecommendationActionId = "";
     render();
     return;
   }
   const viewButton = event.target.closest("[data-view]");
   if (viewButton) {
     state.view = viewButton.dataset.view;
-    state.demoActionId = "";
+    state.activeRecommendationActionId = "";
     render();
     return;
   }
