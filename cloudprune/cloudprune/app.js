@@ -36,12 +36,150 @@ const AWS_REGIONS = [
 ];
 
 const RECOMMENDATIONS = [
+  {
+    id: "compute-commitments",
+    cloud: "aws",
+    title: "Review AWS Savings Plans purchase recommendation",
+    impact: 11800,
+    effort: "Low",
+    risk: "Low",
+    owner: "Commitment optimization",
+    status: "Review",
+    detail: "AWS native recommendations show a stable EC2 baseline that can be partially covered without changing running infrastructure.",
+    statistics: { "Estimated monthly savings": "$11,800", "Covered compute baseline": "62%", "Confidence": "High" },
+    minimizeImpact: "Commit only to a conservative baseline, exclude volatile accounts, and start with partial coverage.",
+    rollbackPath: "No technical rollback; reduce risk by buying smaller commitments and letting them expire naturally.",
+  },
+  {
+    id: "idle-ebs-volumes",
+    cloud: "aws",
+    title: "Review 128 unattached EBS volumes",
+    impact: 3900,
+    effort: "Low",
+    risk: "Low",
+    owner: "Idle resource cleanup",
+    status: "Ready",
+    detail: "Detached EBS volumes have no active attachment and no snapshot activity in the last 30 days.",
+    statistics: { "Detached volumes": "128", "Measured storage": "18.4 TB", "Oldest unattached": "94 days" },
+    minimizeImpact: "Snapshot first, delete in small batches, and exclude volumes with active incident or restore tags.",
+    rollbackPath: "Create a new EBS volume from the retained snapshot.",
+  },
+  {
+    id: "idle-elastic-ips",
+    cloud: "aws",
+    title: "Release 43 unassociated Elastic IP addresses",
+    impact: 155,
+    effort: "Low",
+    risk: "Low",
+    owner: "Idle resource cleanup",
+    status: "Ready",
+    detail: "Public IPv4 addresses are allocated but not associated with running resources.",
+    statistics: { "Idle addresses": "43", "Regions": "5", "Monthly IPv4 waste": "$155" },
+    minimizeImpact: "Check DNS, allowlists, and disaster-recovery runbooks before release.",
+    rollbackPath: "Allocate replacement Elastic IPs and update dependent DNS or allowlists.",
+  },
+  {
+    id: "storage-lifecycle",
+    cloud: "aws",
+    title: "Add retention and lifecycle policies for storage targets",
+    impact: 9200,
+    effort: "Low",
+    risk: "Low",
+    owner: "Storage lifecycle optimization",
+    status: "Plan",
+    detail: "CloudWatch log groups and S3 buckets retain old data without lifecycle transition or deletion policies.",
+    statistics: { "Measured data": "210 TB", "Cold/old-tier S3": "84 TB (40% of measured S3)", "S3 objects": "123,456,000" },
+    minimizeImpact: "Start with transition policies before deletion and keep longer retention for production and compliance-tagged data.",
+    rollbackPath: "Increase retention going forward and restore archived objects when needed.",
+  },
+  {
+    id: "ec2-app-consolidation",
+    cloud: "aws",
+    title: "Assess consolidating 2 low-utilization EC2 instances",
+    impact: 620,
+    effort: "Medium",
+    risk: "Medium",
+    owner: "EC2 consolidation",
+    status: "Review",
+    detail: "Two app instances have low combined CPU and compatible traffic mapping, making consolidation worth validating.",
+    statistics: { "Running instances": "2", "Combined avg CPU": "14.6% instance-capacity", "Memory usage": "38-41%", "Traffic mapping": "1 ALB target group, 2 healthy EC2 targets, 1 API Gateway API" },
+    minimizeImpact: "Validate memory, disk, and peak-hour behavior, then drain traffic from one instance before stopping it.",
+    rollbackPath: "Restart the stopped instance and restore its target group registration.",
+  },
+  {
+    id: "idle-load-balancers",
+    cloud: "aws",
+    title: "Investigate 3 load balancers with no observed traffic",
+    impact: 65,
+    effort: "Low",
+    risk: "Medium",
+    owner: "Idle resource cleanup",
+    status: "Review",
+    detail: "Load balancers reported no sampled requests during the scan window but may still support rare jobs or DR flows.",
+    statistics: { "No-traffic load balancers": "3", "Observed requests": "0", "Scan window": "30 days" },
+    minimizeImpact: "Confirm DNS, health checks, allowlists, and disaster-recovery use before removal.",
+    rollbackPath: "Recreate the load balancer from infrastructure-as-code or restore previous listeners and target groups.",
+  },
+  {
+    id: "ec2-rightsizing",
+    cloud: "aws",
+    title: "Evaluate 9 EC2 Compute Optimizer recommendations",
+    impact: 4300,
+    effort: "Medium",
+    risk: "Medium",
+    owner: "EC2 rightsizing",
+    status: "Plan",
+    detail: "Compute Optimizer identified overprovisioned instances that may be resized after workload validation.",
+    statistics: { "Overprovisioned instances": "9", "Average CPU": "7.8%", "Peak CPU range": "18-54%" },
+    minimizeImpact: "Resize one service at a time in a maintenance window and watch latency, CPU, memory, and disk headroom.",
+    rollbackPath: "Scale the instance back to the previous type or redeploy the previous launch template.",
+  },
+  {
+    id: "ec2-to-lambda-assessment",
+    cloud: "aws",
+    title: "Assess whether low-utilization EC2 app entrypoints can move to Lambda",
+    impact: 2800,
+    effort: "High",
+    risk: "Medium",
+    owner: "Serverless migration assessment",
+    status: "Assess",
+    detail: "Low-utilization app entrypoints are visible behind ALB and API Gateway paths that may fit event-driven execution.",
+    statistics: { "Candidate entrypoints": "6", "Average CPU": "3.4%", "Traffic mapping": "2 ALB rules, 4 API Gateway routes", "App inventory": "Node.js and Python workers" },
+    minimizeImpact: "Start with one stateless endpoint, mirror traffic, and keep EC2 serving the primary path until parity is proven.",
+    rollbackPath: "Route traffic back to the EC2 target group or previous API integration.",
+  },
+  {
+    id: "rds-rightsizing",
+    cloud: "aws",
+    title: "Review 4 low-utilization RDS instances",
+    impact: 5100,
+    effort: "Medium",
+    risk: "High",
+    owner: "Database rightsizing",
+    status: "Review",
+    detail: "RDS instances show low CPU and connection counts, but database changes need maintenance-window validation.",
+    statistics: { "Low-use databases": "4", "Average CPU": "4.2%", "Average connections": "1.3" },
+    minimizeImpact: "Verify memory, IOPS, storage, and Multi-AZ behavior before testing one class step down.",
+    rollbackPath: "Scale back to the previous DB instance class during the approved window.",
+  },
+  {
+    id: "network-egress-review",
+    cloud: "aws",
+    title: "Review 2 NAT gateways for endpoint opportunities",
+    impact: 0,
+    effort: "Medium",
+    risk: "Medium",
+    owner: "Network and data transfer waste",
+    status: "Assess",
+    detail: "NAT gateway traffic may be reducible with gateway or interface endpoints after route-level traffic analysis.",
+    statistics: { "Active NAT gateways": "2", "Data processed": "9.4 TB", "Candidate endpoints": "S3, DynamoDB, ECR" },
+    minimizeImpact: "Add endpoints before removing NAT paths, test per subnet, and keep route table rollback changes ready.",
+    rollbackPath: "Restore previous route table entries and endpoint policies.",
+  },
   { cloud: "kubernetes", title: "Right-size production namespace requests", impact: 14200, effort: "Medium", risk: "Low", owner: "SRE", status: "Ready", detail: "CPU requests exceed p95 usage by 48% across 31 deployments." },
-  { cloud: "aws", title: "Move steady EC2 baseline into Savings Plans", impact: 11800, effort: "Low", risk: "Low", owner: "Platform", status: "Approve", detail: "62% of compute has stable hourly usage for the last 45 days." },
   { cloud: "gcp", title: "Partition high-scan BigQuery tables", impact: 9300, effort: "Medium", risk: "Medium", owner: "Analytics", status: "Plan", detail: "Three tables account for 41% of query spend and repeat full scans." },
   { cloud: "data", title: "Suspend idle Snowflake warehouses faster", impact: 7600, effort: "Low", risk: "Low", owner: "Data", status: "Ready", detail: "Warehouse idle windows average 22 minutes after query completion." },
   { cloud: "azure", title: "Consolidate underused AKS node pools", impact: 6100, effort: "Medium", risk: "Medium", owner: "Customer Apps", status: "Review", detail: "Four node pools run below 34% memory utilization during business hours." },
-  { cloud: "aws", title: "Expire unattached EBS volumes", impact: 3900, effort: "Low", risk: "Low", owner: "Core Apps", status: "Ready", detail: "128 volumes have no attachment and no snapshot activity in 30 days." },
 ];
 
 const ANOMALIES = [
@@ -100,6 +238,17 @@ let state = {
   awsScan: { status: "idle", progress: 0, message: "" },
   awsScanRegions: ["us-east-1"],
   awsRegionPickerOpen: false,
+  demoActionId: "",
+  feedbackOpen: false,
+  feedbackMessage: "",
+  feedbackSubmitting: false,
+  adminOverview: null,
+  adminLoadStarted: false,
+  adminMessage: "",
+  adminActionUserId: "",
+  adminExpandedTenantId: "",
+  adminTenantUsers: {},
+  adminTenantUsersLoading: "",
 };
 
 const registerDraftKey = "cloudprune.registerDraft";
@@ -107,6 +256,19 @@ const awsScanRegionsKey = "cloudprune.awsScanRegions";
 
 function money(value) {
   return `$${Math.round(value).toLocaleString()}`;
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString();
+}
+
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
 }
 
 function scanResult() {
@@ -290,6 +452,57 @@ function filteredRecommendations() {
   return state.cloud === "all" ? recommendations : recommendations.filter((item) => item.cloud === state.cloud);
 }
 
+function recommendationKey(item) {
+  return String(item.id || item.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function demoActionCopy(item) {
+  const status = String(item.status || "Review").toLowerCase();
+  if (status === "ready") {
+    return {
+      eyebrow: "Ready action",
+      title: "Stage safe execution",
+      lead: "CloudPrune would prepare this recommendation for an operator-reviewed change.",
+      steps: ["Confirm selected resources", "Create pre-change snapshots or exports", "Add the task to the automation queue"],
+      cta: "Add to queue",
+    };
+  }
+  if (status === "plan") {
+    return {
+      eyebrow: "Planning action",
+      title: "Build rollout plan",
+      lead: "CloudPrune would turn the finding into a phased implementation plan with owners and validation windows.",
+      steps: ["Choose a first target batch", "Schedule validation and rollback checkpoints", "Create implementation tickets"],
+      cta: "Create plan",
+    };
+  }
+  if (status === "assess") {
+    return {
+      eyebrow: "Assessment action",
+      title: "Collect decision data",
+      lead: "CloudPrune would open a discovery workflow before recommending any infrastructure change.",
+      steps: ["Map traffic and dependencies", "Collect missing utilization signals", "Score migration or consolidation risk"],
+      cta: "Start assessment",
+    };
+  }
+  if (status === "approve") {
+    return {
+      eyebrow: "Approval action",
+      title: "Prepare approval packet",
+      lead: "CloudPrune would package the savings, risk, and guardrails for a finance or platform approver.",
+      steps: ["Review commitment size", "Confirm account and workload exclusions", "Record approver and expiry window"],
+      cta: "Request approval",
+    };
+  }
+  return {
+    eyebrow: "Review action",
+    title: "Open evidence review",
+    lead: "CloudPrune would show the evidence, impact analysis, and rollback path before this moves forward.",
+    steps: ["Inspect resource evidence", "Confirm downtime and blast radius", "Decide whether to plan, dismiss, or stage"],
+    cta: "Open review",
+  };
+}
+
 function sum(items, key) {
   return items.reduce((total, item) => total + item[key], 0);
 }
@@ -303,6 +516,7 @@ function vendorBadge(provider, label = providerLabel(provider)) {
 }
 
 function appRoute(path = location.pathname) {
+  if (path === `${basePath(path)}/admin` || path.startsWith(`${basePath(path)}/admin/`)) return "admin";
   return path.startsWith(`${basePath()}/demo`) ? "demo" : "auth";
 }
 
@@ -334,6 +548,10 @@ function decodeTokenPayload(token) {
 
 function decodeSession() {
   return decodeTokenPayload(localStorage.getItem("cloudprune.session"));
+}
+
+function isAdminSession() {
+  return decodeSession()?.role === "admin";
 }
 
 function pendingGoogleRegistration() {
@@ -515,6 +733,59 @@ async function loadWorkspace() {
   }
 }
 
+async function loadAdminOverview() {
+  if (!isAdminSession() || state.adminLoadStarted || typeof fetch !== "function") return;
+  state.adminLoadStarted = true;
+  try {
+    const response = await fetch(`${basePath()}/api/admin/overview`, {
+      headers: authHeaders(),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "CloudPrune admin overview failed.");
+    state.adminOverview = body;
+    state.adminMessage = "";
+  } catch (error) {
+    state.adminMessage = error.message;
+  }
+  render();
+}
+
+async function loadAdminTenantUsers(tenantId) {
+  if (!isAdminSession() || !tenantId || state.adminTenantUsers[tenantId] || state.adminTenantUsersLoading === tenantId || typeof fetch !== "function") return;
+  state.adminTenantUsersLoading = tenantId;
+  state.adminMessage = "Loading tenant users...";
+  render();
+  try {
+    const response = await fetch(`${basePath()}/api/admin/tenants/${encodeURIComponent(tenantId)}/users`, {
+      headers: authHeaders(),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "CloudPrune tenant users load failed.");
+    state.adminTenantUsers = { ...state.adminTenantUsers, [tenantId]: body.users || [] };
+    state.adminMessage = "";
+  } catch (error) {
+    state.adminMessage = error.message;
+  }
+  state.adminTenantUsersLoading = "";
+  render();
+}
+
+function readAttachment(file) {
+  if (!file) return Promise.resolve(null);
+  if (file.size > 2 * 1024 * 1024) return Promise.reject(new Error("Attachment must be 2 MB or smaller."));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      name: file.name,
+      type: file.type || "application/octet-stream",
+      size: file.size,
+      contentBase64: String(reader.result || "").split(",")[1] || "",
+    });
+    reader.onerror = () => reject(new Error("Could not read attachment."));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function syncProfileFromDraft(token, draft) {
   if (!isRegisterDraftComplete(draft) || typeof fetch !== "function") return token;
   try {
@@ -589,8 +860,10 @@ function renderSpendBars() {
 
 function renderRecommendations() {
   const recommendations = filteredRecommendations();
-  return recommendations.map((item) => `
-    <article class="recommendation">
+  return recommendations.map((item) => {
+    const key = recommendationKey(item);
+    return `
+    <article class="recommendation ${state.demoActionId === key ? "active-action" : ""}">
       <div class="rec-icon ${item.cloud}">${ICONS.prune}</div>
       <div class="rec-main">
         <span class="cloud-pill">${vendorBadge(item.cloud)}</span>
@@ -605,10 +878,12 @@ function renderRecommendations() {
         <span>${escapeHtml(item.owner || item.strategy || "CloudPrune")}</span>
         <span>${escapeHtml(item.effort || "Medium")} effort</span>
         <span>${escapeHtml(item.risk || "Medium")} risk</span>
-        <button data-action="stage" aria-label="Stage ${escapeHtml(item.title)}">${escapeHtml(item.status || "Review")}</button>
+        <button data-action="stage" data-recommendation-id="${escapeHtml(key)}" aria-label="Open ${escapeHtml(item.status || "Review")} workflow for ${escapeHtml(item.title)}">${escapeHtml(item.status || "Review")}</button>
       </div>
+      ${state.demoActionId === key ? renderDemoRecommendationAction(item) : ""}
     </article>
-  `).join("") || `<div class="empty">${appRoute() === "demo" ? "No recommendations match this cloud." : "No recommendations yet. Run an AWS scan to generate cost-saving findings."}</div>`;
+  `;
+  }).join("") || `<div class="empty">${appRoute() === "demo" ? "No recommendations match this cloud." : "No recommendations yet. Run an AWS scan to generate cost-saving findings."}</div>`;
 }
 
 function renderRecommendationStats(statistics) {
@@ -623,6 +898,194 @@ function renderRecommendationStats(statistics) {
         </div>
       `).join("")}
     </dl>
+  `;
+}
+
+function renderDemoRecommendationAction(item) {
+  const action = demoActionCopy(item);
+  return `
+    <div class="demo-action-panel">
+      <div class="demo-action-head">
+        <div>
+          <span class="eyebrow">${escapeHtml(action.eyebrow)}</span>
+          <h4>${escapeHtml(action.title)}</h4>
+        </div>
+        <button data-action="close-demo-action" aria-label="Close recommendation workflow">Close</button>
+      </div>
+      <p>${escapeHtml(action.lead)}</p>
+      <div class="demo-action-grid">
+        <div>
+          <strong>Workflow</strong>
+          <ol>
+            ${action.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+          </ol>
+        </div>
+        <div>
+          <strong>Guardrails</strong>
+          <span>${escapeHtml(item.minimizeImpact || "Validate impact, choose a small first batch, and keep rollback ready.")}</span>
+        </div>
+        <div>
+          <strong>Rollback</strong>
+          <span>${escapeHtml(item.rollbackPath || "Restore the previous configuration and monitor the workload.")}</span>
+        </div>
+      </div>
+      <div class="demo-action-footer">
+        <span>${escapeHtml(item.risk || "Medium")} risk</span>
+        <span>${escapeHtml(item.effort || "Medium")} effort</span>
+        <strong>${money(item.impact)} monthly impact</strong>
+        <button>${escapeHtml(action.cta)}</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderFeedbackDialog() {
+  if (!state.feedbackOpen) return "";
+  const disabled = state.feedbackSubmitting ? "disabled" : "";
+  return `
+    <div class="dialog-backdrop" role="presentation">
+      <section class="feedback-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+        <div class="dialog-head">
+          <div>
+            <span class="eyebrow">Product feedback</span>
+            <h2 id="feedback-title">Send feedback</h2>
+          </div>
+          <button data-action="close-feedback" type="button" aria-label="Close feedback dialog">Close</button>
+        </div>
+        <form class="feedback-form" data-feedback-form>
+          <label>Type
+            <select name="type" required>
+              <option>Issue</option>
+              <option>Feature request</option>
+              <option>Question</option>
+              <option>Billing</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label>Details
+            <textarea name="details" rows="8" maxlength="5000" placeholder="What happened, what did you expect, and how can we reproduce it?" required></textarea>
+          </label>
+          <label>Attach file
+            <input name="attachment" type="file" />
+            <span class="field-help">Optional, up to 2 MB. Screenshots are useful.</span>
+          </label>
+          <div class="dialog-actions">
+            <button type="submit" ${disabled}>${state.feedbackSubmitting ? "Sending..." : "Send feedback"}</button>
+            <button class="secondary-connect" data-action="close-feedback" type="button" ${disabled}>Cancel</button>
+          </div>
+          <p class="auth-message">${escapeHtml(state.feedbackMessage)}</p>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function renderAdminUsers(tenant) {
+  const users = state.adminTenantUsers[tenant.id] || [];
+  if (state.adminTenantUsersLoading === tenant.id) return `<div class="admin-user-list empty">Loading users...</div>`;
+  if (!users.length) return `<div class="admin-user-list empty">No users for this tenant.</div>`;
+  return `
+    <div class="admin-user-list">
+      ${users.map((user) => {
+        const busy = state.adminActionUserId === user.id;
+        return `
+          <article class="admin-user-row">
+            <div>
+              <strong>${escapeHtml(user.name || "Unnamed user")}</strong>
+              <span>${escapeHtml(user.email || "")} / ${escapeHtml(user.provider || "password")}${user.hasPassword ? " / password enabled" : ""}</span>
+            </div>
+            <form class="admin-reset-form" data-admin-reset-form="${escapeHtml(user.id)}">
+              <input name="password" type="password" minlength="10" placeholder="New password" aria-label="New password for ${escapeHtml(user.email || user.name || "user")}" required />
+              <button type="submit" ${busy ? "disabled" : ""}>Reset password</button>
+            </form>
+            <button class="secondary-connect" data-action="admin-spoof-user" data-user-id="${escapeHtml(user.id)}" type="button" ${busy ? "disabled" : ""}>Spoof</button>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderAdminPage(app) {
+  if (!hasSession()) {
+    renderAuth(app);
+    return;
+  }
+  if (!isAdminSession()) {
+    app.innerHTML = `
+      <main class="auth-page">
+        <section class="auth-card">
+          <a class="auth-brand" href="${basePath()}/" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
+          <p class="auth-message">CloudPrune admin access is required.</p>
+          <button data-action="logout" type="button">Logout</button>
+        </section>
+      </main>
+    `;
+    return;
+  }
+  loadAdminOverview();
+  const tenants = state.adminOverview?.tenants || [];
+  const feedback = state.adminOverview?.feedback || [];
+  app.innerHTML = `
+    <div class="shell admin-shell">
+      <aside class="sidebar">
+        <a class="brand" href="${basePath()}/admin" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
+        <nav>
+          <div class="tenant-label"><span>Role</span><strong>Admin</strong></div>
+          <a class="active" href="${basePath()}/admin">${ICONS.settings}<span>Admin</span></a>
+          <div class="nav-separator" aria-hidden="true"></div>
+          <button class="sidebar-action" data-action="logout" type="button">Logout</button>
+        </nav>
+      </aside>
+      <main>
+        <header class="topbar">
+          <div>
+            <span class="eyebrow">CloudPrune admin</span>
+            <h1>Tenants and feedback reports.</h1>
+          </div>
+        </header>
+        <div class="admin-grid">
+          <section class="panel table-panel">
+            <div class="panel-head"><div><span class="eyebrow">Tenants</span><h2>${tenants.length} workspaces</h2></div></div>
+            <table>
+              <thead><tr><th>Tenant</th><th>Users</th><th>Connections</th><th>Created</th><th>Manage</th></tr></thead>
+              <tbody>${tenants.map((tenant) => `
+                <tr>
+                  <td><strong>${escapeHtml(tenant.companyName)}</strong><span>${escapeHtml(tenant.id)}</span></td>
+                  <td>${Number(tenant.userCount ?? 0)}</td>
+                  <td>${Number(tenant.connections || 0)}</td>
+                  <td>${formatDate(tenant.createdAt)}</td>
+                  <td><button class="secondary-connect" data-action="toggle-admin-tenant-users" data-tenant-id="${escapeHtml(tenant.id)}" type="button">${state.adminExpandedTenantId === tenant.id ? "Hide users" : "Show users"}</button></td>
+                </tr>
+                ${state.adminExpandedTenantId === tenant.id ? `
+                <tr class="admin-users-table-row">
+                  <td colspan="5">${renderAdminUsers(tenant)}</td>
+                </tr>` : ""}
+              `).join("") || `<tr><td colspan="5" class="muted-row">No tenants yet.</td></tr>`}</tbody>
+            </table>
+          </section>
+          <section class="panel feedback-admin-panel">
+            <div class="panel-head"><div><span class="eyebrow">Feedback reports</span><h2>${feedback.length} reports</h2></div></div>
+            <div class="feedback-list">${feedback.map((item) => `
+              <article class="feedback-report">
+                <div>
+                  <span>${escapeHtml(item.type)}</span>
+                  <h3>${escapeHtml(item.tenant || "Unknown tenant")}</h3>
+                  <p>${escapeHtml(item.details)}</p>
+                </div>
+                <aside>
+                  <strong>${escapeHtml(item.user || "")}</strong>
+                  <small>${escapeHtml(item.email || "")}</small>
+                  <small>${formatDate(item.createdAt)}</small>
+                  ${item.attachment ? `<em>${escapeHtml(item.attachment.name)} (${formatBytes(item.attachment.size)})</em>` : ""}
+                </aside>
+              </article>
+            `).join("") || `<div class="empty">No feedback reports yet.</div>`}</div>
+          </section>
+        </div>
+        <p class="auth-message">${escapeHtml(state.adminMessage)}</p>
+      </main>
+    </div>
   `;
 }
 
@@ -892,8 +1355,16 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUr
 
 function render() {
   const app = document.querySelector("#app");
+  if (appRoute() === "admin") {
+    renderAdminPage(app);
+    return;
+  }
   if (appRoute() === "auth") {
     if (hasSession()) {
+      if (isAdminSession()) {
+        location.href = `${basePath()}/admin`;
+        return;
+      }
       renderDemo(app, false);
       return;
     }
@@ -1000,7 +1471,7 @@ function renderAuth(app) {
             <div class="auth-divider"><span>or</span></div>
           `}
           ${isGoogleRegister ? "" : `
-            ${isRegister ? "" : `<label>Email<input name="email" type="email" autocomplete="email" required /></label>`}
+            ${isRegister ? "" : `<label>Email or username<input name="email" type="text" autocomplete="username" required /></label>`}
             <label>Password<input name="password" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" minlength="10" required /></label>
           `}
           <button type="submit">${isGoogleRegister ? "Create CloudPrune workspace" : isRegister ? "Create CloudPrune workspace" : "Login"}</button>
@@ -1053,6 +1524,7 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
           <div class="hero-mark">${ICONS.logo}</div>
           <div class="top-actions">
             <label class="toggle"><input type="checkbox" ${state.automation ? "checked" : ""} data-action="toggle-automation" /><span></span>Autopilot</label>
+            <button class="feedback-button" data-action="open-feedback" type="button">Send feedback</button>
             <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Connect cloud</button>
           </div>
         </header>
@@ -1073,10 +1545,11 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
         </div>` : `${renderEmptyKpis()}${renderEmptyWorkspace()}`}
       </main>
     </div>
+    ${renderFeedbackDialog()}
   `;
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const connectButton = event.target.closest("[data-action='connect']");
   if (connectButton) {
     if (connectButton.disabled) return;
@@ -1138,15 +1611,79 @@ document.addEventListener("click", (event) => {
     signOut();
     return;
   }
+  const adminTenantUsersButton = event.target.closest("[data-action='toggle-admin-tenant-users']");
+  if (adminTenantUsersButton) {
+    const tenantId = adminTenantUsersButton.dataset.tenantId;
+    state.adminExpandedTenantId = state.adminExpandedTenantId === tenantId ? "" : tenantId;
+    render();
+    if (state.adminExpandedTenantId) loadAdminTenantUsers(tenantId);
+    return;
+  }
+  const spoofButton = event.target.closest("[data-action='admin-spoof-user']");
+  if (spoofButton) {
+    if (spoofButton.disabled) return;
+    const userId = spoofButton.dataset.userId;
+    state.adminActionUserId = userId;
+    state.adminMessage = "Opening user session...";
+    render();
+    try {
+      const response = await fetch(`${basePath()}/api/admin/users/${encodeURIComponent(userId)}/spoof`, {
+        method: "POST",
+        headers: authHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({}),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not spoof user.");
+      localStorage.setItem("cloudprune.session", body.token);
+      state.workspace = null;
+      state.workspaceLoadStarted = false;
+      location.href = `${basePath()}/`;
+    } catch (error) {
+      state.adminMessage = error.message;
+      state.adminActionUserId = "";
+      render();
+    }
+    return;
+  }
+  const openFeedback = event.target.closest("[data-action='open-feedback']");
+  if (openFeedback) {
+    state.feedbackOpen = true;
+    state.feedbackMessage = hasSession() ? "" : "Login or register before sending feedback.";
+    render();
+    return;
+  }
+  const closeFeedback = event.target.closest("[data-action='close-feedback']");
+  if (closeFeedback) {
+    if (state.feedbackSubmitting) return;
+    state.feedbackOpen = false;
+    state.feedbackMessage = "";
+    render();
+    return;
+  }
+  const stageButton = event.target.closest("[data-action='stage']");
+  if (stageButton) {
+    if (stageButton.disabled) return;
+    state.demoActionId = state.demoActionId === stageButton.dataset.recommendationId ? "" : stageButton.dataset.recommendationId;
+    render();
+    return;
+  }
+  const closeDemoAction = event.target.closest("[data-action='close-demo-action']");
+  if (closeDemoAction) {
+    state.demoActionId = "";
+    render();
+    return;
+  }
   const cloudButton = event.target.closest("[data-cloud]");
   if (cloudButton) {
     state.cloud = cloudButton.dataset.cloud;
+    state.demoActionId = "";
     render();
     return;
   }
   const viewButton = event.target.closest("[data-view]");
   if (viewButton) {
     state.view = viewButton.dataset.view;
+    state.demoActionId = "";
     render();
     return;
   }
@@ -1197,6 +1734,68 @@ document.addEventListener("paste", (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  const adminResetForm = event.target.closest("[data-admin-reset-form]");
+  if (adminResetForm) {
+    event.preventDefault();
+    const userId = adminResetForm.dataset.adminResetForm;
+    const password = adminResetForm.elements.password.value;
+    state.adminActionUserId = userId;
+    state.adminMessage = "Resetting password...";
+    render();
+    try {
+      const response = await fetch(`${basePath()}/api/admin/users/${encodeURIComponent(userId)}/password`, {
+        method: "POST",
+        headers: authHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({ password }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not reset password.");
+      state.adminMessage = `Password reset for ${body.user?.email || "user"}.`;
+      if (state.adminExpandedTenantId) {
+        state.adminTenantUsers = { ...state.adminTenantUsers, [state.adminExpandedTenantId]: null };
+        delete state.adminTenantUsers[state.adminExpandedTenantId];
+        loadAdminTenantUsers(state.adminExpandedTenantId);
+      }
+    } catch (error) {
+      state.adminMessage = error.message;
+    }
+    state.adminActionUserId = "";
+    render();
+    return;
+  }
+  const feedbackForm = event.target.closest("[data-feedback-form]");
+  if (feedbackForm) {
+    event.preventDefault();
+    if (!hasSession()) {
+      state.feedbackMessage = "Login or register before sending feedback.";
+      render();
+      return;
+    }
+    state.feedbackSubmitting = true;
+    state.feedbackMessage = "Sending feedback...";
+    render();
+    try {
+      const attachment = await readAttachment(feedbackForm.elements.attachment?.files?.[0]);
+      const response = await fetch(`${basePath()}/api/feedback`, {
+        method: "POST",
+        headers: authHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({
+          type: feedbackForm.elements.type.value,
+          details: feedbackForm.elements.details.value,
+          attachment,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not send feedback.");
+      state.feedbackMessage = "Feedback sent. Thank you.";
+      state.feedbackOpen = false;
+    } catch (error) {
+      state.feedbackMessage = error.message;
+    }
+    state.feedbackSubmitting = false;
+    render();
+    return;
+  }
   const connectForm = event.target.closest("[data-connect-form='aws']");
   if (connectForm) {
     event.preventDefault();
@@ -1250,7 +1849,7 @@ document.addEventListener("submit", async (event) => {
     localStorage.setItem("cloudprune.session", body.token);
     localStorage.removeItem("cloudprune.googleRegistration");
     localStorage.removeItem(registerDraftKey);
-    location.href = `${basePath()}/`;
+    location.href = body.user?.role === "admin" ? `${basePath()}/admin` : `${basePath()}/`;
   } catch (error) {
     state.authMessage = error.message;
     render();

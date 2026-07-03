@@ -11,12 +11,14 @@ interface UserRecord {
   name: string;
   email: string;
   company_name: string;
+  role?: string;
 }
 
 interface PublicUserRecord {
   name: string;
   email: string;
   company_name: string;
+  role?: string;
 }
 
 interface GoogleProfile {
@@ -34,6 +36,7 @@ interface SessionPayload {
   name: string;
   accountId: string;
   companyName: string;
+  role?: string;
   exp: number;
 }
 
@@ -77,8 +80,8 @@ function secureEqual(actual: unknown, expected: unknown): boolean {
   return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
-export function publicUser(user: PublicUserRecord): { name: string; email: string; companyName: string } {
-  return { name: user.name, email: user.email, companyName: user.company_name };
+export function publicUser(user: PublicUserRecord): { name: string; email: string; companyName: string; role?: string } {
+  return { name: user.name, email: user.email, companyName: user.company_name, ...(user.role ? { role: user.role } : {}) };
 }
 
 export function signSession(user: UserRecord): string {
@@ -88,6 +91,7 @@ export function signSession(user: UserRecord): string {
     name: user.name,
     accountId: user.account_id,
     companyName: user.company_name,
+    ...(user.role ? { role: user.role } : {}),
     exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
