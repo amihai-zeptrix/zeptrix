@@ -22,6 +22,9 @@ export const tokenSecret: string = process.env.CLOUDPRUNE_TOKEN_SECRET || proces
 export const adminPassword: string = process.env.CLOUDPRUNE_ADMIN_PASSWORD || "";
 export const awsPrincipalArn: string = process.env.CLOUDPRUNE_AWS_PRINCIPAL_ARN || "";
 export const cloudpruneOauthCookieDomain: string = process.env.CLOUDPRUNE_OAUTH_COOKIE_DOMAIN || "zeptrix.io";
+export const auditEmailTo: string = process.env.CLOUDPRUNE_AUDIT_EMAIL_TO || "amihaih@gmail.com";
+export const auditEmailFrom: string = process.env.CLOUDPRUNE_AUDIT_EMAIL_FROM || process.env.LEAD_FROM_EMAIL || "amihai@zeptrix.io";
+export const auditEmailSubject: string = process.env.CLOUDPRUNE_AUDIT_EMAIL_SUBJECT || "cp audit log event";
 
 export function validateRuntimeConfig(): void {
   if ((databaseUrl || isProduction) && !tokenSecret) throw new Error("CLOUDPRUNE_TOKEN_SECRET or CRM_TOKEN_SECRET is required when persistence is enabled.");

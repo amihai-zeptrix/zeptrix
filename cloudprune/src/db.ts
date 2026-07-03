@@ -47,6 +47,25 @@ export async function initDatabase(): Promise<void> {
     )
   `);
   await pool.query(`
+    create table if not exists cloudprune_audit_log (
+      id uuid primary key default gen_random_uuid(),
+      account_id uuid references cloudprune_accounts(id) on delete set null,
+      user_id uuid references cloudprune_users(id) on delete set null,
+      actor_email citext,
+      actor_role text not null default 'user',
+      action text not null,
+      target_type text,
+      target_id text,
+      summary text,
+      metadata jsonb not null default '{}'::jsonb,
+      ip_address text,
+      user_agent text,
+      created_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`create index if not exists cloudprune_audit_log_created_at_idx on cloudprune_audit_log (created_at desc)`);
+  await pool.query(`create index if not exists cloudprune_audit_log_account_id_idx on cloudprune_audit_log (account_id, created_at desc)`);
+  await pool.query(`
     create table if not exists cloudprune_cloud_connections (
       id uuid primary key default gen_random_uuid(),
       account_id uuid not null references cloudprune_accounts(id) on delete cascade,

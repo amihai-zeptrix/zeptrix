@@ -249,6 +249,8 @@ let state = {
   adminExpandedTenantId: "",
   adminTenantUsers: {},
   adminTenantUsersLoading: "",
+  adminAuditLog: null,
+  adminAuditLoadStarted: false,
 };
 
 const registerDraftKey = "cloudprune.registerDraft";
@@ -531,6 +533,11 @@ function appRoute(path = location.pathname) {
   return path.startsWith(`${basePath()}/demo`) ? "demo" : "auth";
 }
 
+function adminRoute(path = location.pathname) {
+  const suffix = path.slice(`${basePath(path)}/admin`.length).replace(/^\/+/, "").split("/")[0];
+  return suffix || "overview";
+}
+
 function workspaceRoute(path = location.pathname) {
   const base = basePath(path);
   const suffix = path.startsWith(`${base}/demo`) ? path.slice(`${base}/demo`.length) : path.slice(base.length);
@@ -781,6 +788,23 @@ async function loadAdminTenantUsers(tenantId) {
   render();
 }
 
+async function loadAdminAuditLog() {
+  if (!isAdminSession() || state.adminAuditLoadStarted || typeof fetch !== "function") return;
+  state.adminAuditLoadStarted = true;
+  try {
+    const response = await fetch(`${basePath()}/api/admin/audit-log`, {
+      headers: authHeaders(),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "CloudPrune audit log failed.");
+    state.adminAuditLog = body.auditLog || [];
+    state.adminMessage = "";
+  } catch (error) {
+    state.adminMessage = error.message;
+  }
+  render();
+}
+
 function readAttachment(file) {
   if (!file) return Promise.resolve(null);
   if (file.size > 2 * 1024 * 1024) return Promise.reject(new Error("Attachment must be 2 MB or smaller."));
@@ -1019,6 +1043,93 @@ function renderAdminUsers(tenant) {
   `;
 }
 
+function renderAdminSidebar(route) {
+  return `
+    <aside class="sidebar">
+      <a class="brand" href="${basePath()}/admin" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
+      <nav>
+        <div class="tenant-label"><span>Role</span><strong>Admin</strong></div>
+        <a class="${route === "overview" ? "active" : ""}" href="${basePath()}/admin">${ICONS.settings}<span>Admin</span></a>
+        <a class="${route === "audit-log" ? "active" : ""}" href="${basePath()}/admin/audit-log">${ICONS.alert}<span>Audit log</span></a>
+        <div class="nav-separator" aria-hidden="true"></div>
+        <button class="sidebar-action" data-action="logout" type="button">Logout</button>
+      </nav>
+    </aside>
+  `;
+}
+
+function renderAdminAuditLog() {
+  loadAdminAuditLog();
+  const events = state.adminAuditLog || [];
+  return `
+    <div class="admin-grid">
+      <section class="panel table-panel">
+        <div class="panel-head"><div><span class="eyebrow">Audit log</span><h2>${events.length} recent events</h2></div></div>
+        <table class="audit-log-table">
+          <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Tenant</th><th>Target</th><th>Summary</th></tr></thead>
+          <tbody>${events.map((event) => `
+            <tr>
+              <td>${formatDate(event.createdAt)}</td>
+              <td><strong>${escapeHtml(event.actorEmail || "unknown")}</strong><span>${escapeHtml(event.actorRole || "user")}</span></td>
+              <td>${escapeHtml(event.action || "")}</td>
+              <td>${escapeHtml(event.tenant || "-")}</td>
+              <td><strong>${escapeHtml(event.targetType || "-")}</strong><span>${escapeHtml(event.targetId || "")}</span></td>
+              <td>${escapeHtml(event.summary || "")}</td>
+            </tr>
+          `).join("") || `<tr><td colspan="6" class="muted-row">No audit events yet.</td></tr>`}</tbody>
+        </table>
+      </section>
+    </div>
+  `;
+}
+
+function renderAdminOverviewContent() {
+  loadAdminOverview();
+  const tenants = state.adminOverview?.tenants || [];
+  const feedback = state.adminOverview?.feedback || [];
+  return `
+    <div class="admin-grid">
+      <section class="panel table-panel">
+        <div class="panel-head"><div><span class="eyebrow">Tenants</span><h2>${tenants.length} workspaces</h2></div></div>
+        <table>
+          <thead><tr><th>Tenant</th><th>Users</th><th>Connections</th><th>Created</th><th>Manage</th></tr></thead>
+          <tbody>${tenants.map((tenant) => `
+            <tr>
+              <td><strong>${escapeHtml(tenant.companyName)}</strong><span>${escapeHtml(tenant.id)}</span></td>
+              <td>${Number(tenant.userCount ?? 0)}</td>
+              <td>${Number(tenant.connections || 0)}</td>
+              <td>${formatDate(tenant.createdAt)}</td>
+              <td><button class="secondary-connect" data-action="toggle-admin-tenant-users" data-tenant-id="${escapeHtml(tenant.id)}" type="button">${state.adminExpandedTenantId === tenant.id ? "Hide users" : "Show users"}</button></td>
+            </tr>
+            ${state.adminExpandedTenantId === tenant.id ? `
+            <tr class="admin-users-table-row">
+              <td colspan="5">${renderAdminUsers(tenant)}</td>
+            </tr>` : ""}
+          `).join("") || `<tr><td colspan="5" class="muted-row">No tenants yet.</td></tr>`}</tbody>
+        </table>
+      </section>
+      <section class="panel feedback-admin-panel">
+        <div class="panel-head"><div><span class="eyebrow">Feedback reports</span><h2>${feedback.length} reports</h2></div></div>
+        <div class="feedback-list">${feedback.map((item) => `
+          <article class="feedback-report">
+            <div>
+              <span>${escapeHtml(item.type)}</span>
+              <h3>${escapeHtml(item.tenant || "Unknown tenant")}</h3>
+              <p>${escapeHtml(item.details)}</p>
+            </div>
+            <aside>
+              <strong>${escapeHtml(item.user || "")}</strong>
+              <small>${escapeHtml(item.email || "")}</small>
+              <small>${formatDate(item.createdAt)}</small>
+              ${item.attachment ? `<em>${escapeHtml(item.attachment.name)} (${formatBytes(item.attachment.size)})</em>` : ""}
+            </aside>
+          </article>
+        `).join("") || `<div class="empty">No feedback reports yet.</div>`}</div>
+      </section>
+    </div>
+  `;
+}
+
 function renderAdminPage(app) {
   if (!hasSession()) {
     renderAuth(app);
@@ -1036,66 +1147,19 @@ function renderAdminPage(app) {
     `;
     return;
   }
-  loadAdminOverview();
-  const tenants = state.adminOverview?.tenants || [];
-  const feedback = state.adminOverview?.feedback || [];
+  const route = adminRoute();
+  const isAuditLog = route === "audit-log";
   app.innerHTML = `
     <div class="shell admin-shell">
-      <aside class="sidebar">
-        <a class="brand" href="${basePath()}/admin" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
-        <nav>
-          <div class="tenant-label"><span>Role</span><strong>Admin</strong></div>
-          <a class="active" href="${basePath()}/admin">${ICONS.settings}<span>Admin</span></a>
-          <div class="nav-separator" aria-hidden="true"></div>
-          <button class="sidebar-action" data-action="logout" type="button">Logout</button>
-        </nav>
-      </aside>
+      ${renderAdminSidebar(route)}
       <main>
         <header class="topbar">
           <div>
             <span class="eyebrow">CloudPrune admin</span>
-            <h1>Tenants and feedback reports.</h1>
+            <h1>${isAuditLog ? "Audit log." : "Tenants and feedback reports."}</h1>
           </div>
         </header>
-        <div class="admin-grid">
-          <section class="panel table-panel">
-            <div class="panel-head"><div><span class="eyebrow">Tenants</span><h2>${tenants.length} workspaces</h2></div></div>
-            <table>
-              <thead><tr><th>Tenant</th><th>Users</th><th>Connections</th><th>Created</th><th>Manage</th></tr></thead>
-              <tbody>${tenants.map((tenant) => `
-                <tr>
-                  <td><strong>${escapeHtml(tenant.companyName)}</strong><span>${escapeHtml(tenant.id)}</span></td>
-                  <td>${Number(tenant.userCount ?? 0)}</td>
-                  <td>${Number(tenant.connections || 0)}</td>
-                  <td>${formatDate(tenant.createdAt)}</td>
-                  <td><button class="secondary-connect" data-action="toggle-admin-tenant-users" data-tenant-id="${escapeHtml(tenant.id)}" type="button">${state.adminExpandedTenantId === tenant.id ? "Hide users" : "Show users"}</button></td>
-                </tr>
-                ${state.adminExpandedTenantId === tenant.id ? `
-                <tr class="admin-users-table-row">
-                  <td colspan="5">${renderAdminUsers(tenant)}</td>
-                </tr>` : ""}
-              `).join("") || `<tr><td colspan="5" class="muted-row">No tenants yet.</td></tr>`}</tbody>
-            </table>
-          </section>
-          <section class="panel feedback-admin-panel">
-            <div class="panel-head"><div><span class="eyebrow">Feedback reports</span><h2>${feedback.length} reports</h2></div></div>
-            <div class="feedback-list">${feedback.map((item) => `
-              <article class="feedback-report">
-                <div>
-                  <span>${escapeHtml(item.type)}</span>
-                  <h3>${escapeHtml(item.tenant || "Unknown tenant")}</h3>
-                  <p>${escapeHtml(item.details)}</p>
-                </div>
-                <aside>
-                  <strong>${escapeHtml(item.user || "")}</strong>
-                  <small>${escapeHtml(item.email || "")}</small>
-                  <small>${formatDate(item.createdAt)}</small>
-                  ${item.attachment ? `<em>${escapeHtml(item.attachment.name)} (${formatBytes(item.attachment.size)})</em>` : ""}
-                </aside>
-              </article>
-            `).join("") || `<div class="empty">No feedback reports yet.</div>`}</div>
-          </section>
-        </div>
+        ${isAuditLog ? renderAdminAuditLog() : renderAdminOverviewContent()}
         <p class="auth-message">${escapeHtml(state.adminMessage)}</p>
       </main>
     </div>

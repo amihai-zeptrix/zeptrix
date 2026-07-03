@@ -801,7 +801,16 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
         totalSteps,
       })]
     );
-    if (finalResult.rows[0]) await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_completed", detail: `${aws.provider_account_id}:${status}` });
+    if (finalResult.rows[0]) await recordAuthEvent({
+      userId: user.id,
+      accountId: user.account_id,
+      email: user.email,
+      eventType: "aws_scan_completed",
+      detail: `AWS scan ${status} for account ${aws.provider_account_id}`,
+      targetType: "aws_scan",
+      targetId: scanId,
+      metadata: { awsAccountId: aws.provider_account_id, status },
+    });
   } catch (error: any) {
     const failureResult = await pool.query(
       `update cloudprune_aws_scans
@@ -810,7 +819,16 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
        returning id`,
       [scanId, jsonb([{ check: "scan", message: error.message }]), jsonb({ progress: 100, message: "AWS scan failed." })]
     );
-    if (failureResult.rows[0]) await recordAuthEvent({ userId: user.id, email: user.email, eventType: "aws_scan_failed", detail: aws.provider_account_id });
+    if (failureResult.rows[0]) await recordAuthEvent({
+      userId: user.id,
+      accountId: user.account_id,
+      email: user.email,
+      eventType: "aws_scan_failed",
+      detail: `AWS scan failed for account ${aws.provider_account_id}`,
+      targetType: "aws_scan",
+      targetId: scanId,
+      metadata: { awsAccountId: aws.provider_account_id },
+    });
   }
 }
 
