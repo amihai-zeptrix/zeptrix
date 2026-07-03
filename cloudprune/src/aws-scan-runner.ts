@@ -303,6 +303,52 @@ function awsCollectionCount(id: string, data: any): number {
   return collectionKey ? (data?.[collectionKey] || []).length : 0;
 }
 
+function inventoryResultLimit(maxItems: unknown = awsScanMaxInventoryItems): number {
+  return Math.max(1, Math.floor(Number(maxItems) || 1));
+}
+
+function computeOptimizerMaxResults(maxItems: unknown = awsScanMaxInventoryItems): number {
+  return Math.min(1000, inventoryResultLimit(maxItems));
+}
+
+function elasticIpsCommand(region: string, maxItems: unknown = awsScanMaxInventoryItems): string[] {
+  const limit = inventoryResultLimit(maxItems);
+  return [
+    "ec2", "describe-addresses",
+    "--region", region,
+    "--query", `{Addresses:Addresses[:${limit}].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId,Tags:Tags},CloudPruneOriginalCount:length(Addresses)}`,
+  ];
+}
+
+function computeOptimizerEc2Command(region: string, maxItems: unknown = awsScanMaxInventoryItems): string[] {
+  return [
+    "compute-optimizer", "get-ec2-instance-recommendations",
+    "--region", region,
+    "--no-paginate",
+    "--max-results", String(computeOptimizerMaxResults(maxItems)),
+    "--query", "{instanceRecommendations:instanceRecommendations[].{instanceArn:instanceArn,instanceName:instanceName,finding:finding,currentInstanceType:currentInstanceType},nextToken:nextToken}",
+  ];
+}
+
+function capAwsRegionalResult(id: string, data: any, maxItems: unknown = awsScanMaxInventoryItems): any {
+  const collectionById = {
+    elasticIps: "Addresses",
+    computeOptimizerEc2: "instanceRecommendations",
+  };
+  const collectionKey = collectionById[id];
+  const collection = data?.[collectionKey];
+  if (!collectionKey || !Array.isArray(collection)) return data;
+  const limit = inventoryResultLimit(maxItems);
+  const originalCount = Number(data.CloudPruneOriginalCount || collection.length);
+  if (collection.length <= limit && originalCount <= collection.length) return data;
+  return {
+    ...data,
+    [collectionKey]: collection.slice(0, limit),
+    CloudPruneTruncated: true,
+    CloudPruneOriginalCount: originalCount,
+  };
+}
+
 async function updateAwsScanProgress(scanId: string, completedSteps: number, totalSteps: number, message: string, extra: Record<string, unknown> = {}) {
   const denominator = Math.max(1, totalSteps);
   const progress = Math.min(99, Math.max(0, Math.round((completedSteps / denominator) * 100)));
@@ -410,7 +456,7 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
     const regionalChecks: RegionalCheck[] = [
       ["ec2Instances", "Reading EC2 instances", (region) => ["ec2", "describe-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Reservations:Reservations[].{Instances:Instances[].{InstanceId:InstanceId,InstanceType:InstanceType,Architecture:Architecture,PlatformDetails:PlatformDetails,VpcId:VpcId,SubnetId:SubnetId,State:State,Tags:Tags}},NextToken:NextToken}"]],
       ["ebsVolumes", "Reading EBS volumes", (region) => ["ec2", "describe-volumes", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Volumes:Volumes[].{VolumeId:VolumeId,State:State,Size:Size,VolumeType:VolumeType,Tags:Tags},NextToken:NextToken}"]],
-      ["elasticIps", "Reading Elastic IP addresses", (region) => ["ec2", "describe-addresses", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Addresses:Addresses[].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId,Tags:Tags},NextToken:NextToken}"]],
+      ["elasticIps", "Reading Elastic IP addresses", (region) => elasticIpsCommand(region)],
       ["lambdas", "Reading Lambda functions", (region) => ["lambda", "list-functions", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Functions:Functions[].{FunctionName:FunctionName},NextToken:NextToken}"]],
       ["rdsInstances", "Reading RDS instances", (region) => ["rds", "describe-db-instances", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{DBInstances:DBInstances[].{DBInstanceIdentifier:DBInstanceIdentifier,DBInstanceClass:DBInstanceClass,Engine:Engine,MultiAZ:MultiAZ,DBInstanceStatus:DBInstanceStatus},NextToken:NextToken}"]],
       ["logGroups", "Reading CloudWatch log groups", (region) => ["logs", "describe-log-groups", "--region", region, "--max-items", String(awsScanMaxLogGroups), "--page-size", String(Math.min(50, awsScanMaxLogGroups)), "--query", "{logGroups:logGroups[].{logGroupName:logGroupName,retentionInDays:retentionInDays,storedBytes:storedBytes},NextToken:NextToken}"]],
@@ -419,7 +465,7 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
       ["apiGatewayV2", "Reading API Gateway HTTP APIs", (region) => ["apigatewayv2", "get-apis", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{Items:Items[].{ApiId:ApiId,Name:Name,ProtocolType:ProtocolType,ApiEndpoint:ApiEndpoint},NextToken:NextToken}"]],
       ["apiGatewayRest", "Reading API Gateway REST APIs", (region) => ["apigateway", "get-rest-apis", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{items:items[].{id:id,name:name,endpointConfiguration:endpointConfiguration},position:position}"]],
       ["ssmInstances", "Reading SSM managed instances", (region) => ["ssm", "describe-instance-information", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{InstanceInformationList:InstanceInformationList[].{InstanceId:InstanceId,ComputerName:ComputerName,PlatformName:PlatformName,PlatformType:PlatformType,AgentVersion:AgentVersion,PingStatus:PingStatus},NextToken:NextToken}"]],
-      ["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations", (region) => ["compute-optimizer", "get-ec2-instance-recommendations", "--region", region, "--max-items", String(awsScanMaxInventoryItems), "--query", "{instanceRecommendations:instanceRecommendations[].{instanceArn:instanceArn,instanceName:instanceName,finding:finding,currentInstanceType:currentInstanceType},NextToken:NextToken}"]],
+      ["computeOptimizerEc2", "Reading EC2 Compute Optimizer recommendations", (region) => computeOptimizerEc2Command(region)],
     ];
     inventoryLimits.limitedRegionalChecks = regionalChecks.map(([id]) => id);
     const s3LifecycleJobs = () => (results.s3Buckets?.Buckets || []).slice(0, awsScanMaxSampledResources).flatMap((bucket) => [
@@ -504,18 +550,19 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
       await Promise.all(batch.map(async ({ region, id, label, command }) => {
         const activeStep = scanStepLabel(label, region);
         try {
-          const data = await runAwsJson(command(region), { env: scanEnv, timeoutMs: 45000 });
+          const data = capAwsRegionalResult(id, await runAwsJson(command(region), { env: scanEnv, timeoutMs: 45000 }));
           inventoryLimits.regionalResults.push({
             check: id,
             region,
             returnedCount: awsCollectionCount(id, data),
-            truncated: Boolean(data?.NextToken),
+            truncated: Boolean(data?.NextToken || data?.nextToken || data?.CloudPruneTruncated),
           });
-          if (data?.NextToken) {
+          if (data?.NextToken || data?.nextToken || data?.CloudPruneTruncated) {
             inventoryLimits.truncatedChecks.push({
               check: id,
               region,
               returnedCount: awsCollectionCount(id, data),
+              originalCount: data?.CloudPruneOriginalCount,
             });
           }
           results[id] = [...(results[id] || []), addRegionToAwsResult(id, data, region)];
@@ -768,5 +815,9 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
 }
 
 export {
+  capAwsRegionalResult,
+  computeOptimizerEc2Command,
+  computeOptimizerMaxResults,
+  elasticIpsCommand,
   performAwsScan,
 };
