@@ -9,7 +9,21 @@
     "sourceStatus": "200 OK",
     "pain": "Unattached EBS volumes keep charging by provisioned GB-month even when no instance uses them.",
     "angle": "CloudPrune can add age, attachment history, snapshot/rollback guidance, and a dry-run recommendation before deletion.",
-    "cta": "Use CloudPrune to find EBS cleanup opportunities with rollback notes: https://zeptrix.io/cloudprune/"
+    "cta": "Use CloudPrune to find EBS cleanup opportunities with rollback notes: https://zeptrix.io/cloudprune/",
+    "faqs": [
+      {
+        "question": "Do unattached EBS volumes still cost money?",
+        "answer": "Yes. An EBS volume is billed by provisioned storage while it exists, even if it is detached from every EC2 instance."
+      },
+      {
+        "question": "Is it safe to delete every unattached EBS volume?",
+        "answer": "No. First check age, recent attachment history, naming, tags, snapshots, backups, and application ownership. Detached volumes can still be rollback data."
+      },
+      {
+        "question": "What is the safest cleanup path?",
+        "answer": "Start with a read-only inventory, confirm ownership, snapshot or export data when rollback matters, delete only reviewed volumes, and keep the rollback reference through the validation window."
+      }
+    ]
   },
   {
     "title": "FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform",
@@ -33,7 +47,21 @@
     "sourceStatus": "200 OK",
     "pain": "Users are unsure whether detached volumes are still billed and what to do with them.",
     "angle": "CloudPrune can make this an entry-level educational page with a scan CTA.",
-    "cta": "Scan for unattached EBS volumes in CloudPrune: https://zeptrix.io/cloudprune/"
+    "cta": "Scan for unattached EBS volumes in CloudPrune: https://zeptrix.io/cloudprune/",
+    "faqs": [
+      {
+        "question": "Are available EBS volumes charged in AWS?",
+        "answer": "Yes. The available state means the volume is detached, not free. AWS still bills the allocated storage until the volume is deleted."
+      },
+      {
+        "question": "Can I recover a deleted EBS volume?",
+        "answer": "Only if you have a snapshot, backup, export, or another copy of the data. Deletion removes the volume, so rollback planning needs to happen before cleanup."
+      },
+      {
+        "question": "How should CloudPrune users review this recommendation?",
+        "answer": "Review the volume ID, size, age, tags, snapshot status, recent attachment signal, and owner notes before approving deletion or keeping the volume."
+      }
+    ]
   },
   {
     "title": "Why Is My AWS Bill Suddenly High? A 15-Minute Triage Checklist",
@@ -81,7 +109,21 @@
     "sourceStatus": "200 OK",
     "pain": "CloudWatch charges rise because of logs, custom metrics, metric streams, dashboards, or alarms.",
     "angle": "CloudPrune can scan log groups, retention settings, and old/noisy log storage, then estimate monthly impact.",
-    "cta": "Run a CloudPrune scan to find CloudWatch cleanup candidates: https://zeptrix.io/cloudprune/"
+    "cta": "Run a CloudPrune scan to find CloudWatch cleanup candidates: https://zeptrix.io/cloudprune/",
+    "faqs": [
+      {
+        "question": "Why can CloudWatch become expensive?",
+        "answer": "Common drivers are high log ingestion, long retention, custom metrics, dashboards, alarms, metric streams, and verbose application logs."
+      },
+      {
+        "question": "Does changing retention reduce all CloudWatch cost?",
+        "answer": "Retention helps with stored log cost, but it does not reduce ingestion cost. If ingestion is the bill driver, the emitting workload or logging policy must be reviewed."
+      },
+      {
+        "question": "What should be reviewed before reducing CloudWatch data?",
+        "answer": "Check incident response needs, compliance retention, debugging workflows, alerting coverage, and whether lower-volume logs can move to a cheaper storage or analytics path."
+      }
+    ]
   },
   {
     "title": "CloudWatch Logs Cost Optimization: Retention Helps, But Ingestion Is the Real Bill Driver",
@@ -93,7 +135,21 @@
     "sourceStatus": "200 OK",
     "pain": "Practitioners want concrete alternatives and retention strategies for expensive CloudWatch Logs.",
     "angle": "CloudPrune can publish a pragmatic CloudWatch playbook: retention first, ingestion source review, IA class, and what not to automate.",
-    "cta": "Let CloudPrune identify CloudWatch log groups worth reviewing: https://zeptrix.io/cloudprune/"
+    "cta": "Let CloudPrune identify CloudWatch log groups worth reviewing: https://zeptrix.io/cloudprune/",
+    "faqs": [
+      {
+        "question": "Is CloudWatch Logs retention the first setting to check?",
+        "answer": "It is a good first check for stored log cost, especially for log groups set to never expire, but ingestion volume is often the larger recurring driver."
+      },
+      {
+        "question": "When should logs move outside CloudWatch?",
+        "answer": "Consider alternatives when logs are high volume, rarely queried in CloudWatch, retained mostly for audit, or better analyzed through S3, Athena, OpenSearch, or a dedicated logging platform."
+      },
+      {
+        "question": "Can CloudPrune automatically change retention?",
+        "answer": "CloudPrune should first show the evidence and impact. Automation should stay controlled because retention changes can affect audits, incident response, and troubleshooting."
+      }
+    ]
   },
   {
     "title": "Trusted Advisor, Compute Optimizer, or Cost Optimization Hub: Which AWS Recommendation Source Should You Use?",
