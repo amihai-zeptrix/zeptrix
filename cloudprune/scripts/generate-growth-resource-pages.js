@@ -7,6 +7,7 @@ const dataPath = path.join(__dirname, "growth-resource-items.json");
 const followupPath = path.join(projectRoot, "reports", "cloudprune-growth-followup.md");
 const shortlistPath = path.join(projectRoot, "reports", "cloudprune-growth-shortlist.md");
 const outputRoot = path.join(projectRoot, "cloudprune", "resources");
+const publicBaseUrl = "https://zeptrix.io";
 
 function escapeHtml(value) {
   return String(value || "")
@@ -79,6 +80,7 @@ function loadItems() {
 function pageHtml(item, allItems) {
   const title = `${item.seoTitle || item.title} | CloudPrune`;
   const description = item.pain || item.angle || "CloudPrune cloud cost optimization resource.";
+  const canonicalUrl = `${publicBaseUrl}/cloudprune/resources/${item.slug}`;
   const related = allItems.filter((candidate) => candidate.slug !== item.slug).slice(0, 3);
   return `<!doctype html>
 <html lang="en">
@@ -87,6 +89,15 @@ function pageHtml(item, allItems) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="${escapeHtml(description)}" />
     <title>${escapeHtml(title)}</title>
+    <link rel="canonical" href="${canonicalUrl}" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="CloudPrune" />
+    <meta property="og:title" content="${escapeHtml(title)}" />
+    <meta property="og:description" content="${escapeHtml(description)}" />
+    <meta property="og:url" content="${canonicalUrl}" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="${escapeHtml(title)}" />
+    <meta name="twitter:description" content="${escapeHtml(description)}" />
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
   </head>
@@ -146,13 +157,25 @@ function pageHtml(item, allItems) {
 }
 
 function indexHtml(items) {
+  const title = "CloudPrune AWS Cost Resources";
+  const description = "CloudPrune AWS cost optimization resources for high-intent cost pain searches.";
+  const canonicalUrl = `${publicBaseUrl}/cloudprune/resources/`;
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="CloudPrune AWS cost optimization resources for high-intent cost pain searches." />
-    <title>CloudPrune AWS Cost Resources</title>
+    <meta name="description" content="${description}" />
+    <title>${title}</title>
+    <link rel="canonical" href="${canonicalUrl}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CloudPrune" />
+    <meta property="og:title" content="${title}" />
+    <meta property="og:description" content="${description}" />
+    <meta property="og:url" content="${canonicalUrl}" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="${title}" />
+    <meta name="twitter:description" content="${description}" />
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
   </head>
