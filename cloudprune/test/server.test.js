@@ -314,6 +314,21 @@ test("generated CloudPrune resource pages keep concise SEO titles", () => {
   }
 });
 
+test("generated CloudPrune resource pages expose canonical and social metadata", () => {
+  const resourcesRoot = path.join(__dirname, "..", "cloudprune", "resources");
+  const indexHtml = fs.readFileSync(path.join(resourcesRoot, "index.html"), "utf8");
+  assert.match(indexHtml, /<link rel="canonical" href="https:\/\/zeptrix\.io\/cloudprune\/resources\/" \/>/);
+  assert.match(indexHtml, /<meta property="og:type" content="website" \/>/);
+  assert.match(indexHtml, /<meta name="twitter:card" content="summary" \/>/);
+
+  const pageSlug = "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them";
+  const pageHtml = fs.readFileSync(path.join(resourcesRoot, pageSlug, "index.html"), "utf8");
+  assert.ok(pageHtml.includes(`<link rel="canonical" href="https://zeptrix.io/cloudprune/resources/${pageSlug}" />`));
+  assert.match(pageHtml, /<meta property="og:type" content="article" \/>/);
+  assert.match(pageHtml, /<meta property="og:title" content="Unattached EBS Volumes Cost Money \| CloudPrune" \/>/);
+  assert.match(pageHtml, /<meta name="twitter:description" content="Unattached EBS volumes keep charging/);
+});
+
 test("compiled server serves app shell and copied assets", async () => {
   await withHttpServer(server, async (baseUrl) => {
     const root = await fetch(`${baseUrl}/cloudprune/`);
