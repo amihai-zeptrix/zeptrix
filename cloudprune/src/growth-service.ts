@@ -122,6 +122,55 @@ function publicGrowthExperiment(row: Record<string, any>) {
   };
 }
 
+function experimentEventPredicate(row: Record<string, any>): string {
+  if (row.target_type === "intent") return "coalesce(intent, 'unknown')=$2";
+  if (row.target_type === "onboarding") return "source=$2";
+  if (row.target_type === "resource") return "coalesce(resource_slug, source, path, 'unknown')=$2";
+  return "(coalesce(resource_slug, source, path, intent, 'unknown')=$2)";
+}
+
+async function experimentMetrics(row: Record<string, any>) {
+  const predicate = experimentEventPredicate(row);
+  const result = await pool!.query(
+    `select
+        case when created_at::date < $1::date then 'before' else 'after' end as window,
+        count(*) filter (where event_type='resource_page_view')::int as page_views,
+        count(*) filter (where event_type='resource_cta_click')::int as cta_clicks,
+        count(*) filter (where event_type='auth_success')::int as auth_successes,
+        count(*) filter (where event_type='aws_connect_saved')::int as aws_connects,
+        count(*) filter (where event_type='aws_scan_started')::int as scans
+     from cloudprune_growth_events
+     where ${predicate}
+     group by case when created_at::date < $1::date then 'before' else 'after' end`,
+    [row.started_at, row.target]
+  );
+  const empty = { pageViews: 0, ctaClicks: 0, ctaRate: 0, authSuccesses: 0, awsConnects: 0, scans: 0 };
+  const byWindow: Record<string, any> = { before: { ...empty }, after: { ...empty } };
+  for (const metric of result.rows) {
+    const pageViews = Number(metric.page_views || 0);
+    const ctaClicks = Number(metric.cta_clicks || 0);
+    byWindow[metric.window] = {
+      pageViews,
+      ctaClicks,
+      ctaRate: conversionRate(ctaClicks, pageViews),
+      authSuccesses: Number(metric.auth_successes || 0),
+      awsConnects: Number(metric.aws_connects || 0),
+      scans: Number(metric.scans || 0),
+    };
+  }
+  return {
+    before: byWindow.before,
+    after: byWindow.after,
+    delta: {
+      ctaRate: byWindow.after.ctaRate - byWindow.before.ctaRate,
+      ctaClicks: byWindow.after.ctaClicks - byWindow.before.ctaClicks,
+      authSuccesses: byWindow.after.authSuccesses - byWindow.before.authSuccesses,
+      awsConnects: byWindow.after.awsConnects - byWindow.before.awsConnects,
+      scans: byWindow.after.scans - byWindow.before.scans,
+    },
+  };
+}
+
 function conversionRate(numerator: unknown, denominator: unknown): number {
   const top = Number(numerator || 0);
   const bottom = Number(denominator || 0);
@@ -283,6 +332,10 @@ async function adminGrowthOverview(req: RequestLike) {
     ),
   ]);
 
+  const experiments = await Promise.all(experimentRows.rows.map(async (row: Record<string, any>) => ({
+    ...publicGrowthExperiment(row),
+    metrics: await experimentMetrics(row),
+  })));
   const intentData = intentRows.rows.map((row: Record<string, any>) => ({
     intent: row.intent,
     events: row.events,
@@ -309,7 +362,7 @@ async function adminGrowthOverview(req: RequestLike) {
     insights: growthInsights(intentRows.rows, resourceRows.rows),
     intents: intentData,
     resources: resourceData,
-    experiments: experimentRows.rows.map(publicGrowthExperiment),
+    experiments,
     recentEvents: recentRows.rows.map(publicGrowthEvent),
   };
 }

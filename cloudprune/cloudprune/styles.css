@@ -721,6 +721,37 @@ button:hover { background: #1e4d43; }
 .growth-experiment strong {
   color: var(--forest);
 }
+.experiment-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.experiment-metrics div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--paper);
+}
+.experiment-metrics span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.experiment-metrics strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 22px;
+}
+.experiment-metrics em {
+  display: block;
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 800;
+}
 .admin-users-table-row td {
   height: auto;
   padding: 0 14px 14px;
@@ -1723,6 +1754,7 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   .growth-insights { grid-template-columns: 1fr; }
   .growth-experiment-form,
   .growth-experiment { grid-template-columns: 1fr; }
+  .experiment-metrics { grid-template-columns: 1fr; }
   .admin-user-row,
   .admin-reset-form {
     grid-template-columns: 1fr;
