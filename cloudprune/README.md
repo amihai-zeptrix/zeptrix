@@ -53,3 +53,9 @@ The web scan uses separate server-side safety caps so repeated onboarding scans 
 - `CLOUDPRUNE_AWS_SCAN_MAX_REGIONS` limits enabled regions scanned, default `12`.
 - `CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS` limits paginated inventory items per regional AWS CLI call, default `200`.
 - `CLOUDPRUNE_AWS_SCAN_MAX_SAMPLED_RESOURCES` limits per-resource lifecycle and CloudWatch metric follow-up checks, default `25`.
+
+## Batch EC2 cost playbook
+
+The stock scanner cleanup is the model for CloudPrune's batch-host recommendation: remove unused heavyweight runtime dependencies, right-size oversized root storage only after validating guest disk usage, and schedule EC2 uptime around the actual work window.
+
+Important operations rule: before stopping instances, swapping root volumes, changing schedules, deleting snapshots, or doing anything that can cause downtime or data-loss risk, warn the user first. Include what will be unavailable, why downtime is needed, estimated duration, rollback path, and ask for approval before proceeding. Root-volume shrink requires a stop/swap/start maintenance window because AWS cannot reduce an EBS volume in place.

@@ -432,6 +432,212 @@ test("Lambda migration finding requires traffic or app inventory evidence", () =
   assert.equal(report.findings.some((finding) => finding.id === "ec2-to-lambda-assessment"), false);
 });
 
+test("EC2 batch host optimization finds stockscanner-style disk and schedule opportunities", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: { ResultsByTime: [{ Groups: [{ Keys: ["Amazon Elastic Compute Cloud - Compute"], Metrics: { UnblendedCost: { Amount: "30", Unit: "USD" } } }] }] },
+      },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [{
+              InstanceId: "i-stockscanner",
+              InstanceType: "t3.small",
+              Architecture: "x86_64",
+              PlatformDetails: "Linux/UNIX",
+              VpcId: "vpc-1",
+              State: { Name: "running" },
+              RootDeviceName: "/dev/xvda",
+              BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { VolumeId: "vol-stock-root" } }],
+              Tags: [{ Key: "Name", Value: "stocks-scanner-1" }],
+            }],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: {
+          instances: [{
+            id: "i-stockscanner",
+            averageCpu: 2.4,
+            maximumCpu: 18.6,
+            cpuStatus: "observed",
+            diskStatus: "observed",
+            maximumDisk: 8,
+            rootDiskStatus: "observed",
+            maximumRootDisk: 8,
+            rootDiskDimensions: [{ Name: "path", Value: "/" }],
+          }],
+        },
+      },
+      ebsVolumes: {
+        service: "EBS",
+        ok: true,
+        data: {
+          Volumes: [{
+            VolumeId: "vol-stock-root",
+            State: "in-use",
+            Size: 150,
+            VolumeType: "gp3",
+            Attachments: [{ InstanceId: "i-stockscanner", VolumeId: "vol-stock-root", Device: "/dev/xvda" }],
+          }],
+        },
+      },
+      albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
+      ssmApplications: {
+        service: "SSM Application Inventory",
+        ok: true,
+        data: { instances: [{ id: "i-stockscanner", applications: [{ name: "python3" }, { name: "postgresql" }] }] },
+      },
+    },
+  });
+  const batch = report.findings.find((finding) => finding.id === "ec2-batch-host-optimization");
+
+  assert.ok(batch);
+  assert.equal(batch.title, "Assess scheduling and disk right-sizing for 1 EC2 batch host");
+  assert.equal(batch.statistics["Root volume right-size"], "stocks-scanner-1: 150 GiB -> 20 GiB");
+  assert.equal(batch.statistics["Observed root disk"], "stocks-scanner-1: 8%");
+  assert.match(batch.statistics["Batch/schedule signals"], /scanner/);
+  assert.equal(batch.estimatedMonthlySavings, 10.4);
+  assert.match(batch.impactAnalysis, /Root-volume shrink requires planned downtime/);
+  assert.match(batch.minimizeImpact, /warn the owner with expected downtime/);
+  assert.ok(batch.resources.includes("stocks-scanner-1 (i-stockscanner, vol-stock-root)"));
+});
+
+test("EC2 batch host optimization does not shrink high-disk root volumes", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [] } },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [{
+              InstanceId: "i-busy-batch",
+              State: { Name: "running" },
+              RootDeviceName: "/dev/xvda",
+              BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { VolumeId: "vol-busy-root" } }],
+              Tags: [{ Key: "Name", Value: "nightly-batch-worker" }],
+            }],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: { instances: [{ id: "i-busy-batch", averageCpu: 3, maximumCpu: 12, cpuStatus: "observed", diskStatus: "observed", maximumDisk: 82, rootDiskStatus: "observed", maximumRootDisk: 82 }] },
+      },
+      ebsVolumes: {
+        service: "EBS",
+        ok: true,
+        data: { Volumes: [{ VolumeId: "vol-busy-root", State: "in-use", Size: 150, VolumeType: "gp3", Attachments: [{ InstanceId: "i-busy-batch", VolumeId: "vol-busy-root" }] }] },
+      },
+      albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
+    },
+  });
+
+  assert.equal(report.findings.some((finding) => finding.id === "ec2-batch-host-optimization"), false);
+});
+
+test("EC2 batch host optimization requires observed CPU and disk metrics", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [] } },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [{
+              InstanceId: "i-unsampled-scanner",
+              State: { Name: "running" },
+              RootDeviceName: "/dev/xvda",
+              BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { VolumeId: "vol-unsampled-root" } }],
+              Tags: [{ Key: "Name", Value: "unsampled-scanner-worker" }],
+            }],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: { instances: [] },
+      },
+      ebsVolumes: {
+        service: "EBS",
+        ok: true,
+        data: { Volumes: [{ VolumeId: "vol-unsampled-root", State: "in-use", Size: 150, VolumeType: "gp3", Attachments: [{ InstanceId: "i-unsampled-scanner", VolumeId: "vol-unsampled-root" }] }] },
+      },
+      albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
+    },
+  });
+
+  assert.equal(report.findings.some((finding) => finding.id === "ec2-batch-host-optimization"), false);
+});
+
+test("EC2 batch host optimization requires root filesystem disk telemetry", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [] } },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [{
+              InstanceId: "i-nonroot-scanner",
+              State: { Name: "running" },
+              RootDeviceName: "/dev/xvda",
+              BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { VolumeId: "vol-nonroot" } }],
+              Tags: [{ Key: "Name", Value: "nonroot-scanner-worker" }],
+            }],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: { instances: [{ id: "i-nonroot-scanner", averageCpu: 2, maximumCpu: 10, cpuStatus: "observed", diskStatus: "observed", maximumDisk: 4, rootDiskStatus: "missing", maximumRootDisk: null }] },
+      },
+      ebsVolumes: {
+        service: "EBS",
+        ok: true,
+        data: { Volumes: [{ VolumeId: "vol-nonroot", State: "in-use", Size: 150, VolumeType: "gp3", Attachments: [{ InstanceId: "i-nonroot-scanner", VolumeId: "vol-nonroot" }] }] },
+      },
+      albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
+    },
+  });
+
+  assert.equal(report.findings.some((finding) => finding.id === "ec2-batch-host-optimization"), false);
+});
+
 test("load balancer no-data is treated as idle but unavailable metrics are not", () => {
   const report = buildReport({
     generatedAt: "2026-06-27T10:00:00.000Z",
