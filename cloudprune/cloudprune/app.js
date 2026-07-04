@@ -345,6 +345,11 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString();
 }
 
+function signedDelta(value) {
+  const number = Number(value || 0);
+  return `${number >= 0 ? "+" : ""}${number.toLocaleString()}`;
+}
+
 function formatBytes(value) {
   const bytes = Number(value || 0);
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -1319,6 +1324,13 @@ function renderAdminGrowth() {
               <h3>${escapeHtml(item.name || "")}</h3>
               <p>${escapeHtml(item.hypothesis || "")}</p>
               <strong>${escapeHtml(item.targetType || "resource")}: ${escapeHtml(item.target || "")}</strong>
+              <div class="experiment-metrics">
+                <div><span>Before CTR</span><strong>${Number(item.metrics?.before?.ctaRate || 0)}%</strong><em>${Number(item.metrics?.before?.ctaClicks || 0).toLocaleString()} clicks</em></div>
+                <div><span>After CTR</span><strong>${Number(item.metrics?.after?.ctaRate || 0)}%</strong><em>${Number(item.metrics?.after?.ctaClicks || 0).toLocaleString()} clicks</em></div>
+                <div><span>Auth</span><strong>${Number(item.metrics?.after?.authSuccesses || 0).toLocaleString()}</strong><em>${signedDelta(item.metrics?.delta?.authSuccesses || 0)} vs before</em></div>
+                <div><span>AWS connects</span><strong>${Number(item.metrics?.after?.awsConnects || 0).toLocaleString()}</strong><em>${signedDelta(item.metrics?.delta?.awsConnects || 0)} vs before</em></div>
+                <div><span>Scans</span><strong>${Number(item.metrics?.after?.scans || 0).toLocaleString()}</strong><em>${signedDelta(item.metrics?.delta?.scans || 0)} vs before</em></div>
+              </div>
             </div>
           </article>
         `).join("") || `<div class="empty">No experiments yet. Create one before changing a page or onboarding step.</div>`}

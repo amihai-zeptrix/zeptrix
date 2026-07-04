@@ -833,6 +833,11 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
           createdBy: "admin",
           startedAt: "2026-07-04",
           createdAt: "2026-07-04T13:00:00.000Z",
+          metrics: {
+            before: { pageViews: 10, ctaClicks: 1, ctaRate: 10, authSuccesses: 0, awsConnects: 0, scans: 0 },
+            after: { pageViews: 20, ctaClicks: 5, ctaRate: 25, authSuccesses: 2, awsConnects: 1, scans: 1 },
+            delta: { ctaRate: 15, ctaClicks: 4, authSuccesses: 2, awsConnects: 1, scans: 1 },
+          },
         }],
         recentEvents: [{
           id: "growth-1",
@@ -856,6 +861,10 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
   assert.match(app.innerHTML, /Review AWS onboarding friction/);
   assert.match(app.innerHTML, /Growth experiments/);
   assert.match(app.innerHTML, /Read-only trust block on EBS pages/);
+  assert.match(app.innerHTML, /Before CTR/);
+  assert.match(app.innerHTML, /After CTR/);
+  assert.match(app.innerHTML, /25%/);
+  assert.match(app.innerHTML, /\+1 vs before/);
   assert.match(app.innerHTML, /Track experiment/);
   assert.match(app.innerHTML, /Export summary CSV/);
   assert.match(app.innerHTML, /href="\/cloudprune\/api\/admin\/growth\.csv"/);
@@ -1785,6 +1794,7 @@ test("CloudPrune growth events have a dedicated table and API", () => {
   assert.match(growthSource, /recommendation_viewed/);
   assert.match(growthSource, /admin_growth_viewed/);
   assert.match(growthSource, /growth_experiment_created/);
+  assert.match(growthSource, /experimentMetrics/);
   assert.match(growthSource, /growthInsights/);
   assert.match(growthSource, /adminGrowthCsv/);
   assert.match(growthSource, /createGrowthExperiment/);
