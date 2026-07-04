@@ -230,6 +230,13 @@ test("maps CloudPrune app routes to the public index", () => {
   assert.match(staticFilePathForUrlPath("/cp/demo/recommendations"), /cloudprune[/\\]index\.html$/);
 });
 
+test("maps CloudPrune resource routes to static content pages", () => {
+  assert.match(staticFilePathForUrlPath("/cloudprune/resources"), /cloudprune[/\\]resources[/\\]index\.html$/);
+  assert.match(staticFilePathForUrlPath("/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them"), /cloudprune[/\\]resources[/\\]unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them[/\\]index\.html$/);
+  assert.match(staticFilePathForUrlPath("/cp/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them"), /cloudprune[/\\]resources[/\\]unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them[/\\]index\.html$/);
+  assert.match(staticFilePathForUrlPath("/cloudprune/resources/styles.css"), /cloudprune[/\\]resources[/\\]styles\.css$/);
+});
+
 test("serves app shell, assets, redirect, and SPA fallback", async () => {
   await withServer(async (baseUrl) => {
     const root = await fetch(`${baseUrl}/cloudprune/`);
@@ -272,6 +279,25 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
     const shortDemo = await fetch(`${baseUrl}/cp/demo`);
     assert.equal(shortDemo.status, 200);
     assert.match(await shortDemo.text(), /<div id="app"><\/div>/);
+  });
+});
+
+test("serves generated CloudPrune growth resource pages", async () => {
+  await withServer(async (baseUrl) => {
+    const index = await fetch(`${baseUrl}/cloudprune/resources/`);
+    assert.equal(index.status, 200);
+    assert.match(index.headers.get("content-type"), /text\/html/);
+    assert.match(await index.text(), /AWS cost reduction playbooks/);
+
+    const page = await fetch(`${baseUrl}/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them`);
+    assert.equal(page.status, 200);
+    const body = await page.text();
+    assert.match(body, /Unattached EBS volumes keep charging/);
+    assert.match(body, /Start a read-only CloudPrune scan/);
+
+    const shortPage = await fetch(`${baseUrl}/cp/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them`);
+    assert.equal(shortPage.status, 200);
+    assert.match(await shortPage.text(), /Unattached EBS volumes keep charging/);
   });
 });
 

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Small teams want savings without buying heavy enterprise FinOps platforms." />
+    <title>FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform | CloudPrune Resources</title>
+    <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+  </head>
+  <body>
+    <header class="resource-hero">
+      <nav><a href="/cloudprune/">CloudPrune</a><a href="/cloudprune/resources/">Resources</a></nav>
+      <p class="eyebrow">AWS cost playbook</p>
+      <h1>FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform</h1>
+      <p>Small teams want savings without buying heavy enterprise FinOps platforms.</p>
+      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+    </header>
+    <main>
+      <section class="panel">
+        <h2>The cost signal</h2>
+        <p>Small teams want savings without buying heavy enterprise FinOps platforms. CloudPrune can be positioned as lightweight, read-only first, concrete recommendations, and free trial/free-until campaign.</p>
+        <dl class="facts">
+          <div><dt>Search intent</dt><dd>FinOps tools for small teams / cloud cost optimization tools for small companies</dd></div>
+          <div><dt>Priority score</dt><dd>35</dd></div>
+          <div><dt>Reference</dt><dd><a href="https://www.reddit.com/r/FinOps/comments/1r0ly03/do_you_have_any_advice_on_cloud_cost_optimization/" rel="noopener noreferrer">Do you have any advice on cloud cost optimization tools for small companies?</a> <span>Reddit</span> <small>200 OK</small></dd></div>
+        </dl>
+      </section>
+      <section class="grid">
+        <article>
+          <h2>How to verify manually</h2>
+          <ol>
+            <li>Open AWS Billing and Cost Explorer to confirm the service driving the spend.</li>
+            <li>Use the AWS console view for the affected service to identify candidate resources.</li>
+            <li>Run a read-only AWS CLI inventory command and export the resource IDs before changing anything.</li>
+            <li>Compare age, attachment, traffic, retention, and recent usage signals before deciding on cleanup.</li>
+          </ol>
+        </article>
+        <article>
+          <h2>Impact and rollback</h2>
+          <ol>
+            <li>Classify whether the action can affect production traffic, data retention, compliance, or incident response.</li>
+            <li>Prefer dry-run review first. For storage deletion, create or verify a snapshot/export when rollback matters.</li>
+            <li>Schedule changes with an owner and a validation window. Stop if the blast radius is unclear.</li>
+            <li>Keep the previous configuration or snapshot reference until post-change metrics are stable.</li>
+          </ol>
+        </article>
+      </section>
+      <section class="panel accent">
+        <h2>How CloudPrune helps</h2>
+        <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
+        <p>Start with CloudPrune read-only onboarding: https://zeptrix.io/cloudprune/</p>
+      </section>
+      <section class="panel">
+        <h2>Related CloudPrune resources</h2>
+        <div class="related">
+          <a href="/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them">Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them</a><a href="/cloudprune/resources/are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path">Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path</a><a href="/cloudprune/resources/why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist">Why Is My AWS Bill Suddenly High? A 15-Minute Triage Checklist</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
