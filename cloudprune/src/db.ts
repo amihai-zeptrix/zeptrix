@@ -154,6 +154,7 @@ export async function initDatabase(): Promise<void> {
       updated_at timestamptz not null default now()
     )
   `);
+  await pool.query(`alter table cloudprune_growth_experiments add column if not exists outcome_notes text`);
   await pool.query(`create index if not exists cloudprune_growth_experiments_status_idx on cloudprune_growth_experiments (status, created_at desc)`);
   await pool.query(`
     insert into cloudprune_growth_experiments (name, hypothesis, target_type, target, status, created_by)

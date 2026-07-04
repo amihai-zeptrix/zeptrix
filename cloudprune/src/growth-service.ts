@@ -32,6 +32,12 @@ interface GrowthExperimentPayload {
   targetType?: unknown;
   target?: unknown;
   status?: unknown;
+  outcomeNotes?: unknown;
+}
+
+interface GrowthExperimentUpdatePayload {
+  status?: unknown;
+  outcomeNotes?: unknown;
 }
 
 const allowedEvents = new Set([
@@ -114,6 +120,7 @@ function publicGrowthExperiment(row: Record<string, any>) {
     targetType: row.target_type,
     target: row.target,
     status: row.status,
+    outcomeNotes: row.outcome_notes,
     createdBy: row.created_by,
     startedAt: row.started_at,
     endedAt: row.ended_at,
@@ -324,7 +331,7 @@ async function adminGrowthOverview(req: RequestLike) {
        limit 200`
     ),
     pool.query(
-      `select id, name, hypothesis, target_type, target, status, created_by, started_at, ended_at, created_at, updated_at
+      `select id, name, hypothesis, target_type, target, status, outcome_notes, created_by, started_at, ended_at, created_at, updated_at
        from cloudprune_growth_experiments
        order by case status when 'active' then 0 when 'planned' then 1 when 'paused' then 2 else 3 end,
                 created_at desc
@@ -386,7 +393,7 @@ async function createGrowthExperiment(req: RequestLike, payload: GrowthExperimen
   const result = await pool.query(
     `insert into cloudprune_growth_experiments (name, hypothesis, target_type, target, status, created_by)
      values ($1,$2,$3,$4,$5,$6)
-     returning id, name, hypothesis, target_type, target, status, created_by, started_at, ended_at, created_at, updated_at`,
+     returning id, name, hypothesis, target_type, target, status, outcome_notes, created_by, started_at, ended_at, created_at, updated_at`,
     [name, hypothesis, targetType, target, status, admin.email]
   );
   await recordAuditEvent({
@@ -397,6 +404,38 @@ async function createGrowthExperiment(req: RequestLike, payload: GrowthExperimen
     targetId: result.rows[0].id,
     summary: `Created growth experiment: ${name}`,
     metadata: { targetType, target, status },
+  });
+  return publicGrowthExperiment(result.rows[0]);
+}
+
+async function updateGrowthExperiment(req: RequestLike, id: string, payload: GrowthExperimentUpdatePayload) {
+  if (!pool) throw new Error("CloudPrune database is not configured.");
+  const admin = adminSession(req);
+  const status = cleanText(payload.status, 40);
+  const outcomeNotes = cleanText(payload.outcomeNotes, 800);
+  const allowedStatuses = new Set(["planned", "active", "paused", "completed"]);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Choose a valid growth experiment.");
+  if (!allowedStatuses.has(status)) throw new Error("Choose a valid experiment status.");
+
+  const result = await pool.query(
+    `update cloudprune_growth_experiments
+     set status=$1,
+         outcome_notes=nullif($2, ''),
+         ended_at=case when $1='completed' then coalesce(ended_at, current_date) else null end,
+         updated_at=now()
+     where id=$3
+     returning id, name, hypothesis, target_type, target, status, outcome_notes, created_by, started_at, ended_at, created_at, updated_at`,
+    [status, outcomeNotes, id]
+  );
+  if (!result.rows.length) throw new Error("Growth experiment was not found.");
+  await recordAuditEvent({
+    req,
+    actor: { email: admin.email, role: "admin" },
+    action: "growth_experiment_updated",
+    targetType: "growth_experiment",
+    targetId: id,
+    summary: `Updated growth experiment: ${result.rows[0].name}`,
+    metadata: { status, outcomeNotes },
   });
   return publicGrowthExperiment(result.rows[0]);
 }
@@ -447,4 +486,4 @@ async function adminGrowthCsv(req: RequestLike, kind: string) {
   ]);
 }
 
-export { adminGrowthCsv, adminGrowthOverview, createGrowthExperiment, recordGrowthEvent };
+export { adminGrowthCsv, adminGrowthOverview, createGrowthExperiment, recordGrowthEvent, updateGrowthExperiment };

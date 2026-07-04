@@ -21,7 +21,7 @@ const { externalIdForAccount, normalizeAwsRoleArn, normalizeAwsScanRegions, publ
 const { adminAuditLog } = require("./src/audit-service");
 const { initDatabase, pool } = require("./src/db");
 const { adminOverview, adminResetUserPassword, adminSpoofUser, adminTenantUsers, submitFeedback } = require("./src/feedback-service");
-const { adminGrowthCsv, adminGrowthOverview, createGrowthExperiment, recordGrowthEvent } = require("./src/growth-service");
+const { adminGrowthCsv, adminGrowthOverview, createGrowthExperiment, recordGrowthEvent, updateGrowthExperiment } = require("./src/growth-service");
 const { completeGoogleRegistration, loginUser, recordAuthEvent, registerUser, updateUserProfile, userFromSession } = require("./src/user-service");
 const { failOrphanedAwsScansOnStartup, getAwsScan, saveAwsConnection, startAwsScan, stopAwsScan, workspaceForRequest } = require("./src/workspace-service");
 const {
@@ -226,6 +226,10 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: 
     }
     if (req.method === "POST" && apiPath === "/api/admin/growth/experiments") {
       return json(res, 201, { experiment: await createGrowthExperiment(req, await readJson(req)) });
+    }
+    const adminGrowthExperimentMatch = apiPath.match(/^\/api\/admin\/growth\/experiments\/([0-9a-f-]{36})$/i);
+    if (req.method === "POST" && adminGrowthExperimentMatch) {
+      return json(res, 200, { experiment: await updateGrowthExperiment(req, adminGrowthExperimentMatch[1], await readJson(req)) });
     }
     if (req.method === "GET" && apiPath === "/api/admin/growth.csv") {
       return csv(res, "cloudprune-growth-summary.csv", await adminGrowthCsv(req, "summary"));

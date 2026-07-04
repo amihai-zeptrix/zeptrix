@@ -830,6 +830,7 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
           targetType: "resource",
           target: "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them",
           status: "active",
+          outcomeNotes: "Keep running until 100 visits.",
           createdBy: "admin",
           startedAt: "2026-07-04",
           createdAt: "2026-07-04T13:00:00.000Z",
@@ -861,6 +862,8 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
   assert.match(app.innerHTML, /Review AWS onboarding friction/);
   assert.match(app.innerHTML, /Growth experiments/);
   assert.match(app.innerHTML, /Read-only trust block on EBS pages/);
+  assert.match(app.innerHTML, /Keep running until 100 visits/);
+  assert.match(app.innerHTML, /Save outcome/);
   assert.match(app.innerHTML, /Before CTR/);
   assert.match(app.innerHTML, /After CTR/);
   assert.match(app.innerHTML, /25%/);
@@ -925,6 +928,52 @@ test("CloudPrune admin growth route creates an experiment", async () => {
   });
 
   assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/admin/growth/experiments")));
+});
+
+test("CloudPrune admin growth route updates experiment outcome", async () => {
+  const experimentId = "11111111-1111-4111-8111-111111111111";
+  const session = sessionToken({
+    sub: "cloudprune-admin",
+    email: "admin",
+    accountId: "cloudprune-admin",
+    companyName: "CloudPrune Admin",
+    role: "admin",
+    adminPasswordVersion: "test-version",
+    exp: Date.now() + 10000,
+  });
+  const { fetchCalls, listeners } = bootCloudPruneApp("/cloudprune/admin/growth", session, (url, options = {}) => {
+    if (String(url).endsWith(`/api/admin/growth/experiments/${experimentId}`)) {
+      assert.equal(options.method, "POST");
+      assert.deepEqual(JSON.parse(options.body), {
+        status: "completed",
+        outcomeNotes: "CTA rate improved; keep this block.",
+      });
+      return jsonResponse({ experiment: { id: experimentId, name: "Read-only trust block on EBS pages" } });
+    }
+    if (String(url).endsWith("/api/admin/growth")) {
+      return jsonResponse({ eventTotals: [], intents: [], resources: [], insights: [], experiments: [], recentEvents: [] });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const form = {
+    dataset: { growthExperimentUpdateForm: experimentId },
+    elements: {
+      status: { value: "completed" },
+      outcomeNotes: { value: "CTA rate improved; keep this block." },
+    },
+  };
+  for (const handler of listeners.submit || []) await handler({
+    preventDefault() {},
+    target: {
+      closest(selector) {
+        return selector === "[data-growth-experiment-update-form]" ? form : null;
+      },
+    },
+  });
+
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith(`/api/admin/growth/experiments/${experimentId}`)));
 });
 
 test("CloudPrune admin can reset user password and spoof a tenant user", async () => {
@@ -1782,18 +1831,21 @@ test("CloudPrune growth events have a dedicated table and API", () => {
 
   assert.match(dbSource, /create table if not exists cloudprune_growth_events/);
   assert.match(dbSource, /create table if not exists cloudprune_growth_experiments/);
+  assert.match(dbSource, /outcome_notes/);
   assert.match(dbSource, /Read-only trust block on EBS pages/);
   assert.match(dbSource, /cloudprune_growth_events_intent_idx/);
   assert.match(dbSource, /cloudprune_growth_experiments_status_idx/);
   assert.match(serverSource, /api\/growth\/events/);
   assert.match(serverSource, /api\/admin\/growth/);
   assert.match(serverSource, /api\/admin\/growth\/experiments/);
+  assert.match(serverSource, /updateGrowthExperiment/);
   assert.match(serverSource, /api\/admin\/growth\.csv/);
   assert.match(serverSource, /api\/admin\/growth\/events\.csv/);
   assert.match(growthSource, /resource_cta_click/);
   assert.match(growthSource, /recommendation_viewed/);
   assert.match(growthSource, /admin_growth_viewed/);
   assert.match(growthSource, /growth_experiment_created/);
+  assert.match(growthSource, /growth_experiment_updated/);
   assert.match(growthSource, /experimentMetrics/);
   assert.match(growthSource, /growthInsights/);
   assert.match(growthSource, /adminGrowthCsv/);
