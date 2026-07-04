@@ -155,4 +155,19 @@ export async function initDatabase(): Promise<void> {
     )
   `);
   await pool.query(`create index if not exists cloudprune_growth_experiments_status_idx on cloudprune_growth_experiments (status, created_at desc)`);
+  await pool.query(`
+    insert into cloudprune_growth_experiments (name, hypothesis, target_type, target, status, created_by)
+    select $1, $2, $3, $4, $5, $6
+    where not exists (
+      select 1 from cloudprune_growth_experiments
+      where name=$1 and target_type=$3 and target=$4
+    )
+  `, [
+    "Read-only trust block on EBS pages",
+    "If we show a clear read-only and no-changes-made trust block next to the CTA, more visitors will register and connect AWS.",
+    "resource",
+    "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them",
+    "active",
+    "system",
+  ]);
 }

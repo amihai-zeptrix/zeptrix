@@ -338,6 +338,9 @@ test("generated CloudPrune resource pages expose intent-aware CTAs and tracking"
   assert.match(idleHtml, /resource_page_view/);
   assert.match(idleHtml, /resource_cta_click/);
   assert.match(idleHtml, /\/cloudprune\/api\/growth\/events/);
+  assert.match(idleHtml, /Read-only scan/);
+  assert.match(idleHtml, /No AWS changes made/);
+  assert.match(idleHtml, /Impact and rollback notes/);
 
   const lambdaHtml = fs.readFileSync(path.join(resourcesRoot, lambdaSlug, "index.html"), "utf8");
   assert.match(lambdaHtml, /Assess EC2 to Lambda savings/);
@@ -1770,6 +1773,7 @@ test("CloudPrune growth events have a dedicated table and API", () => {
 
   assert.match(dbSource, /create table if not exists cloudprune_growth_events/);
   assert.match(dbSource, /create table if not exists cloudprune_growth_experiments/);
+  assert.match(dbSource, /Read-only trust block on EBS pages/);
   assert.match(dbSource, /cloudprune_growth_events_intent_idx/);
   assert.match(dbSource, /cloudprune_growth_experiments_status_idx/);
   assert.match(serverSource, /api\/growth\/events/);
