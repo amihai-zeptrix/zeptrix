@@ -474,6 +474,15 @@ test("CloudPrune auth page shows the free-until campaign banner", () => {
   assert.match(app.innerHTML, /Enjoy totally free until September 2026/);
 });
 
+test("CloudPrune auth page links to growth resources", () => {
+  const root = bootCloudPruneApp("/cloudprune/");
+  assert.match(root.app.innerHTML, /href="\/cloudprune\/resources\/"/);
+  assert.match(root.app.innerHTML, /Read AWS cost playbooks/);
+
+  const short = bootCloudPruneApp("/cp/");
+  assert.match(short.app.innerHTML, /href="\/cp\/resources\/"/);
+});
+
 test("CloudPrune login form accepts admin credentials and stores an admin session", async () => {
   const session = sessionToken({
     sub: "cloudprune-admin",
