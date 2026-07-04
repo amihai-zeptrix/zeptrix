@@ -54,27 +54,8 @@ The web scan uses separate server-side safety caps so repeated onboarding scans 
 - `CLOUDPRUNE_AWS_SCAN_MAX_INVENTORY_ITEMS` limits paginated inventory items per regional AWS CLI call, default `200`.
 - `CLOUDPRUNE_AWS_SCAN_MAX_SAMPLED_RESOURCES` limits per-resource lifecycle and CloudWatch metric follow-up checks, default `25`.
 
-## Stock scanner cost state
+## Batch EC2 cost playbook
 
-Current AWS account: `339494983469`, region `us-east-1`.
+The stock scanner cleanup is the model for CloudPrune's batch-host recommendation: remove unused heavyweight runtime dependencies, right-size oversized root storage only after validating guest disk usage, and schedule EC2 uptime around the actual work window.
 
-`stocks-scanner-1` is intentionally no longer an always-on IBKR host:
-
-- Instance: `i-0420639532e30c7ae`, tag `Name=stocks-scanner-1`.
-- Instance type: `t3.small`.
-- Current root volume: `vol-0f38f94bdfd6c0594`, `20 GiB` gp3, attached as `/dev/xvda`.
-- Old `150 GiB` root volume `vol-01ea94beb6456dde6` was deleted after verification.
-- Rollback snapshot before IBKR removal/root shrink: `snap-0b6a00d63f0a69c0d`.
-- IBKR Gateway and VNC runtime were removed from active service use.
-- IBKR intraday backfill services were disabled and moved under `/opt/stocks-scanner/disabled-units`.
-- PostgreSQL remains local on the instance with database `stocks_scanner`.
-- Polygon/Massive remains the active market data path through `massive-intraday-update.timer`.
-
-Enabled EventBridge Scheduler rules:
-
-- `stocks-scanner-start-weekdays`: starts the instance Monday-Friday at `13:20 UTC`.
-- `stocks-scanner-stop-weekdays`: stops the instance Monday-Friday at `22:45 UTC`.
-
-Expected steady-state monthly cost is now much lower than the previous always-on `t3.small` plus `150 GiB` disk setup. AWS Cost Explorer forecasts can lag because they extrapolate earlier month usage.
-
-Important operations rule: before stopping, swapping volumes, changing schedules, deleting snapshots, or doing anything that can cause downtime or data-loss risk, warn the user first. Include what will be unavailable, why downtime is needed, estimated duration, rollback path, and ask for approval before proceeding. The July 2026 root-volume shrink required a short stop/swap/start downtime window of about two minutes.
+Important operations rule: before stopping instances, swapping root volumes, changing schedules, deleting snapshots, or doing anything that can cause downtime or data-loss risk, warn the user first. Include what will be unavailable, why downtime is needed, estimated duration, rollback path, and ask for approval before proceeding. Root-volume shrink requires a stop/swap/start maintenance window because AWS cannot reduce an EBS volume in place.

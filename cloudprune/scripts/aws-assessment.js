@@ -677,7 +677,7 @@ function batchWorkloadSignal(instance, inventoryItem) {
 }
 
 function targetRootVolumeSizeGiB(volumeSizeGiB, maximumDiskPercent) {
-  if (maximumDiskPercent == null || !Number.isFinite(Number(maximumDiskPercent))) return volumeSizeGiB >= 100 ? 20 : null;
+  if (maximumDiskPercent == null || !Number.isFinite(Number(maximumDiskPercent))) return null;
   const usedGiB = volumeSizeGiB * (Number(maximumDiskPercent) / 100);
   const target = Math.max(20, Math.ceil((usedGiB / 0.65) / 5) * 5);
   return target < volumeSizeGiB ? target : null;
@@ -695,12 +695,13 @@ function batchEc2OptimizationCandidate(instances, metrics, volumes, ec2Cost, sig
     const signalsFound = batchWorkloadSignal(instance, inventoryItem);
     const attachedTargetGroups = albMappings.filter((group) => (group.targets || []).some((target) => target.id === instance.InstanceId));
     if (!rootVolume || Number(rootVolume.Size || 0) < 80 || attachedTargetGroups.length) return null;
+    if (metric.cpuStatus !== "observed" || metric.diskStatus !== "observed") return null;
     const targetGiB = targetRootVolumeSizeGiB(Number(rootVolume.Size || 0), metric.maximumDisk);
     if (!targetGiB || targetGiB > Number(rootVolume.Size || 0) * 0.75) return null;
-    const lowCpu = metric.averageCpu == null || Number(metric.averageCpu) <= 15;
-    const noLargeCpuSpike = metric.maximumCpu == null || Number(metric.maximumCpu) <= 70;
+    const lowCpu = metric.averageCpu != null && Number(metric.averageCpu) <= 15;
+    const noLargeCpuSpike = metric.maximumCpu != null && Number(metric.maximumCpu) <= 70;
     const hasBatchSignal = signalsFound.length > 0;
-    if (!lowCpu || !noLargeCpuSpike || (!hasBatchSignal && metric.diskStatus !== "observed")) return null;
+    if (!lowCpu || !noLargeCpuSpike || !hasBatchSignal) return null;
     const rate = rootVolume.VolumeType === "gp3" ? 0.08 : 0.10;
     return {
       instance,

@@ -553,6 +553,47 @@ test("EC2 batch host optimization does not shrink high-disk root volumes", () =>
   assert.equal(report.findings.some((finding) => finding.id === "ec2-batch-host-optimization"), false);
 });
 
+test("EC2 batch host optimization requires observed CPU and disk metrics", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [] } },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [{
+              InstanceId: "i-unsampled-scanner",
+              State: { Name: "running" },
+              RootDeviceName: "/dev/xvda",
+              BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { VolumeId: "vol-unsampled-root" } }],
+              Tags: [{ Key: "Name", Value: "unsampled-scanner-worker" }],
+            }],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: { instances: [] },
+      },
+      ebsVolumes: {
+        service: "EBS",
+        ok: true,
+        data: { Volumes: [{ VolumeId: "vol-unsampled-root", State: "in-use", Size: 150, VolumeType: "gp3", Attachments: [{ InstanceId: "i-unsampled-scanner", VolumeId: "vol-unsampled-root" }] }] },
+      },
+      albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
+    },
+  });
+
+  assert.equal(report.findings.some((finding) => finding.id === "ec2-batch-host-optimization"), false);
+});
+
 test("load balancer no-data is treated as idle but unavailable metrics are not", () => {
   const report = buildReport({
     generatedAt: "2026-06-27T10:00:00.000Z",
