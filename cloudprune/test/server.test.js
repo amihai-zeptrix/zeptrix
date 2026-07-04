@@ -336,6 +336,7 @@ test("generated CloudPrune resource pages expose structured data", () => {
     assert.ok(match, "page has JSON-LD script");
     return JSON.parse(match[1]);
   };
+  const schemaNode = (data, type) => (data["@graph"] || [data]).find((node) => node["@type"] === type);
 
   const indexHtml = fs.readFileSync(path.join(resourcesRoot, "index.html"), "utf8");
   const indexData = readJsonLd(indexHtml);
@@ -347,10 +348,39 @@ test("generated CloudPrune resource pages expose structured data", () => {
   const pageSlug = "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them";
   const pageHtml = fs.readFileSync(path.join(resourcesRoot, pageSlug, "index.html"), "utf8");
   const pageData = readJsonLd(pageHtml);
-  assert.equal(pageData["@type"], "Article");
-  assert.equal(pageData.url, `https://zeptrix.io/cloudprune/resources/${pageSlug}`);
-  assert.equal(pageData.author.name, "CloudPrune");
-  assert.match(pageData.description, /Unattached EBS volumes keep charging/);
+  const article = schemaNode(pageData, "Article");
+  assert.equal(article.url, `https://zeptrix.io/cloudprune/resources/${pageSlug}`);
+  assert.equal(article.author.name, "CloudPrune");
+  assert.match(article.description, /Unattached EBS volumes keep charging/);
+});
+
+test("generated high-intent CloudPrune resource pages expose FAQ content and schema", () => {
+  const resourcesRoot = path.join(__dirname, "..", "cloudprune", "resources");
+  const readJsonLd = (html) => {
+    const match = html.match(/<script type="application\/ld\+json">([^<]+)<\/script>/);
+    assert.ok(match, "page has JSON-LD script");
+    return JSON.parse(match[1]);
+  };
+  const faqSlugs = [
+    "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them",
+    "are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path",
+    "cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill",
+    "cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver",
+  ];
+
+  for (const slug of faqSlugs) {
+    const html = fs.readFileSync(path.join(resourcesRoot, slug, "index.html"), "utf8");
+    assert.match(html, /<h2>Questions people ask<\/h2>/, `${slug} renders visible FAQ section`);
+    const data = readJsonLd(html);
+    const faq = (data["@graph"] || []).find((node) => node["@type"] === "FAQPage");
+    assert.ok(faq, `${slug} has FAQPage JSON-LD`);
+    assert.equal(faq.mainEntity.length, 3);
+    assert.equal(faq.mainEntity[0]["@type"], "Question");
+    assert.equal(faq.mainEntity[0].acceptedAnswer["@type"], "Answer");
+  }
+
+  const nonFaqHtml = fs.readFileSync(path.join(resourcesRoot, "why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist", "index.html"), "utf8");
+  assert.doesNotMatch(nonFaqHtml, /Questions people ask/);
 });
 
 test("compiled server serves app shell and copied assets", async () => {
