@@ -658,6 +658,81 @@ function serverlessMigrationCandidate(ec2Consolidation) {
   };
 }
 
+function rootVolumeForInstance(instance, volumes) {
+  const rootDeviceName = instance.RootDeviceName || "/dev/xvda";
+  const rootMapping = (instance.BlockDeviceMappings || []).find((mapping) => mapping.DeviceName === rootDeviceName) || (instance.BlockDeviceMappings || [])[0];
+  const mappedVolumeId = rootMapping?.Ebs?.VolumeId;
+  return volumes.find((volume) => {
+    if (mappedVolumeId && volume.VolumeId === mappedVolumeId) return true;
+    return (volume.Attachments || []).some((attachment) => attachment.InstanceId === instance.InstanceId && (!mappedVolumeId || attachment.VolumeId === mappedVolumeId));
+  }) || null;
+}
+
+function batchWorkloadSignal(instance, inventoryItem) {
+  const tagText = (instance.Tags || []).map((tag) => `${tag.Key || ""} ${tag.Value || ""}`).join(" ");
+  const appText = (inventoryItem?.applications || []).map((app) => app.name || "").join(" ");
+  const text = `${instance.InstanceId || ""} ${tagText} ${appText}`.toLowerCase();
+  const signals = ["batch", "scanner", "worker", "cron", "schedule", "scheduler", "etl", "backfill", "import", "export", "sync", "report"];
+  return signals.filter((signal) => text.includes(signal));
+}
+
+function targetRootVolumeSizeGiB(volumeSizeGiB, maximumDiskPercent) {
+  if (maximumDiskPercent == null || !Number.isFinite(Number(maximumDiskPercent))) return volumeSizeGiB >= 100 ? 20 : null;
+  const usedGiB = volumeSizeGiB * (Number(maximumDiskPercent) / 100);
+  const target = Math.max(20, Math.ceil((usedGiB / 0.65) / 5) * 5);
+  return target < volumeSizeGiB ? target : null;
+}
+
+function batchEc2OptimizationCandidate(instances, metrics, volumes, ec2Cost, signals = {}) {
+  const running = instances.filter((instance) => instance.State?.Name === "running");
+  const metricsById = new Map(metrics.map((item) => [item.id, item]));
+  const inventoryById = new Map((signals.ssmApplications || []).map((item) => [item.id, item]));
+  const albMappings = signals.albTargetMappings || [];
+  const candidates = running.map((instance) => {
+    const rootVolume = rootVolumeForInstance(instance, volumes);
+    const metric = metricsById.get(instance.InstanceId) || {};
+    const inventoryItem = inventoryById.get(instance.InstanceId);
+    const signalsFound = batchWorkloadSignal(instance, inventoryItem);
+    const attachedTargetGroups = albMappings.filter((group) => (group.targets || []).some((target) => target.id === instance.InstanceId));
+    if (!rootVolume || Number(rootVolume.Size || 0) < 80 || attachedTargetGroups.length) return null;
+    const targetGiB = targetRootVolumeSizeGiB(Number(rootVolume.Size || 0), metric.maximumDisk);
+    if (!targetGiB || targetGiB > Number(rootVolume.Size || 0) * 0.75) return null;
+    const lowCpu = metric.averageCpu == null || Number(metric.averageCpu) <= 15;
+    const noLargeCpuSpike = metric.maximumCpu == null || Number(metric.maximumCpu) <= 70;
+    const hasBatchSignal = signalsFound.length > 0;
+    if (!lowCpu || !noLargeCpuSpike || (!hasBatchSignal && metric.diskStatus !== "observed")) return null;
+    const rate = rootVolume.VolumeType === "gp3" ? 0.08 : 0.10;
+    return {
+      instance,
+      rootVolume,
+      metric,
+      targetGiB,
+      signalsFound,
+      storageSavings: Math.max(0, (Number(rootVolume.Size || 0) - targetGiB) * rate),
+    };
+  }).filter(Boolean);
+
+  if (!candidates.length) return null;
+  const storageSavings = candidates.reduce((total, item) => total + item.storageSavings, 0);
+  const runningCostPerInstance = ec2Cost && running.length ? ec2Cost / running.length : null;
+  const hasRuntimeSchedulingEvidence = candidates.some((item) => item.signalsFound.length > 0);
+  return {
+    candidates,
+    estimatedSavings: dollars(storageSavings),
+    confidence: candidates.every((item) => item.metric.diskStatus === "observed" && item.metric.cpuStatus === "observed") ? "medium" : "low",
+    statistics: {
+      "Candidate hosts": String(candidates.length),
+      "Root volume right-size": candidates.map((item) => `${instanceName(item.instance)}: ${item.rootVolume.Size} GiB -> ${item.targetGiB} GiB`).join(", "),
+      "Observed disk": candidates.map((item) => `${instanceName(item.instance)}: ${item.metric.maximumDisk == null ? "not available" : formatPercent(item.metric.maximumDisk)}`).join(", "),
+      "Observed CPU": candidates.map((item) => `${instanceName(item.instance)}: avg ${item.metric.averageCpu == null ? "not available" : formatPercent(item.metric.averageCpu)}, peak ${item.metric.maximumCpu == null ? "not available" : formatPercent(item.metric.maximumCpu)}`).join(", "),
+      "Batch/schedule signals": candidates.map((item) => `${instanceName(item.instance)}: ${item.signalsFound.length ? item.signalsFound.join(", ") : "none"}`).join(", "),
+      "Storage savings": `$${dollars(storageSavings).toLocaleString()}/mo before snapshots`,
+      "Runtime scheduling": hasRuntimeSchedulingEvidence ? "Candidate for stop/start schedule after owner-approved run window validation" : "Requires owner-provided run window before estimating compute savings",
+      "Compute cost context": runningCostPerInstance == null ? "Needs instance-level pricing or hourly Cost Explorer data" : `Rough current EC2 cost allocation is $${dollars(runningCostPerInstance).toLocaleString()}/mo per running instance before schedule modeling`,
+    },
+  };
+}
+
 function gravitonTargetType(instanceType) {
   const gravitonSizes = new Set(["nano", "micro", "small", "medium", "large", "xlarge", "2xlarge", "4xlarge", "8xlarge", "12xlarge", "16xlarge"]);
   const parts = String(instanceType || "").split(".");
@@ -749,6 +824,10 @@ function buildFindings(assessment) {
     ssmApplications: checks.ssmApplications?.ok ? checks.ssmApplications.data?.instances || [] : [],
   });
   const serverlessMigration = serverlessMigrationCandidate(ec2Consolidation);
+  const batchEc2Optimization = batchEc2OptimizationCandidate(instances, ec2Metrics, volumes, ec2Cost, {
+    albTargetMappings: checks.albTargetMappings?.ok ? checks.albTargetMappings.data?.targetGroups || [] : [],
+    ssmApplications: checks.ssmApplications?.ok ? checks.ssmApplications.data?.instances || [] : [],
+  });
   const gravitonMigration = gravitonCandidates(instances);
   const savingsPlanSavings = estimatedSavingsFromSavingsPlans(checks.savingsPlansRecommendation);
 
@@ -897,6 +976,25 @@ function buildFindings(assessment) {
       validationWindow: "Measure Lambda duration, throttles, errors, cold starts, downstream latency, and total Lambda plus API Gateway/EventBridge/SQS cost for at least one normal traffic cycle.",
       statistics: serverlessMigration.statistics,
       resources: ec2Consolidation.measured.map(({ instance }) => instanceName(instance)),
+    });
+  }
+
+  if (batchEc2Optimization) {
+    addFinding(findings, {
+      id: "ec2-batch-host-optimization",
+      strategy: "Batch workload optimization",
+      title: `Assess scheduling and disk right-sizing for ${batchEc2Optimization.candidates.length} EC2 batch host${batchEc2Optimization.candidates.length === 1 ? "" : "s"}`,
+      estimatedMonthlySavings: batchEc2Optimization.estimatedSavings,
+      confidence: batchEc2Optimization.confidence,
+      blastRadius: "Per-instance root volume, local state, scheduled jobs, attached IAM role, DNS/clients, and any applications running only on that host.",
+      operationalRisk: "medium",
+      downtimeRisk: "planned stop/start for root-volume shrink or instance schedule enforcement",
+      impactAnalysis: "This matches the stockscanner-style optimization path: oversized root EBS plus low-utilization batch signals can often be reduced by snapshotting and replacing the root volume with a smaller one, removing unused heavyweight runtime dependencies, and running the EC2 instance only during approved work windows. Root-volume shrink requires planned downtime because AWS cannot reduce an EBS volume in place.",
+      minimizeImpact: "Before any action, warn the owner with expected downtime, snapshot the existing root volume, validate actual used disk from the guest OS, create and boot a smaller replacement volume in a maintenance window, and put stop/start scheduling in dry-run or notification-only mode until the run window is confirmed.",
+      rollbackPath: "Stop the instance, reattach the original root volume or restore from the retained snapshot, disable the EventBridge schedule, and restart the prior services.",
+      validationWindow: "After the change, verify boot, application health, scheduled job completion, disk free space, CPU, memory, and monthly EC2/EBS spend across at least one normal run window.",
+      statistics: batchEc2Optimization.statistics,
+      resources: resourceSample(batchEc2Optimization.candidates, (item) => `${instanceName(item.instance)} (${item.instance.InstanceId}, ${item.rootVolume.VolumeId})`),
     });
   }
 
