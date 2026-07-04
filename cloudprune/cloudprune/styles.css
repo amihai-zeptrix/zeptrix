@@ -594,6 +594,9 @@ button:hover { background: #1e4d43; }
   gap: 16px;
   margin-top: 16px;
 }
+.admin-growth-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .admin-users-table-row td {
   height: auto;
   padding: 0 14px 14px;

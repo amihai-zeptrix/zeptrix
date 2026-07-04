@@ -251,6 +251,8 @@ let state = {
   adminTenantUsersLoading: "",
   adminAuditLog: null,
   adminAuditLoadStarted: false,
+  adminGrowth: null,
+  adminGrowthLoadStarted: false,
   growthIntentCaptured: false,
   recommendationViewTrackedKey: "",
 };
@@ -942,6 +944,23 @@ async function loadAdminAuditLog() {
   render();
 }
 
+async function loadAdminGrowth() {
+  if (!isAdminSession() || state.adminGrowthLoadStarted || typeof fetch !== "function") return;
+  state.adminGrowthLoadStarted = true;
+  try {
+    const response = await fetch(`${basePath()}/api/admin/growth`, {
+      headers: authHeaders(),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "CloudPrune growth funnel failed.");
+    state.adminGrowth = body;
+    state.adminMessage = "";
+  } catch (error) {
+    state.adminMessage = error.message;
+  }
+  render();
+}
+
 function readAttachment(file) {
   if (!file) return Promise.resolve(null);
   if (file.size > 2 * 1024 * 1024) return Promise.reject(new Error("Attachment must be 2 MB or smaller."));
@@ -1187,6 +1206,7 @@ function renderAdminSidebar(route) {
       <nav>
         <div class="tenant-label"><span>Role</span><strong>Admin</strong></div>
         <a class="${route === "overview" ? "active" : ""}" href="${basePath()}/admin">${ICONS.settings}<span>Admin</span></a>
+        <a class="${route === "growth" ? "active" : ""}" href="${basePath()}/admin/growth">${ICONS.savings}<span>Growth</span></a>
         <a class="${route === "audit-log" ? "active" : ""}" href="${basePath()}/admin/audit-log">${ICONS.alert}<span>Audit log</span></a>
         <div class="nav-separator" aria-hidden="true"></div>
         <button class="sidebar-action" data-action="logout" type="button">Logout</button>
@@ -1214,6 +1234,81 @@ function renderAdminAuditLog() {
               <td>${escapeHtml(event.summary || "")}</td>
             </tr>
           `).join("") || `<tr><td colspan="6" class="muted-row">No audit events yet.</td></tr>`}</tbody>
+        </table>
+      </section>
+    </div>
+  `;
+}
+
+function renderAdminGrowth() {
+  loadAdminGrowth();
+  const growth = state.adminGrowth;
+  if (!growth) return `<section class="panel"><div class="empty">Loading growth funnel...</div></section>`;
+  const eventTotals = growth.eventTotals || [];
+  const intents = growth.intents || [];
+  const resources = growth.resources || [];
+  const recentEvents = growth.recentEvents || [];
+  const totalEvents = eventTotals.reduce((total, item) => total + Number(item.events || 0), 0);
+  const ctaClicks = eventTotals.find((item) => item.eventType === "resource_cta_click")?.events || 0;
+  const authSuccesses = eventTotals.find((item) => item.eventType === "auth_success")?.events || 0;
+  const scans = eventTotals.find((item) => item.eventType === "aws_scan_started")?.events || 0;
+  return `
+    <section class="kpi-grid admin-growth-kpis" aria-label="Growth funnel summary">
+      <article class="kpi spend"><div class="kpi-icon">${ICONS.spend}</div><span>Total events</span><strong>${Number(totalEvents).toLocaleString()}</strong><em>All captured growth signals</em></article>
+      <article class="kpi waste"><div class="kpi-icon">${ICONS.prune}</div><span>CTA clicks</span><strong>${Number(ctaClicks).toLocaleString()}</strong><em>Resource to register path</em></article>
+      <article class="kpi savings"><div class="kpi-icon">${ICONS.score}</div><span>Auth successes</span><strong>${Number(authSuccesses).toLocaleString()}</strong><em>Known users</em></article>
+      <article class="kpi score"><div class="kpi-icon">${ICONS.aws}</div><span>Scans started</span><strong>${Number(scans).toLocaleString()}</strong><em>AWS proof points</em></article>
+    </section>
+    <div class="admin-grid">
+      <section class="panel table-panel">
+        <div class="panel-head"><div><span class="eyebrow">Intent conversion</span><h2>${intents.length} intents</h2></div></div>
+        <table>
+          <thead><tr><th>Intent</th><th>Views</th><th>CTA</th><th>Auth</th><th>AWS</th><th>Scans</th><th>Recs</th></tr></thead>
+          <tbody>${intents.map((item) => `
+            <tr>
+              <td><strong>${escapeHtml(item.intent)}</strong><span>${Number(item.events || 0).toLocaleString()} events</span></td>
+              <td>${Number(item.pageViews || 0).toLocaleString()}</td>
+              <td>${Number(item.ctaClicks || 0).toLocaleString()}</td>
+              <td>${Number(item.authSuccesses || 0).toLocaleString()}</td>
+              <td>${Number(item.awsConnects || 0).toLocaleString()}</td>
+              <td>${Number(item.scans || 0).toLocaleString()}</td>
+              <td>${Number(item.recommendationViews || 0).toLocaleString()}</td>
+            </tr>
+          `).join("") || `<tr><td colspan="7" class="muted-row">No growth events yet.</td></tr>`}</tbody>
+        </table>
+      </section>
+      <section class="panel table-panel">
+        <div class="panel-head"><div><span class="eyebrow">Resource performance</span><h2>${resources.length} pages</h2></div></div>
+        <table>
+          <thead><tr><th>Resource</th><th>Views</th><th>CTA clicks</th><th>CTR</th></tr></thead>
+          <tbody>${resources.map((item) => {
+            const views = Number(item.pageViews || 0);
+            const clicks = Number(item.ctaClicks || 0);
+            const ctr = views ? `${Math.round((clicks / views) * 100)}%` : "-";
+            return `
+              <tr>
+                <td><strong>${escapeHtml(item.title || item.resource)}</strong><span>${escapeHtml(item.resource)}</span></td>
+                <td>${views.toLocaleString()}</td>
+                <td>${clicks.toLocaleString()}</td>
+                <td>${ctr}</td>
+              </tr>
+            `;
+          }).join("") || `<tr><td colspan="4" class="muted-row">No resource events yet.</td></tr>`}</tbody>
+        </table>
+      </section>
+      <section class="panel table-panel">
+        <div class="panel-head"><div><span class="eyebrow">Recent growth events</span><h2>${recentEvents.length} events</h2></div></div>
+        <table>
+          <thead><tr><th>Time</th><th>Event</th><th>Intent</th><th>Actor</th><th>Source</th></tr></thead>
+          <tbody>${recentEvents.map((event) => `
+            <tr>
+              <td>${formatDate(event.createdAt)}</td>
+              <td>${escapeHtml(event.eventType || "")}</td>
+              <td>${escapeHtml(event.intent || "unknown")}</td>
+              <td><strong>${escapeHtml(event.actorEmail || "anonymous")}</strong><span>${escapeHtml(event.tenant || event.user || "-")}</span></td>
+              <td><strong>${escapeHtml(event.resourceSlug || event.source || "-")}</strong><span>${escapeHtml(event.path || "")}</span></td>
+            </tr>
+          `).join("") || `<tr><td colspan="5" class="muted-row">No growth events yet.</td></tr>`}</tbody>
         </table>
       </section>
     </div>
@@ -1286,6 +1381,8 @@ function renderAdminPage(app) {
   }
   const route = adminRoute();
   const isAuditLog = route === "audit-log";
+  const isGrowth = route === "growth";
+  const title = isAuditLog ? "Audit log." : isGrowth ? "Growth funnel." : "Tenants and feedback reports.";
   app.innerHTML = `
     <div class="shell admin-shell">
       ${renderAdminSidebar(route)}
@@ -1293,10 +1390,10 @@ function renderAdminPage(app) {
         <header class="topbar">
           <div>
             <span class="eyebrow">CloudPrune admin</span>
-            <h1>${isAuditLog ? "Audit log." : "Tenants and feedback reports."}</h1>
+            <h1>${title}</h1>
           </div>
         </header>
-        ${isAuditLog ? renderAdminAuditLog() : renderAdminOverviewContent()}
+        ${isAuditLog ? renderAdminAuditLog() : isGrowth ? renderAdminGrowth() : renderAdminOverviewContent()}
         <p class="auth-message">${escapeHtml(state.adminMessage)}</p>
       </main>
     </div>
