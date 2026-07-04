@@ -17,6 +17,24 @@
     <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@context":"https://schema.org","@type":"Article","headline":"Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them","description":"Unattached EBS volumes keep charging by provisioned GB-month even when no instance uses them.","url":"https://zeptrix.io/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","unused EBS volumes cost / find unattached EBS volumes AWS"]},{"@context":"https://schema.org","@type":"FAQPage","url":"https://zeptrix.io/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them","mainEntity":[{"@type":"Question","name":"Do unattached EBS volumes still cost money?","acceptedAnswer":{"@type":"Answer","text":"Yes. An EBS volume is billed by provisioned storage while it exists, even if it is detached from every EC2 instance."}},{"@type":"Question","name":"Is it safe to delete every unattached EBS volume?","acceptedAnswer":{"@type":"Answer","text":"No. First check age, recent attachment history, naming, tags, snapshots, backups, and application ownership. Detached volumes can still be rollback data."}},{"@type":"Question","name":"What is the safest cleanup path?","acceptedAnswer":{"@type":"Answer","text":"Start with a read-only inventory, confirm ownership, snapshot or export data when rollback matters, delete only reviewed volumes, and keep the rollback reference through the validation window."}}]}]}</script>
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them","resourceTitle":"Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them","intent":"ebs-cleanup","path":"/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them","url":"https://zeptrix.io/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
   </head>
   <body>
     <header class="resource-hero">
@@ -24,7 +42,7 @@
       <p class="eyebrow">AWS cost playbook</p>
       <h1>Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them</h1>
       <p>Unattached EBS volumes keep charging by provisioned GB-month even when no instance uses them.</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=ebs-cleanup&amp;source=unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them">Scan for unattached EBS volumes</a>
     </header>
     <main>
       <section class="panel">
@@ -60,6 +78,7 @@
         <h2>How CloudPrune helps</h2>
         <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
         <p>Use CloudPrune to find EBS cleanup opportunities with rollback notes: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=ebs-cleanup&amp;source=unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them">Scan for unattached EBS volumes</a>
       </section>
       <section class="panel faq">
         <h2>Questions people ask</h2>

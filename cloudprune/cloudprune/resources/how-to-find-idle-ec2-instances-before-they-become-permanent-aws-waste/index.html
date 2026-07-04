@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Idle EC2 instances keep charging even when CPU, network, and application traffic show little or no useful work." />
+    <title>How to Find Idle EC2 Instances | CloudPrune</title>
+    <link rel="canonical" href="https://zeptrix.io/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="CloudPrune" />
+    <meta property="og:title" content="How to Find Idle EC2 Instances | CloudPrune" />
+    <meta property="og:description" content="Idle EC2 instances keep charging even when CPU, network, and application traffic show little or no useful work." />
+    <meta property="og:url" content="https://zeptrix.io/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="How to Find Idle EC2 Instances | CloudPrune" />
+    <meta name="twitter:description" content="Idle EC2 instances keep charging even when CPU, network, and application traffic show little or no useful work." />
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@context":"https://schema.org","@type":"Article","headline":"How to Find Idle EC2 Instances Before They Become Permanent AWS Waste","description":"Idle EC2 instances keep charging even when CPU, network, and application traffic show little or no useful work.","url":"https://zeptrix.io/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","find idle EC2 instances / AWS idle instances cost"]},{"@context":"https://schema.org","@type":"FAQPage","url":"https://zeptrix.io/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste","mainEntity":[{"@type":"Question","name":"What signals identify an idle EC2 instance?","acceptedAnswer":{"@type":"Answer","text":"Start with low CPU, low network, no meaningful load balancer or API traffic, old launch time, and missing application inventory. One signal alone is not enough for safe action."}},{"@type":"Question","name":"Should idle EC2 instances be terminated immediately?","acceptedAnswer":{"@type":"Answer","text":"Usually no. Stop or schedule first when ownership is unclear, verify rollback, and terminate only after the validation window proves the instance is not needed."}},{"@type":"Question","name":"How does CloudPrune reduce the risk?","acceptedAnswer":{"@type":"Answer","text":"CloudPrune keeps the recommendation evidence together: instance identity, utilization, traffic, owner tags, expected savings, downtime risk, and rollback path."}}]}]}</script>
+    <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste","resourceTitle":"How to Find Idle EC2 Instances Before They Become Permanent AWS Waste","intent":"idle-ec2","path":"/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste","url":"https://zeptrix.io/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="resource-hero">
+      <nav><a href="/cloudprune/">CloudPrune</a><a href="/cloudprune/resources/">Resources</a></nav>
+      <p class="eyebrow">AWS cost playbook</p>
+      <h1>How to Find Idle EC2 Instances Before They Become Permanent AWS Waste</h1>
+      <p>Idle EC2 instances keep charging even when CPU, network, and application traffic show little or no useful work.</p>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=idle-ec2&amp;source=how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste">Scan for idle EC2 instances</a>
+    </header>
+    <main>
+      <section class="panel">
+        <h2>The cost signal</h2>
+        <p>Idle EC2 instances keep charging even when CPU, network, and application traffic show little or no useful work. CloudPrune combines EC2 inventory, CloudWatch utilization, traffic mapping, and app inventory before recommending stop, resize, schedule, or consolidation actions.</p>
+        <dl class="facts">
+          <div><dt>Search intent</dt><dd>find idle EC2 instances / AWS idle instances cost</dd></div>
+          <div><dt>Priority score</dt><dd>34</dd></div>
+          <div><dt>Reference</dt><dd><a href="https://docs.aws.amazon.com/compute-optimizer/latest/ug/view-ec2-recommendations.html" rel="noopener noreferrer">View Amazon EC2 instance recommendations</a> <span>AWS docs</span> <small>200 OK</small></dd></div>
+        </dl>
+      </section>
+      <section class="grid">
+        <article>
+          <h2>How to verify manually</h2>
+          <ol>
+            <li>Open AWS Billing and Cost Explorer to confirm the service driving the spend.</li>
+            <li>Use the AWS console view for the affected service to identify candidate resources.</li>
+            <li>Run a read-only AWS CLI inventory command and export the resource IDs before changing anything.</li>
+            <li>Compare age, attachment, traffic, retention, and recent usage signals before deciding on cleanup.</li>
+          </ol>
+        </article>
+        <article>
+          <h2>Impact and rollback</h2>
+          <ol>
+            <li>Classify whether the action can affect production traffic, data retention, compliance, or incident response.</li>
+            <li>Prefer dry-run review first. For storage deletion, create or verify a snapshot/export when rollback matters.</li>
+            <li>Schedule changes with an owner and a validation window. Stop if the blast radius is unclear.</li>
+            <li>Keep the previous configuration or snapshot reference until post-change metrics are stable.</li>
+          </ol>
+        </article>
+      </section>
+      <section class="panel accent">
+        <h2>How CloudPrune helps</h2>
+        <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
+        <p>Use CloudPrune to find idle EC2 instances with evidence and rollback notes: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=idle-ec2&amp;source=how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste">Scan for idle EC2 instances</a>
+      </section>
+      <section class="panel faq">
+        <h2>Questions people ask</h2>
+        <details><summary>What signals identify an idle EC2 instance?</summary><p>Start with low CPU, low network, no meaningful load balancer or API traffic, old launch time, and missing application inventory. One signal alone is not enough for safe action.</p></details><details><summary>Should idle EC2 instances be terminated immediately?</summary><p>Usually no. Stop or schedule first when ownership is unclear, verify rollback, and terminate only after the validation window proves the instance is not needed.</p></details><details><summary>How does CloudPrune reduce the risk?</summary><p>CloudPrune keeps the recommendation evidence together: instance identity, utilization, traffic, owner tags, expected savings, downtime risk, and rollback path.</p></details>
+      </section>
+      <section class="panel">
+        <h2>Related CloudPrune resources</h2>
+        <div class="related">
+          <a href="/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them">Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them</a><a href="/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform">FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform</a><a href="/cloudprune/resources/are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path">Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

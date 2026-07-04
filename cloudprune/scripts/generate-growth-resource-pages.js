@@ -64,6 +64,35 @@ function faqStructuredData(item, canonicalUrl) {
   };
 }
 
+function resourceTrackingScript(item, canonicalUrl) {
+  const payload = JSON.stringify({
+    source: "resource",
+    resourceSlug: item.slug,
+    resourceTitle: item.title,
+    intent: item.intent || "aws-cost-scan",
+    path: `/cloudprune/resources/${item.slug}`,
+    url: canonicalUrl,
+  }).replace(/</g, "\\u003c");
+  return `<script>
+      (() => {
+        const payload = ${payload};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>`;
+}
+
 function field(body, names) {
   for (const name of names) {
     const match = body.match(new RegExp(`^- ${name}: (.*)$`, "m"));
@@ -101,7 +130,13 @@ function loadItems() {
     const markdownPath = fs.existsSync(followupPath) ? followupPath : shortlistPath;
     const reportItems = parseItems(fs.readFileSync(markdownPath, "utf8"))
       .map((item) => ({ ...(dataBySlug.get(item.slug) || {}), ...item, seoTitle: dataBySlug.get(item.slug)?.seoTitle || item.seoTitle }));
-    if (reportItems.length) return reportItems;
+    if (reportItems.length) {
+      const reportSlugs = new Set(reportItems.map((item) => item.slug));
+      const extraDataItems = dataItems
+        .map((item) => ({ ...item, slug: item.slug || slugify(item.title) }))
+        .filter((item) => item.title && item.slug && !reportSlugs.has(item.slug));
+      return [...reportItems, ...extraDataItems];
+    }
   }
   if (!fs.existsSync(dataPath)) throw new Error(`Missing tracked resource data file: ${dataPath}`);
   if (!Array.isArray(dataItems) || !dataItems.length) throw new Error(`No resource items found in ${dataPath}`);
@@ -112,6 +147,9 @@ function pageHtml(item, allItems) {
   const title = `${item.seoTitle || item.title} | CloudPrune`;
   const description = item.pain || item.angle || "CloudPrune cloud cost optimization resource.";
   const canonicalUrl = `${publicBaseUrl}/cloudprune/resources/${item.slug}`;
+  const intent = item.intent || "aws-cost-scan";
+  const ctaLabel = item.ctaLabel || "Start a read-only CloudPrune scan";
+  const ctaHref = `/cloudprune/?intent=${encodeURIComponent(intent)}&source=${encodeURIComponent(item.slug)}`;
   const related = allItems.filter((candidate) => candidate.slug !== item.slug).slice(0, 3);
   const structuredData = {
     "@context": "https://schema.org",
@@ -153,6 +191,7 @@ function pageHtml(item, allItems) {
     ${jsonLdScript(pageStructuredData)}
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    ${resourceTrackingScript(item, canonicalUrl)}
   </head>
   <body>
     <header class="resource-hero">
@@ -160,7 +199,7 @@ function pageHtml(item, allItems) {
       <p class="eyebrow">AWS cost playbook</p>
       <h1>${escapeHtml(item.title)}</h1>
       <p>${escapeHtml(item.pain)}</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="${escapeHtml(ctaHref)}">${escapeHtml(ctaLabel)}</a>
     </header>
     <main>
       <section class="panel">
@@ -196,6 +235,7 @@ function pageHtml(item, allItems) {
         <h2>How CloudPrune helps</h2>
         <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
         <p>${escapeHtml(item.cta || "Use CloudPrune to turn the finding into an actionable savings workflow.")}</p>
+        <a class="button inline" data-resource-cta href="${escapeHtml(ctaHref)}">${escapeHtml(ctaLabel)}</a>
       </section>
 ${faqSection(item)}      <section class="panel">
         <h2>Related CloudPrune resources</h2>

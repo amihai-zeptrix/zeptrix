@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Small scheduled jobs often keep an EC2 instance running all day even though the useful runtime is only minutes or seconds." />
+    <title>Should Scheduled EC2 Jobs Move to Lambda? | CloudPrune</title>
+    <link rel="canonical" href="https://zeptrix.io/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="CloudPrune" />
+    <meta property="og:title" content="Should Scheduled EC2 Jobs Move to Lambda? | CloudPrune" />
+    <meta property="og:description" content="Small scheduled jobs often keep an EC2 instance running all day even though the useful runtime is only minutes or seconds." />
+    <meta property="og:url" content="https://zeptrix.io/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Should Scheduled EC2 Jobs Move to Lambda? | CloudPrune" />
+    <meta name="twitter:description" content="Small scheduled jobs often keep an EC2 instance running all day even though the useful runtime is only minutes or seconds." />
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@context":"https://schema.org","@type":"Article","headline":"Should Scheduled EC2 Jobs Move to Lambda? A Cost and Runtime Checklist","description":"Small scheduled jobs often keep an EC2 instance running all day even though the useful runtime is only minutes or seconds.","url":"https://zeptrix.io/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","move scheduled EC2 job to Lambda cost / EC2 vs Lambda scheduled job"]},{"@context":"https://schema.org","@type":"FAQPage","url":"https://zeptrix.io/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist","mainEntity":[{"@type":"Question","name":"When is Lambda cheaper than EC2 for scheduled work?","acceptedAnswer":{"@type":"Answer","text":"Lambda is often cheaper when jobs are short, infrequent, stateless, and fit within Lambda runtime, memory, storage, and networking constraints."}},{"@type":"Question","name":"What data is needed for the decision?","acceptedAnswer":{"@type":"Answer","text":"You need job frequency, p95 and max runtime, memory needs, network dependencies, package size, stateful storage needs, and the EC2 instance cost being replaced."}},{"@type":"Question","name":"What should not move first?","acceptedAnswer":{"@type":"Answer","text":"Avoid moving long-running, stateful, latency-sensitive, or dependency-heavy jobs until the runtime and rollback path are proven."}}]}]}</script>
+    <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist","resourceTitle":"Should Scheduled EC2 Jobs Move to Lambda? A Cost and Runtime Checklist","intent":"ec2-to-lambda","path":"/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist","url":"https://zeptrix.io/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="resource-hero">
+      <nav><a href="/cloudprune/">CloudPrune</a><a href="/cloudprune/resources/">Resources</a></nav>
+      <p class="eyebrow">AWS cost playbook</p>
+      <h1>Should Scheduled EC2 Jobs Move to Lambda? A Cost and Runtime Checklist</h1>
+      <p>Small scheduled jobs often keep an EC2 instance running all day even though the useful runtime is only minutes or seconds.</p>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=ec2-to-lambda&amp;source=should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist">Assess EC2 to Lambda savings</a>
+    </header>
+    <main>
+      <section class="panel">
+        <h2>The cost signal</h2>
+        <p>Small scheduled jobs often keep an EC2 instance running all day even though the useful runtime is only minutes or seconds. CloudPrune can compare observed job runtime, memory needs, schedule frequency, root disk size, and app dependencies before suggesting a Lambda migration.</p>
+        <dl class="facts">
+          <div><dt>Search intent</dt><dd>move scheduled EC2 job to Lambda cost / EC2 vs Lambda scheduled job</dd></div>
+          <div><dt>Priority score</dt><dd>33</dd></div>
+          <div><dt>Reference</dt><dd><a href="https://aws.amazon.com/lambda/pricing/" rel="noopener noreferrer">AWS Lambda pricing</a> <span>AWS pricing</span> <small>200 OK</small></dd></div>
+        </dl>
+      </section>
+      <section class="grid">
+        <article>
+          <h2>How to verify manually</h2>
+          <ol>
+            <li>Open AWS Billing and Cost Explorer to confirm the service driving the spend.</li>
+            <li>Use the AWS console view for the affected service to identify candidate resources.</li>
+            <li>Run a read-only AWS CLI inventory command and export the resource IDs before changing anything.</li>
+            <li>Compare age, attachment, traffic, retention, and recent usage signals before deciding on cleanup.</li>
+          </ol>
+        </article>
+        <article>
+          <h2>Impact and rollback</h2>
+          <ol>
+            <li>Classify whether the action can affect production traffic, data retention, compliance, or incident response.</li>
+            <li>Prefer dry-run review first. For storage deletion, create or verify a snapshot/export when rollback matters.</li>
+            <li>Schedule changes with an owner and a validation window. Stop if the blast radius is unclear.</li>
+            <li>Keep the previous configuration or snapshot reference until post-change metrics are stable.</li>
+          </ol>
+        </article>
+      </section>
+      <section class="panel accent">
+        <h2>How CloudPrune helps</h2>
+        <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
+        <p>Use CloudPrune to compare EC2 scheduled jobs with Lambda economics: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=ec2-to-lambda&amp;source=should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist">Assess EC2 to Lambda savings</a>
+      </section>
+      <section class="panel faq">
+        <h2>Questions people ask</h2>
+        <details><summary>When is Lambda cheaper than EC2 for scheduled work?</summary><p>Lambda is often cheaper when jobs are short, infrequent, stateless, and fit within Lambda runtime, memory, storage, and networking constraints.</p></details><details><summary>What data is needed for the decision?</summary><p>You need job frequency, p95 and max runtime, memory needs, network dependencies, package size, stateful storage needs, and the EC2 instance cost being replaced.</p></details><details><summary>What should not move first?</summary><p>Avoid moving long-running, stateful, latency-sensitive, or dependency-heavy jobs until the runtime and rollback path are proven.</p></details>
+      </section>
+      <section class="panel">
+        <h2>Related CloudPrune resources</h2>
+        <div class="related">
+          <a href="/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them">Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them</a><a href="/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform">FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform</a><a href="/cloudprune/resources/are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path">Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

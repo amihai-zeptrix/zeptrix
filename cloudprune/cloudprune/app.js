@@ -251,10 +251,86 @@ let state = {
   adminTenantUsersLoading: "",
   adminAuditLog: null,
   adminAuditLoadStarted: false,
+  growthIntentCaptured: false,
+  recommendationViewTrackedKey: "",
 };
 
 const registerDraftKey = "cloudprune.registerDraft";
 const awsScanRegionsKey = "cloudprune.awsScanRegions";
+const growthIntentKey = "cloudprune.growthIntent";
+
+const GROWTH_INTENTS = {
+  "ebs-cleanup": {
+    label: "Unattached EBS cleanup",
+    headline: "Start by finding detached EBS volumes.",
+    guidance: "After AWS is connected, CloudPrune will prioritize EBS inventory, snapshots, age, attachment state, and rollback notes.",
+    scanFocus: "EBS volumes, snapshots, tags, and recent attachment evidence",
+    recommendationHint: "Unattached EBS volume recommendations will appear in the savings inbox after the first scan.",
+  },
+  "cloudwatch-costs": {
+    label: "CloudWatch cost drivers",
+    headline: "Start by finding expensive CloudWatch logs and metrics.",
+    guidance: "After AWS is connected, CloudPrune will prioritize log groups, retention, ingestion signals, and safe review steps.",
+    scanFocus: "CloudWatch log groups, retention settings, storage bytes, and noisy telemetry signals",
+    recommendationHint: "CloudWatch recommendations will appear when scan evidence shows enough cost or retention risk.",
+  },
+  "bill-shock": {
+    label: "Unexpected AWS bill",
+    headline: "Start by finding what changed in the bill.",
+    guidance: "After AWS is connected, CloudPrune will combine Cost Explorer, inventory, and recent utilization into a ranked investigation path.",
+    scanFocus: "Cost Explorer services, EC2, EBS, S3, CloudWatch, load balancers, and current-month spend",
+    recommendationHint: "Bill-triage findings will be ranked by estimated monthly impact and implementation risk.",
+  },
+  "idle-ec2": {
+    label: "Idle EC2 instances",
+    headline: "Start by finding EC2 instances with weak usage evidence.",
+    guidance: "After AWS is connected, CloudPrune will compare inventory, CPU, traffic mapping, and app inventory before recommending stop, resize, schedule, or consolidation.",
+    scanFocus: "EC2 instances, CloudWatch utilization, ALB/API traffic, SSM app inventory, and root disk signals",
+    recommendationHint: "Idle EC2 findings will include downtime risk, rollback, and owner-review notes.",
+  },
+  "ec2-to-lambda": {
+    label: "EC2 to Lambda assessment",
+    headline: "Start by checking whether scheduled EC2 jobs fit Lambda.",
+    guidance: "After AWS is connected, CloudPrune will look for job runtime, memory, schedule, root disk, and dependency evidence before suggesting a migration.",
+    scanFocus: "EC2 runtime logs, app inventory, CPU, memory hints, schedule signals, and Lambda fit constraints",
+    recommendationHint: "Lambda migration recommendations require observed runtime and memory evidence before they are shown.",
+  },
+  "safe-cost-reduction": {
+    label: "Safe AWS cost reduction",
+    headline: "Start with impact analysis, not blind cleanup.",
+    guidance: "After AWS is connected, CloudPrune will show savings with risk, downtime, rollback, and human-review notes.",
+    scanFocus: "Cost, inventory, utilization, traffic, retention, and rollback signals across AWS resources",
+    recommendationHint: "Recommendations are saved with evidence and impact analysis before any controlled automation step.",
+  },
+  "small-team-finops": {
+    label: "Small-team FinOps",
+    headline: "Start with lightweight read-only AWS savings.",
+    guidance: "CloudPrune will keep the workflow focused on concrete recommendations instead of heavy enterprise dashboards.",
+    scanFocus: "Read-only cost, inventory, and utilization evidence",
+    recommendationHint: "The savings inbox will stay empty until your own AWS scan produces findings.",
+  },
+  "proof-of-value": {
+    label: "Proof-of-value scan",
+    headline: "Start with exact evidence for the savings case.",
+    guidance: "CloudPrune will show scanned entities, impact, risk, and dry-run next steps so the result can be evaluated quickly.",
+    scanFocus: "Entity counts, spend, savings estimates, statistics, and risk notes",
+    recommendationHint: "Use the first scan as the proof point for whether CloudPrune finds actionable waste.",
+  },
+  "aws-recommendations": {
+    label: "AWS recommendation review",
+    headline: "Start by normalizing AWS-native recommendations.",
+    guidance: "CloudPrune will combine native signals with account inventory and impact workflow context.",
+    scanFocus: "Cost Explorer, Compute Optimizer, resource inventory, and utilization evidence",
+    recommendationHint: "Native AWS recommendations will be presented with impact, rollback, and execution guidance.",
+  },
+  "aws-cost-scan": {
+    label: "AWS cost scan",
+    headline: "Start with a read-only AWS cost assessment.",
+    guidance: "CloudPrune will inspect spend, inventory, utilization, and safer cost-reduction opportunities.",
+    scanFocus: "Cost, inventory, utilization, and recommendation evidence",
+    recommendationHint: "Recommendations appear after CloudPrune has real scan evidence from your account.",
+  },
+};
 
 function money(value) {
   return `$${Math.round(value).toLocaleString()}`;
@@ -316,6 +392,66 @@ function saveAwsScanRegions() {
   localStorage.setItem(awsScanRegionsKey, JSON.stringify(selectedAwsRegions()));
 }
 
+function normalizeGrowthIntent(value) {
+  const key = String(value || "").trim().toLowerCase();
+  return GROWTH_INTENTS[key] ? key : "";
+}
+
+function captureGrowthIntentFromUrl() {
+  const url = new URL(location.href);
+  const intent = normalizeGrowthIntent(url.searchParams.get("intent"));
+  if (!intent) return;
+  const source = String(url.searchParams.get("source") || "").trim().slice(0, 180);
+  localStorage.setItem(growthIntentKey, JSON.stringify({
+    intent,
+    source,
+    capturedAt: new Date().toISOString(),
+  }));
+}
+
+function growthIntent() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(growthIntentKey) || "{}");
+    const intent = normalizeGrowthIntent(saved.intent);
+    return intent ? { ...saved, intent, config: GROWTH_INTENTS[intent] } : null;
+  } catch {
+    return null;
+  }
+}
+
+function growthEventBase() {
+  const saved = growthIntent();
+  return saved ? { intent: saved.intent, source: saved.source || "cloudprune-app" } : {};
+}
+
+function trackGrowthEvent(eventType, metadata = {}) {
+  if (typeof fetch !== "function") return;
+  const payload = { eventType, ...growthEventBase(), path: location.pathname, metadata };
+  fetch(`${basePath()}/api/growth/events`, {
+    method: "POST",
+    headers: authHeaders({ "content-type": "application/json" }),
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}
+
+function renderGrowthIntentCard(context = "auth") {
+  const saved = growthIntent();
+  if (!saved) return "";
+  const config = saved.config;
+  const eyebrow = context === "workspace" ? "Scan focus" : "Selected from resource";
+  return `
+    <section class="intent-card">
+      <span class="eyebrow">${eyebrow}</span>
+      <h3>${escapeHtml(config.headline)}</h3>
+      <p>${escapeHtml(config.guidance)}</p>
+      <dl>
+        <div><dt>Focus</dt><dd>${escapeHtml(config.scanFocus)}</dd></div>
+        <div><dt>After scan</dt><dd>${escapeHtml(config.recommendationHint)}</dd></div>
+      </dl>
+    </section>
+  `;
+}
+
 function toggleAwsScanRegion(region, checked) {
   if (!AWS_REGIONS.some((item) => item.id === region)) return;
   const selected = new Set(selectedAwsRegions());
@@ -355,6 +491,7 @@ function startScanProgress(scan = null) {
 }
 
 async function scanAws() {
+  trackGrowthEvent("aws_scan_started");
   startScanProgress();
   render();
   try {
@@ -1260,6 +1397,14 @@ function renderEmptyWorkspace() {
   const externalIdValue = state.awsConnectDraft.externalId || state.workspace?.awsSetup?.externalId || `cloudprune-${sessionAccountId()}`;
   const principalArnValue = state.workspace?.awsSetup?.principalArn || "CloudPrune AWS principal ARN";
   const templateUrlValue = state.workspace?.awsSetup?.cloudFormationTemplateUrl || "";
+  const currentScan = scanResult();
+  if (workspaceRoute() === "recommendations" && currentScan?.recommendations?.length) {
+    const trackKey = `${currentScan.id || "scan"}:${currentScan.recommendations.length}`;
+    if (state.recommendationViewTrackedKey !== trackKey) {
+      state.recommendationViewTrackedKey = trackKey;
+      trackGrowthEvent("recommendation_viewed", { scanId: currentScan.id, recommendations: currentScan.recommendations.length });
+    }
+  }
   if (awsConnection) {
     if (workspaceRoute() === "recommendations") {
       return `
@@ -1291,6 +1436,7 @@ function renderEmptyWorkspace() {
           <span class="eyebrow">AWS connected</span>
           <h2>Assume-role access is configured.</h2>
           <p>CloudPrune is ready to run a read-only AWS assessment using the role below. The next step is to start collecting inventory, spend, and utilization signals.</p>
+          ${renderGrowthIntentCard("workspace")}
           <div class="connection-summary">
             <span>AWS account</span><strong>${escapeHtml(awsConnection.awsAccountId)}</strong>
             <span>Role ARN</span><code>${escapeHtml(awsConnection.roleArn)}</code>
@@ -1324,6 +1470,7 @@ function renderEmptyWorkspace() {
         <span class="eyebrow">No cloud data yet</span>
         <h2>Connect AWS to start your first cost assessment.</h2>
         <p>CloudPrune will use read-only access to inspect spend, inventory, utilization signals, and safe optimization opportunities before it recommends any action.</p>
+        ${renderGrowthIntentCard("workspace")}
         <div class="empty-actions">
           <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Connect AWS</button>
           <a href="${basePath()}/demo">View demo data</a>
@@ -1431,6 +1578,7 @@ function renderAwsConnectForm(externalId, principalArn, roleArn = "", templateUr
 }
 
 function render() {
+  captureGrowthIntentFromUrl();
   const app = document.querySelector("#app");
   if (appRoute() === "admin") {
     renderAdminPage(app);
@@ -1452,6 +1600,10 @@ function render() {
 }
 
 function renderAuth(app) {
+  if (!state.growthIntentCaptured) {
+    state.growthIntentCaptured = true;
+    trackGrowthEvent("auth_page_view");
+  }
   const base = basePath();
   const url = new URL(location.href);
   const sso = url.searchParams.get("sso");
@@ -1469,6 +1621,7 @@ function renderAuth(app) {
         if (body.token) {
           localStorage.setItem("cloudprune.session", body.token);
           localStorage.removeItem("cloudprune.googleRegistration");
+          trackGrowthEvent("auth_success", { mode: "google" });
           return syncProfileFromDraft(body.token, registerDraft()).finally(() => {
             location.href = `${base}/`;
           });
@@ -1516,6 +1669,7 @@ function renderAuth(app) {
           <h1>Prune cloud waste before it reaches the bill.</h1>
           <p>Connect AWS first, inspect the savings plan, and move from dry-run analysis to controlled automation when the impact is clear.</p>
           <div class="auth-campaign-banner">Enjoy totally free until September 2026</div>
+          ${renderGrowthIntentCard("auth")}
         </div>
         <div class="auth-signal-grid" aria-label="CloudPrune preview metrics">
           <article><span>Verified waste</span><strong>$89K</strong><em>monthly demo signal</em></article>
@@ -1634,6 +1788,7 @@ document.addEventListener("click", async (event) => {
   const connectButton = event.target.closest("[data-action='connect']");
   if (connectButton) {
     if (connectButton.disabled) return;
+    trackGrowthEvent("aws_connect_opened");
     state.connectFormVisible = true;
     state.connectMessage = "";
     state.awsConnectDraft = {
@@ -1684,6 +1839,7 @@ document.addEventListener("click", async (event) => {
         return;
       }
     }
+    trackGrowthEvent("google_sso_start");
     location.href = `${basePath()}/api/auth/google/start`;
     return;
   }
@@ -1892,6 +2048,7 @@ document.addEventListener("submit", async (event) => {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Could not save AWS role.");
+      trackGrowthEvent("aws_connect_saved", { awsAccountId: body.connection?.awsAccountId });
       state.workspace = {
         ...(state.workspace || {}),
         connections: { ...((state.workspace || {}).connections || {}), aws: body.connection },
@@ -1913,6 +2070,7 @@ document.addEventListener("submit", async (event) => {
   event.preventDefault();
   const mode = form.dataset.authForm;
   if (mode === "register") saveRegisterDraftFromForm(form);
+  trackGrowthEvent(mode === "login" ? "login_start" : "registration_start");
   const payload = Object.fromEntries(new FormData(form).entries());
   state.authMessage = mode === "login" ? "Signing in..." : "Creating workspace...";
   render();
@@ -1928,6 +2086,7 @@ document.addEventListener("submit", async (event) => {
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "CloudPrune authentication failed.");
     localStorage.setItem("cloudprune.session", body.token);
+    trackGrowthEvent("auth_success", { mode });
     localStorage.removeItem("cloudprune.googleRegistration");
     localStorage.removeItem(registerDraftKey);
     location.href = body.user?.role === "admin" ? `${basePath()}/admin` : `${basePath()}/`;

@@ -17,6 +17,24 @@
     <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@context":"https://schema.org","@type":"Article","headline":"CloudWatch Costs Too High? Find the Log Groups and Metrics Driving the Bill","description":"CloudWatch charges rise because of logs, custom metrics, metric streams, dashboards, or alarms.","url":"https://zeptrix.io/cloudprune/resources/cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","CloudWatch cost optimization / reduce CloudWatch charges"]},{"@context":"https://schema.org","@type":"FAQPage","url":"https://zeptrix.io/cloudprune/resources/cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill","mainEntity":[{"@type":"Question","name":"Why can CloudWatch become expensive?","acceptedAnswer":{"@type":"Answer","text":"Common drivers are high log ingestion, long retention, custom metrics, dashboards, alarms, metric streams, and verbose application logs."}},{"@type":"Question","name":"Does changing retention reduce all CloudWatch cost?","acceptedAnswer":{"@type":"Answer","text":"Retention helps with stored log cost, but it does not reduce ingestion cost. If ingestion is the bill driver, the emitting workload or logging policy must be reviewed."}},{"@type":"Question","name":"What should be reviewed before reducing CloudWatch data?","acceptedAnswer":{"@type":"Answer","text":"Check incident response needs, compliance retention, debugging workflows, alerting coverage, and whether lower-volume logs can move to a cheaper storage or analytics path."}}]}]}</script>
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill","resourceTitle":"CloudWatch Costs Too High? Find the Log Groups and Metrics Driving the Bill","intent":"cloudwatch-costs","path":"/cloudprune/resources/cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill","url":"https://zeptrix.io/cloudprune/resources/cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
   </head>
   <body>
     <header class="resource-hero">
@@ -24,7 +42,7 @@
       <p class="eyebrow">AWS cost playbook</p>
       <h1>CloudWatch Costs Too High? Find the Log Groups and Metrics Driving the Bill</h1>
       <p>CloudWatch charges rise because of logs, custom metrics, metric streams, dashboards, or alarms.</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=cloudwatch-costs&amp;source=cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill">Scan CloudWatch cost drivers</a>
     </header>
     <main>
       <section class="panel">
@@ -60,6 +78,7 @@
         <h2>How CloudPrune helps</h2>
         <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
         <p>Run a CloudPrune scan to find CloudWatch cleanup candidates: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=cloudwatch-costs&amp;source=cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill">Scan CloudWatch cost drivers</a>
       </section>
       <section class="panel faq">
         <h2>Questions people ask</h2>

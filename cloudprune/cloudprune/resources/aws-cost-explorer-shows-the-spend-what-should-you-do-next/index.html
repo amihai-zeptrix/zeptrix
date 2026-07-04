@@ -17,6 +17,24 @@
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"AWS Cost Explorer Shows the Spend. What Should You Do Next?","description":"User asks the community how to identify the services behind an unexpected AWS bill.","url":"https://zeptrix.io/cloudprune/resources/aws-cost-explorer-shows-the-spend-what-should-you-do-next","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/aws-cost-explorer-shows-the-spend-what-should-you-do-next","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","unexpected high AWS billing"]}</script>
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"aws-cost-explorer-shows-the-spend-what-should-you-do-next","resourceTitle":"AWS Cost Explorer Shows the Spend. What Should You Do Next?","intent":"bill-shock","path":"/cloudprune/resources/aws-cost-explorer-shows-the-spend-what-should-you-do-next","url":"https://zeptrix.io/cloudprune/resources/aws-cost-explorer-shows-the-spend-what-should-you-do-next"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
   </head>
   <body>
     <header class="resource-hero">
@@ -24,7 +42,7 @@
       <p class="eyebrow">AWS cost playbook</p>
       <h1>AWS Cost Explorer Shows the Spend. What Should You Do Next?</h1>
       <p>User asks the community how to identify the services behind an unexpected AWS bill.</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=bill-shock&amp;source=aws-cost-explorer-shows-the-spend-what-should-you-do-next">Turn spend into recommendations</a>
     </header>
     <main>
       <section class="panel">
@@ -60,6 +78,7 @@
         <h2>How CloudPrune helps</h2>
         <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
         <p>Use CloudPrune to convert AWS spend into actionable recommendations: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=bill-shock&amp;source=aws-cost-explorer-shows-the-spend-what-should-you-do-next">Turn spend into recommendations</a>
       </section>
       <section class="panel">
         <h2>Related CloudPrune resources</h2>

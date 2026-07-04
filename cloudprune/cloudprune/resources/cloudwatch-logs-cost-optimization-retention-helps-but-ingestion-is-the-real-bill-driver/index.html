@@ -17,6 +17,24 @@
     <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@context":"https://schema.org","@type":"Article","headline":"CloudWatch Logs Cost Optimization: Retention Helps, But Ingestion Is the Real Bill Driver","description":"Practitioners want concrete alternatives and retention strategies for expensive CloudWatch Logs.","url":"https://zeptrix.io/cloudprune/resources/cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","CloudWatch logs cost optimisation techniques"]},{"@context":"https://schema.org","@type":"FAQPage","url":"https://zeptrix.io/cloudprune/resources/cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver","mainEntity":[{"@type":"Question","name":"Is CloudWatch Logs retention the first setting to check?","acceptedAnswer":{"@type":"Answer","text":"It is a good first check for stored log cost, especially for log groups set to never expire, but ingestion volume is often the larger recurring driver."}},{"@type":"Question","name":"When should logs move outside CloudWatch?","acceptedAnswer":{"@type":"Answer","text":"Consider alternatives when logs are high volume, rarely queried in CloudWatch, retained mostly for audit, or better analyzed through S3, Athena, OpenSearch, or a dedicated logging platform."}},{"@type":"Question","name":"Can CloudPrune automatically change retention?","acceptedAnswer":{"@type":"Answer","text":"CloudPrune should first show the evidence and impact. Automation should stay controlled because retention changes can affect audits, incident response, and troubleshooting."}}]}]}</script>
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver","resourceTitle":"CloudWatch Logs Cost Optimization: Retention Helps, But Ingestion Is the Real Bill Driver","intent":"cloudwatch-costs","path":"/cloudprune/resources/cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver","url":"https://zeptrix.io/cloudprune/resources/cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
   </head>
   <body>
     <header class="resource-hero">
@@ -24,7 +42,7 @@
       <p class="eyebrow">AWS cost playbook</p>
       <h1>CloudWatch Logs Cost Optimization: Retention Helps, But Ingestion Is the Real Bill Driver</h1>
       <p>Practitioners want concrete alternatives and retention strategies for expensive CloudWatch Logs.</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=cloudwatch-costs&amp;source=cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver">Scan CloudWatch log groups</a>
     </header>
     <main>
       <section class="panel">
@@ -60,6 +78,7 @@
         <h2>How CloudPrune helps</h2>
         <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
         <p>Let CloudPrune identify CloudWatch log groups worth reviewing: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=cloudwatch-costs&amp;source=cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver">Scan CloudWatch log groups</a>
       </section>
       <section class="panel faq">
         <h2>Questions people ask</h2>

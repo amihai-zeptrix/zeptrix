@@ -17,6 +17,24 @@
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Trusted Advisor, Compute Optimizer, or Cost Optimization Hub: Which AWS Recommendation Source Should You Use?","description":"Users are confused which AWS-native recommendation source they should trust.","url":"https://zeptrix.io/cloudprune/resources/trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","Trusted Advisor vs Cost Optimization Hub"]}</script>
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source","resourceTitle":"Trusted Advisor, Compute Optimizer, or Cost Optimization Hub: Which AWS Recommendation Source Should You Use?","intent":"aws-recommendations","path":"/cloudprune/resources/trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source","url":"https://zeptrix.io/cloudprune/resources/trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
   </head>
   <body>
     <header class="resource-hero">
@@ -24,7 +42,7 @@
       <p class="eyebrow">AWS cost playbook</p>
       <h1>Trusted Advisor, Compute Optimizer, or Cost Optimization Hub: Which AWS Recommendation Source Should You Use?</h1>
       <p>Users are confused which AWS-native recommendation source they should trust.</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=aws-recommendations&amp;source=trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source">Normalize AWS recommendations</a>
     </header>
     <main>
       <section class="panel">
@@ -60,6 +78,7 @@
         <h2>How CloudPrune helps</h2>
         <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
         <p>Use CloudPrune to normalize recommendations into one prioritized view: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=aws-recommendations&amp;source=trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source">Normalize AWS recommendations</a>
       </section>
       <section class="panel">
         <h2>Related CloudPrune resources</h2>

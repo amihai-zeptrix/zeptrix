@@ -126,4 +126,22 @@
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
+  <url>
+    <loc>https://zeptrix.io/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste</loc>
+    <lastmod>2026-07-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zeptrix.io/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist</loc>
+    <lastmod>2026-07-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zeptrix.io/cloudprune/resources/how-to-reduce-aws-cost-without-breaking-production</loc>
+    <lastmod>2026-07-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>
