@@ -107,6 +107,16 @@ assert_contains "$tmp_dir/cloudprune-demo.html" "<title>CloudPrune | Cloud Cost 
 assert_contains "$tmp_dir/cloudprune-demo.html" '<div id="app"></div>'
 assert_contains "$tmp_dir/cloudprune-demo.html" 'href="/cloudprune/styles.css"'
 
+fetch "/cloudprune/resources/" "$tmp_dir/cloudprune-resources.html"
+assert_contains "$tmp_dir/cloudprune-resources.html" "<title>CloudPrune AWS Cost Resources</title>"
+assert_contains "$tmp_dir/cloudprune-resources.html" 'resourceSlug":"cloudprune-resources"'
+assert_contains "$tmp_dir/cloudprune-resources.html" 'data-resource-cta href="/cloudprune/"'
+
+fetch "/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them" "$tmp_dir/cloudprune-resource-ebs.html"
+assert_contains "$tmp_dir/cloudprune-resource-ebs.html" "<title>Unattached EBS Volumes Still Cost Money | CloudPrune</title>"
+assert_contains "$tmp_dir/cloudprune-resource-ebs.html" 'resource_page_view'
+assert_contains "$tmp_dir/cloudprune-resource-ebs.html" 'resource_cta_click'
+
 fetch "/cp/" "$tmp_dir/cp.html"
 assert_contains "$tmp_dir/cp.html" "<title>CloudPrune | Cloud Cost Workspace</title>"
 assert_contains "$tmp_dir/cp.html" '<div id="app"></div>'
@@ -123,6 +133,10 @@ assert_content_type "/your-new-crm/app.js" "application/javascript" "text/javasc
 assert_content_type "/cloudprune/styles.css" "text/css"
 assert_content_type "/cloudprune/app.js" "application/javascript" "text/javascript"
 assert_content_type "/cp/app.js" "application/javascript" "text/javascript"
+
+fetch "/sitemap.xml" "$tmp_dir/sitemap.xml"
+assert_contains "$tmp_dir/sitemap.xml" "https://zeptrix.io/cloudprune/resources/"
+assert_contains "$tmp_dir/sitemap.xml" "https://zeptrix.io/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them"
 
 old_location="$(curl -fsSI --max-time 20 "$base_url/wordpress-to-modern-websites/" | awk 'tolower($1) == "location:" {print $2}' | tr -d '\r')"
 if [[ "$old_location" != "$base_url/siteops" ]]; then
