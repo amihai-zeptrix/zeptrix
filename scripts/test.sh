@@ -35,6 +35,8 @@ assert_file app.js
 assert_file assets/wordpress-logotype-wmark.png
 assert_file nginx-zeptrix.conf
 assert_file scripts/verify-routes.sh
+assert_file sitemap.xml
+assert_file robots.txt
 
 assert_file mbh/index.html
 assert_file mbh/styles.css
@@ -97,6 +99,7 @@ assert_contains cloudprune/cloudprune/index.html "<title>CloudPrune | Cloud Cost
 assert_contains cloudprune/cloudprune/index.html 'href="/cloudprune/styles.css"'
 assert_contains cloudprune/cloudprune/index.html 'src="/cloudprune/app.js"'
 assert_contains saas-crm/cloudprune/index.html "<title>CloudPrune | Cloud Cost Workspace</title>"
+assert_contains robots.txt "Sitemap: https://zeptrix.io/sitemap.xml"
 
 assert_contains nginx-zeptrix.conf "location = /mbh"
 assert_contains nginx-zeptrix.conf "return 301 /mbh/;"
@@ -110,6 +113,13 @@ assert_contains nginx-zeptrix.conf "location ^~ /internal-crm/"
 assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8008;"
 assert_contains nginx-zeptrix.conf "location = /cloudprune"
 assert_contains nginx-zeptrix.conf "location ^~ /cloudprune/"
+
+assert_contains sitemap.xml "https://zeptrix.io/cloudprune/resources/"
+while IFS= read -r resource_index; do
+  resource_slug="${resource_index#cloudprune/cloudprune/resources/}"
+  resource_slug="${resource_slug%/index.html}"
+  assert_contains sitemap.xml "https://zeptrix.io/cloudprune/resources/$resource_slug"
+done < <(find cloudprune/cloudprune/resources -mindepth 2 -maxdepth 2 -name index.html | sort)
 
 if rg -n 'href="styles\.css"|src="app\.js"|url\("assets/' --glob '*.html' --glob '*.css' . \
   | rg -v '^./(mbh|michal-site|web-site|your-new-crm|saas-crm|cloudprune)/'; then
