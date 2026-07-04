@@ -253,6 +253,7 @@ let state = {
   adminAuditLoadStarted: false,
   adminGrowth: null,
   adminGrowthLoadStarted: false,
+  adminGrowthExperimentSaving: false,
   growthIntentCaptured: false,
   recommendationViewTrackedKey: "",
 };
@@ -515,6 +516,12 @@ async function scanAws() {
     state.awsScan = { status: "error", progress: 100, message: error.message };
   }
   render();
+}
+
+async function refreshAdminGrowth() {
+  state.adminGrowth = null;
+  state.adminGrowthLoadStarted = false;
+  await loadAdminGrowth();
 }
 
 async function stopAwsScan() {
@@ -1249,6 +1256,7 @@ function renderAdminGrowth() {
   const resources = growth.resources || [];
   const recentEvents = growth.recentEvents || [];
   const insights = growth.insights || [];
+  const experiments = growth.experiments || [];
   const totalEvents = eventTotals.reduce((total, item) => total + Number(item.events || 0), 0);
   const ctaClicks = eventTotals.find((item) => item.eventType === "resource_cta_click")?.events || 0;
   const authSuccesses = eventTotals.find((item) => item.eventType === "auth_success")?.events || 0;
@@ -1279,6 +1287,41 @@ function renderAdminGrowth() {
             </div>
           </article>
         `).join("") || `<div class="empty">No growth insights yet. More events are needed before ranking actions.</div>`}
+      </div>
+    </section>
+    <section class="panel growth-experiments-panel">
+      <div class="panel-head">
+        <div><span class="eyebrow">Growth experiments</span><h2>${experiments.length} tracked tests</h2></div>
+      </div>
+      <form class="growth-experiment-form" data-growth-experiment-form>
+        <label>Name<input name="name" required maxlength="140" placeholder="Read-only trust block on EBS pages" /></label>
+        <label>Target<select name="targetType">
+          <option value="resource">Resource page</option>
+          <option value="intent">Intent</option>
+          <option value="onboarding">Onboarding</option>
+          <option value="other">Other</option>
+        </select></label>
+        <label>Target value<input name="target" required maxlength="220" placeholder="unattached-ebs-volumes-still-cost-money..." /></label>
+        <label>Status<select name="status">
+          <option value="active">Active</option>
+          <option value="planned">Planned</option>
+          <option value="paused">Paused</option>
+          <option value="completed">Completed</option>
+        </select></label>
+        <label class="wide">Hypothesis<textarea name="hypothesis" required maxlength="600" rows="3" placeholder="If we add proof that the scan is read-only near the CTA, more visitors will register and connect AWS."></textarea></label>
+        <button type="submit" ${state.adminGrowthExperimentSaving ? "disabled" : ""}>${state.adminGrowthExperimentSaving ? "Saving..." : "Track experiment"}</button>
+      </form>
+      <div class="growth-experiment-list">
+        ${experiments.map((item) => `
+          <article class="growth-experiment">
+            <span>${escapeHtml(item.status || "active")}</span>
+            <div>
+              <h3>${escapeHtml(item.name || "")}</h3>
+              <p>${escapeHtml(item.hypothesis || "")}</p>
+              <strong>${escapeHtml(item.targetType || "resource")}: ${escapeHtml(item.target || "")}</strong>
+            </div>
+          </article>
+        `).join("") || `<div class="empty">No experiments yet. Create one before changing a page or onboarding step.</div>`}
       </div>
     </section>
     <div class="admin-grid">
@@ -2091,6 +2134,36 @@ document.addEventListener("paste", (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  const growthExperimentForm = event.target.closest("[data-growth-experiment-form]");
+  if (growthExperimentForm) {
+    event.preventDefault();
+    state.adminGrowthExperimentSaving = true;
+    state.adminMessage = "Saving growth experiment...";
+    render();
+    try {
+      const response = await fetch(`${basePath()}/api/admin/growth/experiments`, {
+        method: "POST",
+        headers: authHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({
+          name: growthExperimentForm.elements.name.value,
+          hypothesis: growthExperimentForm.elements.hypothesis.value,
+          targetType: growthExperimentForm.elements.targetType.value,
+          target: growthExperimentForm.elements.target.value,
+          status: growthExperimentForm.elements.status.value,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not save growth experiment.");
+      state.adminMessage = `Tracking experiment: ${body.experiment?.name || "growth experiment"}.`;
+      state.adminGrowthExperimentSaving = false;
+      await refreshAdminGrowth();
+    } catch (error) {
+      state.adminMessage = error.message;
+      state.adminGrowthExperimentSaving = false;
+      render();
+    }
+    return;
+  }
   const adminResetForm = event.target.closest("[data-admin-reset-form]");
   if (adminResetForm) {
     event.preventDefault();
