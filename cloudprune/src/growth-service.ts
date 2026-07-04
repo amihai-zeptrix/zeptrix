@@ -26,6 +26,14 @@ interface GrowthEventPayload {
   metadata?: unknown;
 }
 
+interface GrowthExperimentPayload {
+  name?: unknown;
+  hypothesis?: unknown;
+  targetType?: unknown;
+  target?: unknown;
+  status?: unknown;
+}
+
 const allowedEvents = new Set([
   "resource_page_view",
   "resource_cta_click",
@@ -95,6 +103,22 @@ function publicGrowthEvent(row: Record<string, any>) {
     tenant: row.company_name,
     user: row.user_name,
     createdAt: row.created_at,
+  };
+}
+
+function publicGrowthExperiment(row: Record<string, any>) {
+  return {
+    id: row.id,
+    name: row.name,
+    hypothesis: row.hypothesis,
+    targetType: row.target_type,
+    target: row.target,
+    status: row.status,
+    createdBy: row.created_by,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -208,7 +232,7 @@ async function adminGrowthOverview(req: RequestLike) {
     summary: "Admin viewed growth funnel",
   });
 
-  const [eventTotals, intentRows, resourceRows, recentRows] = await Promise.all([
+  const [eventTotals, intentRows, resourceRows, recentRows, experimentRows] = await Promise.all([
     pool.query(
       `select event_type, count(*)::int as events
        from cloudprune_growth_events
@@ -250,6 +274,13 @@ async function adminGrowthOverview(req: RequestLike) {
        order by e.created_at desc
        limit 200`
     ),
+    pool.query(
+      `select id, name, hypothesis, target_type, target, status, created_by, started_at, ended_at, created_at, updated_at
+       from cloudprune_growth_experiments
+       order by case status when 'active' then 0 when 'planned' then 1 when 'paused' then 2 else 3 end,
+                created_at desc
+       limit 100`
+    ),
   ]);
 
   const intentData = intentRows.rows.map((row: Record<string, any>) => ({
@@ -278,8 +309,43 @@ async function adminGrowthOverview(req: RequestLike) {
     insights: growthInsights(intentRows.rows, resourceRows.rows),
     intents: intentData,
     resources: resourceData,
+    experiments: experimentRows.rows.map(publicGrowthExperiment),
     recentEvents: recentRows.rows.map(publicGrowthEvent),
   };
+}
+
+async function createGrowthExperiment(req: RequestLike, payload: GrowthExperimentPayload) {
+  if (!pool) throw new Error("CloudPrune database is not configured.");
+  const admin = adminSession(req);
+  const name = cleanText(payload.name, 140);
+  const hypothesis = cleanText(payload.hypothesis, 600);
+  const targetType = cleanText(payload.targetType, 40) || "resource";
+  const target = cleanText(payload.target, 220);
+  const status = cleanText(payload.status, 40) || "active";
+  const allowedTargetTypes = new Set(["resource", "intent", "onboarding", "other"]);
+  const allowedStatuses = new Set(["planned", "active", "paused", "completed"]);
+  if (!name) throw new Error("Experiment name is required.");
+  if (!hypothesis) throw new Error("Experiment hypothesis is required.");
+  if (!target) throw new Error("Experiment target is required.");
+  if (!allowedTargetTypes.has(targetType)) throw new Error("Choose a valid experiment target type.");
+  if (!allowedStatuses.has(status)) throw new Error("Choose a valid experiment status.");
+
+  const result = await pool.query(
+    `insert into cloudprune_growth_experiments (name, hypothesis, target_type, target, status, created_by)
+     values ($1,$2,$3,$4,$5,$6)
+     returning id, name, hypothesis, target_type, target, status, created_by, started_at, ended_at, created_at, updated_at`,
+    [name, hypothesis, targetType, target, status, admin.email]
+  );
+  await recordAuditEvent({
+    req,
+    actor: { email: admin.email, role: "admin" },
+    action: "growth_experiment_created",
+    targetType: "growth_experiment",
+    targetId: result.rows[0].id,
+    summary: `Created growth experiment: ${name}`,
+    metadata: { targetType, target, status },
+  });
+  return publicGrowthExperiment(result.rows[0]);
 }
 
 async function adminGrowthCsv(req: RequestLike, kind: string) {
@@ -328,4 +394,4 @@ async function adminGrowthCsv(req: RequestLike, kind: string) {
   ]);
 }
 
-export { adminGrowthCsv, adminGrowthOverview, recordGrowthEvent };
+export { adminGrowthCsv, adminGrowthOverview, createGrowthExperiment, recordGrowthEvent };

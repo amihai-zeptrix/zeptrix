@@ -820,6 +820,17 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
           action: "Review AWS onboarding friction.",
           target: "idle-ec2",
         }],
+        experiments: [{
+          id: "experiment-1",
+          name: "Read-only trust block on EBS pages",
+          hypothesis: "Adding a read-only proof block near the CTA should increase AWS connects.",
+          targetType: "resource",
+          target: "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them",
+          status: "active",
+          createdBy: "admin",
+          startedAt: "2026-07-04",
+          createdAt: "2026-07-04T13:00:00.000Z",
+        }],
         recentEvents: [{
           id: "growth-1",
           eventType: "resource_cta_click",
@@ -840,6 +851,9 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
   assert.match(app.innerHTML, /Growth funnel/);
   assert.match(app.innerHTML, /Growth insights/);
   assert.match(app.innerHTML, /Review AWS onboarding friction/);
+  assert.match(app.innerHTML, /Growth experiments/);
+  assert.match(app.innerHTML, /Read-only trust block on EBS pages/);
+  assert.match(app.innerHTML, /Track experiment/);
   assert.match(app.innerHTML, /Export summary CSV/);
   assert.match(app.innerHTML, /href="\/cloudprune\/api\/admin\/growth\.csv"/);
   assert.match(app.innerHTML, /href="\/cloudprune\/api\/admin\/growth\/events\.csv"/);
@@ -849,6 +863,56 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
   assert.match(app.innerHTML, /resource_cta_click/);
   assert.match(app.innerHTML, /href="\/cloudprune\/admin\/growth"/);
   assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/admin/growth")));
+});
+
+test("CloudPrune admin growth route creates an experiment", async () => {
+  const session = sessionToken({
+    sub: "cloudprune-admin",
+    email: "admin",
+    accountId: "cloudprune-admin",
+    companyName: "CloudPrune Admin",
+    role: "admin",
+    adminPasswordVersion: "test-version",
+    exp: Date.now() + 10000,
+  });
+  const { fetchCalls, listeners } = bootCloudPruneApp("/cloudprune/admin/growth", session, (url, options = {}) => {
+    if (String(url).endsWith("/api/admin/growth/experiments")) {
+      assert.equal(options.method, "POST");
+      assert.deepEqual(JSON.parse(options.body), {
+        name: "CTA proof block",
+        hypothesis: "Read-only proof near the CTA should lift AWS connects.",
+        targetType: "resource",
+        target: "cloudprune-resources",
+        status: "active",
+      });
+      return jsonResponse({ experiment: { name: "CTA proof block" } });
+    }
+    if (String(url).endsWith("/api/admin/growth")) {
+      return jsonResponse({ eventTotals: [], intents: [], resources: [], insights: [], experiments: [], recentEvents: [] });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const form = {
+    elements: {
+      name: { value: "CTA proof block" },
+      hypothesis: { value: "Read-only proof near the CTA should lift AWS connects." },
+      targetType: { value: "resource" },
+      target: { value: "cloudprune-resources" },
+      status: { value: "active" },
+    },
+  };
+  for (const handler of listeners.submit || []) await handler({
+    preventDefault() {},
+    target: {
+      closest(selector) {
+        return selector === "[data-growth-experiment-form]" ? form : null;
+      },
+    },
+  });
+
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/admin/growth/experiments")));
 });
 
 test("CloudPrune admin can reset user password and spoof a tenant user", async () => {
@@ -1705,16 +1769,21 @@ test("CloudPrune growth events have a dedicated table and API", () => {
   const growthSource = fs.readFileSync(path.join(__dirname, "../src/growth-service.ts"), "utf8");
 
   assert.match(dbSource, /create table if not exists cloudprune_growth_events/);
+  assert.match(dbSource, /create table if not exists cloudprune_growth_experiments/);
   assert.match(dbSource, /cloudprune_growth_events_intent_idx/);
+  assert.match(dbSource, /cloudprune_growth_experiments_status_idx/);
   assert.match(serverSource, /api\/growth\/events/);
   assert.match(serverSource, /api\/admin\/growth/);
+  assert.match(serverSource, /api\/admin\/growth\/experiments/);
   assert.match(serverSource, /api\/admin\/growth\.csv/);
   assert.match(serverSource, /api\/admin\/growth\/events\.csv/);
   assert.match(growthSource, /resource_cta_click/);
   assert.match(growthSource, /recommendation_viewed/);
   assert.match(growthSource, /admin_growth_viewed/);
+  assert.match(growthSource, /growth_experiment_created/);
   assert.match(growthSource, /growthInsights/);
   assert.match(growthSource, /adminGrowthCsv/);
+  assert.match(growthSource, /createGrowthExperiment/);
 });
 
 test("CloudPrune JSON request bodies are capped before parsing", async () => {

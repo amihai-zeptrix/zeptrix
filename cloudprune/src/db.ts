@@ -139,4 +139,20 @@ export async function initDatabase(): Promise<void> {
   `);
   await pool.query(`create index if not exists cloudprune_growth_events_created_at_idx on cloudprune_growth_events (created_at desc)`);
   await pool.query(`create index if not exists cloudprune_growth_events_intent_idx on cloudprune_growth_events (intent, created_at desc)`);
+  await pool.query(`
+    create table if not exists cloudprune_growth_experiments (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      hypothesis text not null,
+      target_type text not null default 'resource',
+      target text not null,
+      status text not null default 'active',
+      created_by citext,
+      started_at date not null default current_date,
+      ended_at date,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`create index if not exists cloudprune_growth_experiments_status_idx on cloudprune_growth_experiments (status, created_at desc)`);
 }
