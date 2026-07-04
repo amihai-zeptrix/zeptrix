@@ -1486,9 +1486,15 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   display: none;
 }
 
-.demo-link {
-  display: block;
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 16px;
   margin-top: 14px;
+}
+
+.auth-links a {
   color: var(--forest);
   font-weight: 800;
   text-align: center;

@@ -1554,7 +1554,10 @@ function renderAuth(app) {
           `}
           <button type="submit">${isGoogleRegister ? "Create CloudPrune workspace" : isRegister ? "Create CloudPrune workspace" : "Login"}</button>
         </form>
-        <a class="demo-link" href="${base}/demo">View live demo</a>
+        <div class="auth-links">
+          <a href="${base}/demo">View live demo</a>
+          <a href="${base}/resources/">Read AWS cost playbooks</a>
+        </div>
         <p class="auth-message">${state.authMessage || ssoMessage}</p>
       </section>
     </main>
