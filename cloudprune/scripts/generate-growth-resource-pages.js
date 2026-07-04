@@ -63,19 +63,21 @@ function parseItems(markdown) {
 }
 
 function loadItems() {
+  const dataItems = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, "utf8")) : [];
+  const dataBySlug = new Map(dataItems.map((item) => [item.slug || slugify(item.title), item]));
   if (fs.existsSync(followupPath) || fs.existsSync(shortlistPath)) {
     const markdownPath = fs.existsSync(followupPath) ? followupPath : shortlistPath;
-    const reportItems = parseItems(fs.readFileSync(markdownPath, "utf8"));
+    const reportItems = parseItems(fs.readFileSync(markdownPath, "utf8"))
+      .map((item) => ({ ...(dataBySlug.get(item.slug) || {}), ...item, seoTitle: dataBySlug.get(item.slug)?.seoTitle || item.seoTitle }));
     if (reportItems.length) return reportItems;
   }
   if (!fs.existsSync(dataPath)) throw new Error(`Missing tracked resource data file: ${dataPath}`);
-  const dataItems = JSON.parse(fs.readFileSync(dataPath, "utf8"));
   if (!Array.isArray(dataItems) || !dataItems.length) throw new Error(`No resource items found in ${dataPath}`);
   return dataItems.map((item) => ({ ...item, slug: item.slug || slugify(item.title) })).filter((item) => item.title && item.slug);
 }
 
 function pageHtml(item, allItems) {
-  const title = `${item.title} | CloudPrune Resources`;
+  const title = `${item.seoTitle || item.title} | CloudPrune`;
   const description = item.pain || item.angle || "CloudPrune cloud cost optimization resource.";
   const related = allItems.filter((candidate) => candidate.slug !== item.slug).slice(0, 3);
   return `<!doctype html>
