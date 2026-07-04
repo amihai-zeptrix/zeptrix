@@ -597,6 +597,60 @@ button:hover { background: #1e4d43; }
 .admin-growth-kpis {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.export-actions a {
+  text-decoration: none;
+}
+.growth-insights {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.growth-insight {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+.growth-insight > span {
+  align-self: start;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--forest);
+  background: var(--green-soft);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
+}
+.growth-insight.high > span {
+  color: var(--red);
+  background: var(--red-soft);
+}
+.growth-insight.medium > span {
+  color: #7a4d00;
+  background: var(--amber-soft);
+}
+.growth-insight h3 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+.growth-insight p {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+.growth-insight strong {
+  display: block;
+  color: var(--forest);
+}
 .admin-users-table-row td {
   height: auto;
   padding: 0 14px 14px;
@@ -1596,6 +1650,7 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
     margin-left: 0;
   }
   .feedback-report { grid-template-columns: 1fr; }
+  .growth-insights { grid-template-columns: 1fr; }
   .admin-user-row,
   .admin-reset-form {
     grid-template-columns: 1fr;

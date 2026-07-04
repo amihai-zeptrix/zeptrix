@@ -98,6 +98,105 @@ function publicGrowthEvent(row: Record<string, any>) {
   };
 }
 
+function conversionRate(numerator: unknown, denominator: unknown): number {
+  const top = Number(numerator || 0);
+  const bottom = Number(denominator || 0);
+  return bottom > 0 ? Math.round((top / bottom) * 100) : 0;
+}
+
+function growthInsights(intents: Record<string, any>[], resources: Record<string, any>[]) {
+  const insights: Record<string, unknown>[] = [];
+  for (const row of intents) {
+    const intent = row.intent;
+    const pageViews = Number(row.page_views || 0);
+    const ctaClicks = Number(row.cta_clicks || 0);
+    const authSuccesses = Number(row.auth_successes || 0);
+    const awsConnects = Number(row.aws_connects || 0);
+    const scans = Number(row.scans || 0);
+    const ctaRate = conversionRate(ctaClicks, pageViews);
+    const authRate = conversionRate(authSuccesses, ctaClicks);
+    const scanRate = conversionRate(scans, authSuccesses || ctaClicks);
+    if (pageViews >= 10 && ctaRate < 8) {
+      insights.push({
+        severity: "high",
+        type: "weak_cta",
+        title: `${intent} gets traffic but low CTA clicks`,
+        detail: `${pageViews} views, ${ctaClicks} CTA clicks, ${ctaRate}% view-to-click rate.`,
+        action: "Improve CTA copy, move the CTA higher, and make the page promise match the search pain.",
+        target: intent,
+      });
+    }
+    if (ctaClicks >= 5 && authRate < 20) {
+      insights.push({
+        severity: "medium",
+        type: "auth_friction",
+        title: `${intent} clicks are not becoming users`,
+        detail: `${ctaClicks} CTA clicks, ${authSuccesses} auth successes, ${authRate}% click-to-auth rate.`,
+        action: "Review registration copy, Google SSO flow, and whether the intent card explains the next step clearly.",
+        target: intent,
+      });
+    }
+    if (authSuccesses >= 2 && awsConnects === 0) {
+      insights.push({
+        severity: "high",
+        type: "connect_friction",
+        title: `${intent} users are not connecting AWS`,
+        detail: `${authSuccesses} auth successes, ${awsConnects} AWS connections saved.`,
+        action: "Review AWS onboarding friction, CloudFormation copy, and whether the scan focus reassures read-only access.",
+        target: intent,
+      });
+    }
+    if ((authSuccesses || ctaClicks) >= 2 && scans === 0) {
+      insights.push({
+        severity: "medium",
+        type: "scan_friction",
+        title: `${intent} has no scans started`,
+        detail: `${authSuccesses} auth successes and ${ctaClicks} CTA clicks, but no scans.`,
+        action: "Make the scan button more prominent after AWS connect and explain expected scan time.",
+        target: intent,
+      });
+    }
+    if (pageViews >= 5 && ctaRate >= 20 && scanRate >= 25) {
+      insights.push({
+        severity: "low",
+        type: "promote_winner",
+        title: `${intent} is converting well`,
+        detail: `${ctaRate}% view-to-click and ${scanRate}% downstream scan conversion.`,
+        action: "Promote this page, create a follow-up comparison section, and use the same CTA pattern on weaker pages.",
+        target: intent,
+      });
+    }
+  }
+  for (const row of resources) {
+    const views = Number(row.page_views || 0);
+    const clicks = Number(row.cta_clicks || 0);
+    const ctr = conversionRate(clicks, views);
+    if (views >= 20 && ctr < 5) {
+      insights.push({
+        severity: "high",
+        type: "resource_cta_underperforming",
+        title: `${row.resource} has weak page CTR`,
+        detail: `${views} views, ${clicks} CTA clicks, ${ctr}% CTR.`,
+        action: "Rewrite the first-screen CTA and add a concrete evidence promise near the first paragraph.",
+        target: row.resource,
+      });
+    }
+  }
+  return insights.sort((a, b) => {
+    const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    return (severityOrder[String(a.severity)] ?? 3) - (severityOrder[String(b.severity)] ?? 3);
+  }).slice(0, 12);
+}
+
+function csvCell(value: unknown): string {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function csv(rows: unknown[][]): string {
+  return `${rows.map((row) => row.map(csvCell).join(",")).join("\n")}\n`;
+}
+
 async function adminGrowthOverview(req: RequestLike) {
   if (!pool) throw new Error("CloudPrune database is not configured.");
   const admin = adminSession(req);
@@ -153,27 +252,80 @@ async function adminGrowthOverview(req: RequestLike) {
     ),
   ]);
 
+  const intentData = intentRows.rows.map((row: Record<string, any>) => ({
+    intent: row.intent,
+    events: row.events,
+    pageViews: row.page_views,
+    ctaClicks: row.cta_clicks,
+    authSuccesses: row.auth_successes,
+    awsConnects: row.aws_connects,
+    scans: row.scans,
+    recommendationViews: row.recommendation_views,
+    ctaRate: conversionRate(row.cta_clicks, row.page_views),
+    authRate: conversionRate(row.auth_successes, row.cta_clicks),
+    scanRate: conversionRate(row.scans, row.auth_successes || row.cta_clicks),
+  }));
+  const resourceData = resourceRows.rows.map((row: Record<string, any>) => ({
+    resource: row.resource,
+    title: row.title,
+    pageViews: row.page_views,
+    ctaClicks: row.cta_clicks,
+    events: row.events,
+    ctr: conversionRate(row.cta_clicks, row.page_views),
+  }));
   return {
     eventTotals: eventTotals.rows.map((row: Record<string, any>) => ({ eventType: row.event_type, events: row.events })),
-    intents: intentRows.rows.map((row: Record<string, any>) => ({
-      intent: row.intent,
-      events: row.events,
-      pageViews: row.page_views,
-      ctaClicks: row.cta_clicks,
-      authSuccesses: row.auth_successes,
-      awsConnects: row.aws_connects,
-      scans: row.scans,
-      recommendationViews: row.recommendation_views,
-    })),
-    resources: resourceRows.rows.map((row: Record<string, any>) => ({
-      resource: row.resource,
-      title: row.title,
-      pageViews: row.page_views,
-      ctaClicks: row.cta_clicks,
-      events: row.events,
-    })),
+    insights: growthInsights(intentRows.rows, resourceRows.rows),
+    intents: intentData,
+    resources: resourceData,
     recentEvents: recentRows.rows.map(publicGrowthEvent),
   };
 }
 
-export { adminGrowthOverview, recordGrowthEvent };
+async function adminGrowthCsv(req: RequestLike, kind: string) {
+  const overview = await adminGrowthOverview(req);
+  if (kind === "events") {
+    return csv([
+      ["createdAt", "eventType", "intent", "source", "resourceSlug", "actorEmail", "tenant", "path"],
+      ...overview.recentEvents.map((event: Record<string, any>) => [
+        event.createdAt,
+        event.eventType,
+        event.intent,
+        event.source,
+        event.resourceSlug,
+        event.actorEmail,
+        event.tenant,
+        event.path,
+      ]),
+    ]);
+  }
+  return csv([
+    ["type", "name", "events", "pageViews", "ctaClicks", "authSuccesses", "awsConnects", "scans", "recommendationViews", "rate"],
+    ...overview.intents.map((item: Record<string, any>) => [
+      "intent",
+      item.intent,
+      item.events,
+      item.pageViews,
+      item.ctaClicks,
+      item.authSuccesses,
+      item.awsConnects,
+      item.scans,
+      item.recommendationViews,
+      `${item.ctaRate}%`,
+    ]),
+    ...overview.resources.map((item: Record<string, any>) => [
+      "resource",
+      item.resource,
+      item.events,
+      item.pageViews,
+      item.ctaClicks,
+      "",
+      "",
+      "",
+      "",
+      `${item.ctr}%`,
+    ]),
+  ]);
+}
+
+export { adminGrowthCsv, adminGrowthOverview, recordGrowthEvent };

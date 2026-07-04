@@ -790,9 +790,12 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
           events: 12,
           pageViews: 8,
           ctaClicks: 3,
+          ctaRate: 38,
           authSuccesses: 1,
+          authRate: 33,
           awsConnects: 1,
           scans: 1,
+          scanRate: 100,
           recommendationViews: 1,
         }],
         resources: [{
@@ -801,6 +804,15 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
           pageViews: 8,
           ctaClicks: 3,
           events: 11,
+          ctr: 38,
+        }],
+        insights: [{
+          severity: "high",
+          type: "connect_friction",
+          title: "idle-ec2 users are not connecting AWS",
+          detail: "2 auth successes, 0 AWS connections saved.",
+          action: "Review AWS onboarding friction.",
+          target: "idle-ec2",
         }],
         recentEvents: [{
           id: "growth-1",
@@ -820,6 +832,11 @@ test("CloudPrune admin growth route renders funnel metrics", async () => {
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.match(app.innerHTML, /Growth funnel/);
+  assert.match(app.innerHTML, /Growth insights/);
+  assert.match(app.innerHTML, /Review AWS onboarding friction/);
+  assert.match(app.innerHTML, /Export summary CSV/);
+  assert.match(app.innerHTML, /href="\/cloudprune\/api\/admin\/growth\.csv"/);
+  assert.match(app.innerHTML, /href="\/cloudprune\/api\/admin\/growth\/events\.csv"/);
   assert.match(app.innerHTML, /Intent conversion/);
   assert.match(app.innerHTML, /idle-ec2/);
   assert.match(app.innerHTML, /How to Find Idle EC2 Instances/);
@@ -1685,9 +1702,13 @@ test("CloudPrune growth events have a dedicated table and API", () => {
   assert.match(dbSource, /cloudprune_growth_events_intent_idx/);
   assert.match(serverSource, /api\/growth\/events/);
   assert.match(serverSource, /api\/admin\/growth/);
+  assert.match(serverSource, /api\/admin\/growth\.csv/);
+  assert.match(serverSource, /api\/admin\/growth\/events\.csv/);
   assert.match(growthSource, /resource_cta_click/);
   assert.match(growthSource, /recommendation_viewed/);
   assert.match(growthSource, /admin_growth_viewed/);
+  assert.match(growthSource, /growthInsights/);
+  assert.match(growthSource, /adminGrowthCsv/);
 });
 
 test("CloudPrune JSON request bodies are capped before parsing", async () => {

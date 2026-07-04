@@ -1248,6 +1248,7 @@ function renderAdminGrowth() {
   const intents = growth.intents || [];
   const resources = growth.resources || [];
   const recentEvents = growth.recentEvents || [];
+  const insights = growth.insights || [];
   const totalEvents = eventTotals.reduce((total, item) => total + Number(item.events || 0), 0);
   const ctaClicks = eventTotals.find((item) => item.eventType === "resource_cta_click")?.events || 0;
   const authSuccesses = eventTotals.find((item) => item.eventType === "auth_success")?.events || 0;
@@ -1259,22 +1260,44 @@ function renderAdminGrowth() {
       <article class="kpi savings"><div class="kpi-icon">${ICONS.score}</div><span>Auth successes</span><strong>${Number(authSuccesses).toLocaleString()}</strong><em>Known users</em></article>
       <article class="kpi score"><div class="kpi-icon">${ICONS.aws}</div><span>Scans started</span><strong>${Number(scans).toLocaleString()}</strong><em>AWS proof points</em></article>
     </section>
+    <section class="panel growth-insights-panel">
+      <div class="panel-head">
+        <div><span class="eyebrow">Growth insights</span><h2>${insights.length} suggested actions</h2></div>
+        <div class="export-actions">
+          <a class="secondary-connect" href="${basePath()}/api/admin/growth.csv">Export summary CSV</a>
+          <a class="secondary-connect" href="${basePath()}/api/admin/growth/events.csv">Export events CSV</a>
+        </div>
+      </div>
+      <div class="growth-insights">
+        ${insights.map((item) => `
+          <article class="growth-insight ${escapeHtml(item.severity || "low")}">
+            <span>${escapeHtml(item.severity || "low")}</span>
+            <div>
+              <h3>${escapeHtml(item.title || "")}</h3>
+              <p>${escapeHtml(item.detail || "")}</p>
+              <strong>${escapeHtml(item.action || "")}</strong>
+            </div>
+          </article>
+        `).join("") || `<div class="empty">No growth insights yet. More events are needed before ranking actions.</div>`}
+      </div>
+    </section>
     <div class="admin-grid">
       <section class="panel table-panel">
         <div class="panel-head"><div><span class="eyebrow">Intent conversion</span><h2>${intents.length} intents</h2></div></div>
         <table>
-          <thead><tr><th>Intent</th><th>Views</th><th>CTA</th><th>Auth</th><th>AWS</th><th>Scans</th><th>Recs</th></tr></thead>
+          <thead><tr><th>Intent</th><th>Views</th><th>CTA</th><th>CTR</th><th>Auth</th><th>AWS</th><th>Scans</th><th>Recs</th></tr></thead>
           <tbody>${intents.map((item) => `
             <tr>
               <td><strong>${escapeHtml(item.intent)}</strong><span>${Number(item.events || 0).toLocaleString()} events</span></td>
               <td>${Number(item.pageViews || 0).toLocaleString()}</td>
               <td>${Number(item.ctaClicks || 0).toLocaleString()}</td>
+              <td>${Number(item.ctaRate || 0)}%</td>
               <td>${Number(item.authSuccesses || 0).toLocaleString()}</td>
               <td>${Number(item.awsConnects || 0).toLocaleString()}</td>
               <td>${Number(item.scans || 0).toLocaleString()}</td>
               <td>${Number(item.recommendationViews || 0).toLocaleString()}</td>
             </tr>
-          `).join("") || `<tr><td colspan="7" class="muted-row">No growth events yet.</td></tr>`}</tbody>
+          `).join("") || `<tr><td colspan="8" class="muted-row">No growth events yet.</td></tr>`}</tbody>
         </table>
       </section>
       <section class="panel table-panel">
@@ -1284,7 +1307,7 @@ function renderAdminGrowth() {
           <tbody>${resources.map((item) => {
             const views = Number(item.pageViews || 0);
             const clicks = Number(item.ctaClicks || 0);
-            const ctr = views ? `${Math.round((clicks / views) * 100)}%` : "-";
+            const ctr = views ? `${Number(item.ctr ?? Math.round((clicks / views) * 100))}%` : "-";
             return `
               <tr>
                 <td><strong>${escapeHtml(item.title || item.resource)}</strong><span>${escapeHtml(item.resource)}</span></td>
