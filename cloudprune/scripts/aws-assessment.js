@@ -719,6 +719,7 @@ function batchEc2OptimizationCandidate(instances, metrics, volumes, ec2Cost, sig
   const hasRuntimeSchedulingEvidence = candidates.some((item) => item.signalsFound.length > 0);
   return {
     candidates,
+    runningCount: running.length,
     estimatedSavings: dollars(storageSavings),
     confidence: candidates.every((item) => item.metric.rootDiskStatus === "observed" && item.metric.cpuStatus === "observed") ? "medium" : "low",
     statistics: {
@@ -749,6 +750,11 @@ function lambdaMemoryMb(job) {
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function lambdaFitSeconds(job) {
+  const value = Number(job.maxSeconds || job.p95Seconds || 0);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 function lambdaMonthlyCost(job, defaultLookbackDays) {
   const invocations = monthlyInvocations(job, defaultLookbackDays);
   const memoryMb = lambdaMemoryMb(job);
@@ -773,28 +779,27 @@ function scheduledLambdaMigrationCandidate(batchEc2Optimization, jobRuntimes, ec
   const candidateIds = new Set(batchEc2Optimization.candidates.map((item) => item.instance.InstanceId));
   const jobs = jobRuntimes.filter((job) => candidateIds.has(job.instanceId));
   if (!jobs.length) return null;
-  const withRuntimeAndMemory = jobs.filter((job) => lambdaMonthlyCost(job, days) != null);
-  if (!withRuntimeAndMemory.length) return null;
-  const directLambda = withRuntimeAndMemory.filter((job) => Number(job.maxSeconds || job.p95Seconds || 0) <= 900);
-  const longRunning = withRuntimeAndMemory.filter((job) => Number(job.maxSeconds || job.p95Seconds || 0) > 900);
+  const directLambda = jobs.filter((job) => lambdaMonthlyCost(job, days) != null && lambdaFitSeconds(job) != null && lambdaFitSeconds(job) <= 900);
+  const longRunning = jobs.filter((job) => lambdaFitSeconds(job) != null && lambdaFitSeconds(job) > 900);
+  const incomplete = jobs.filter((job) => lambdaFitSeconds(job) == null || lambdaMemoryMb(job) == null);
   if (!directLambda.length) return null;
   const projectedLambdaCost = dollars(directLambda.reduce((total, job) => total + lambdaMonthlyCost(job, days), 0));
-  const runningInstances = batchEc2Optimization.candidates.length;
-  const estimatedEc2Allocation = ec2Cost && runningInstances ? dollars(ec2Cost / runningInstances) : null;
-  const canEliminateHost = longRunning.length === 0;
-  const estimatedSavings = canEliminateHost && estimatedEc2Allocation != null ? Math.max(0, dollars(estimatedEc2Allocation - projectedLambdaCost)) : null;
+  const estimatedEc2Allocation = ec2Cost && batchEc2Optimization.runningCount ? dollars(ec2Cost / batchEc2Optimization.runningCount) : null;
+  const canEliminateHost = longRunning.length === 0 && incomplete.length === 0;
   return {
     directLambda,
     longRunning,
+    incomplete,
     projectedLambdaCost,
-    estimatedSavings,
-    confidence: longRunning.length ? "medium" : "high",
+    estimatedSavings: null,
+    confidence: longRunning.length || incomplete.length ? "medium" : "high",
     statistics: {
       "Direct Lambda candidates": directLambda.map((job) => `${job.serviceName || job.jobName}: ${monthlyInvocations(job, days).toLocaleString()} runs/mo, p95 ${formatDuration(job.p95Seconds)}, max ${formatDuration(job.maxSeconds)}, ${lambdaMemoryMb(job)} MB`).join("; "),
       "Projected Lambda cost": `$${projectedLambdaCost.toLocaleString()}/mo for direct candidates`,
       "Long-running blockers": longRunning.length ? longRunning.map((job) => `${job.serviceName || job.jobName}: max ${formatDuration(job.maxSeconds)}; split with SQS/Step Functions or keep as batch`).join("; ") : "none",
-      "EC2 elimination": canEliminateHost ? "All observed jobs fit within Lambda's 15-minute limit" : "Not yet; long-running jobs prevent eliminating the host as-is",
-      "EC2 cost context": estimatedEc2Allocation == null ? "Needs instance-level pricing or hourly Cost Explorer data" : `Rough current EC2 allocation is $${estimatedEc2Allocation.toLocaleString()}/mo for the candidate host`,
+      "Incomplete blockers": incomplete.length ? incomplete.map((job) => `${job.serviceName || job.jobName}: missing ${lambdaFitSeconds(job) == null ? "runtime" : "memory"} evidence`).join("; ") : "none",
+      "EC2 elimination": canEliminateHost ? "All observed jobs fit within Lambda's 15-minute limit, but savings still require instance-level cost attribution and state-removal validation" : "Not yet; long-running or incomplete jobs prevent eliminating the host as-is",
+      "EC2 cost context": estimatedEc2Allocation == null ? "Needs instance-level pricing or hourly Cost Explorer data" : `Rough account-level EC2 allocation is $${estimatedEc2Allocation.toLocaleString()}/mo per running instance; not used as claimed savings`,
     },
   };
 }
@@ -1080,8 +1085,8 @@ function buildFindings(assessment) {
       blastRadius: "Scheduled job code, environment variables, IAM permissions, local files, local database writes, outbound API calls, and notification side effects.",
       operationalRisk: "medium",
       downtimeRisk: "none for a parallel Lambda pilot; possible data consistency impact during cutover",
-      impactAnalysis: scheduledLambdaMigration.longRunning.length
-        ? "Observed runtime and memory evidence shows some scheduled jobs fit Lambda well, but at least one long-running job exceeds Lambda's 15-minute execution model and should be split into smaller SQS/Step Functions chunks before the EC2 host can be removed."
+      impactAnalysis: scheduledLambdaMigration.longRunning.length || scheduledLambdaMigration.incomplete.length
+        ? "Observed runtime and memory evidence shows some scheduled jobs fit Lambda well, but long-running or incomplete jobs still block EC2 host removal. Any job that exceeds Lambda's 15-minute execution model should be split into smaller SQS/Step Functions chunks before EC2 savings are claimed."
         : "Observed runtime and memory evidence shows the scheduled jobs fit Lambda's execution model. A parallel Lambda plus S3 pilot can reduce always-on or scheduled EC2 runtime if local state is removed.",
       minimizeImpact: "Run Lambda in parallel first, write outputs to S3 or a managed datastore, make jobs idempotent, compare outputs with the EC2 job, keep EC2 timers enabled until several successful matching runs, then disable one timer at a time.",
       rollbackPath: "Disable the EventBridge/Lambda trigger, re-enable the original systemd timer or EC2 schedule, and replay missed work from S3 or the source API.",

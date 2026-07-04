@@ -337,6 +337,78 @@ function elasticIpsCommand(region: string, maxItems: unknown = awsScanMaxInvento
   ];
 }
 
+function ec2InstanceIdFromLogStream(streamName: unknown): string | null {
+  return String(streamName || "").match(/i-[a-f0-9]{8,17}/)?.[0] || null;
+}
+
+function runtimeLogGroupCandidates(logGroups: any[]): any[] {
+  return logGroups.filter((group) => /system|journal|messages|stock|scanner|ec2/i.test(group.logGroupName || "")).slice(0, awsScanMaxSampledResources);
+}
+
+function memoryMbFromMessage(message: string): number | null {
+  const match = message.match(/(?:memory|rss|peak).*?([0-9.]+)\s*(KB|MB|GB|K|M|G)\b/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return null;
+  const unit = match[2].toUpperCase();
+  if (unit === "KB" || unit === "K") return Math.ceil(value / 1024);
+  if (unit === "GB" || unit === "G") return Math.ceil(value * 1024);
+  return Math.ceil(value);
+}
+
+function summarizeEc2JobRuntimeEvents(events: any[], lookbackDays: number): any[] {
+  const pending = new Map<string, number>();
+  const jobs = new Map<string, any>();
+  const serviceFrom = (message: string, verb: string) => message.match(new RegExp(`${verb}\\\\s+([^\\\\s]+\\\\.service)\\\\b`, "i"))?.[1] || null;
+  const addJob = (instanceId: string, serviceName: string) => {
+    const key = `${instanceId}\0${serviceName}`;
+    const current = jobs.get(key) || { instanceId, serviceName, runs: 0, lookbackDays, durations: [], memoryValues: [] };
+    jobs.set(key, current);
+    return current;
+  };
+  for (const event of events.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0))) {
+    const message = String(event.message || "");
+    const instanceId = ec2InstanceIdFromLogStream(event.logStreamName);
+    if (!instanceId) continue;
+    const starting = serviceFrom(message, "Starting");
+    if (starting) {
+      pending.set(`${instanceId}\0${starting}`, Number(event.timestamp || 0));
+      continue;
+    }
+    const finished = serviceFrom(message, "Finished");
+    if (finished) {
+      const key = `${instanceId}\0${finished}`;
+      const started = pending.get(key);
+      if (started) {
+        const job = addJob(instanceId, finished);
+        job.runs += 1;
+        job.durations.push(Math.max(0, (Number(event.timestamp || 0) - started) / 1000));
+        pending.delete(key);
+      }
+      continue;
+    }
+    const memoryMb = memoryMbFromMessage(message);
+    if (memoryMb) {
+      const serviceName = message.match(/([^:\s]+\.service)\b/)?.[1];
+      if (serviceName) addJob(instanceId, serviceName).memoryValues.push(memoryMb);
+    }
+  }
+  return Array.from(jobs.values()).map((job) => {
+    const durations = job.durations.sort((a: number, b: number) => a - b);
+    const memoryValues = job.memoryValues.sort((a: number, b: number) => a - b);
+    return {
+      instanceId: job.instanceId,
+      serviceName: job.serviceName,
+      runs: job.runs,
+      lookbackDays: job.lookbackDays,
+      averageSeconds: durations.length ? durations.reduce((total: number, value: number) => total + value, 0) / durations.length : null,
+      p95Seconds: durations.length ? durations[Math.min(durations.length - 1, Math.floor(durations.length * 0.95))] : null,
+      maxSeconds: durations.length ? durations[durations.length - 1] : null,
+      memoryMb: memoryValues.length ? memoryValues[Math.min(memoryValues.length - 1, Math.floor(memoryValues.length * 0.95))] : null,
+    };
+  });
+}
+
 function computeOptimizerEc2Command(region: string, maxItems: unknown = awsScanMaxInventoryItems): string[] {
   return [
     "compute-optimizer", "get-ec2-instance-recommendations",
@@ -590,6 +662,30 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
         activeSteps.delete(activeStep);
         await updateAwsScanProgress(scanId, completedSteps, totalSteps, runningScanMessage(activeSteps));
       }));
+    }
+    const runtimeLogGroups = runtimeLogGroupCandidates(mergeAwsCollection(results.logGroups, "logGroups").logGroups || []);
+    if (runtimeLogGroups.length) {
+      totalSteps += runtimeLogGroups.length;
+      results.ec2JobRuntimes = [];
+      const runtimeEvents: any[] = [];
+      const runtimeStartMs = Date.now() - Math.max(1, 7) * 24 * 60 * 60 * 1000;
+      for (const logGroup of runtimeLogGroups) {
+        const region = logGroup.Region || awsScanRegion;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Reading EC2 job runtime logs for ${logGroup.logGroupName}.`);
+        const events = await runAwsJsonCheck([
+          "logs", "filter-log-events",
+          "--region", region,
+          "--log-group-name", logGroup.logGroupName,
+          "--start-time", String(runtimeStartMs),
+          "--limit", String(Math.min(200, awsScanMaxInventoryItems)),
+          "--filter-pattern", "systemd",
+          "--query", "{events:events[].{timestamp:timestamp,message:message,logStreamName:logStreamName}}",
+        ], { env: scanEnv, timeoutMs: 45000 });
+        if (events.ok) runtimeEvents.push(...(events.data?.events || []));
+        completedSteps += 1;
+        await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed EC2 job runtime logs for ${logGroup.logGroupName}.`);
+      }
+      results.ec2JobRuntimes = summarizeEc2JobRuntimeEvents(runtimeEvents, 7);
     }
     const targetGroupJobs = mergeAwsCollection(results.targetGroups, "TargetGroups").TargetGroups
       .slice(0, awsScanMaxSampledResources)

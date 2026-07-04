@@ -590,7 +590,7 @@ test("EC2 scheduled job Lambda recommendation uses observed runtime and memory e
   assert.match(lambda.statistics["Direct Lambda candidates"], /trade-trigger-monitor\.service: 416 runs\/mo, p95 2s, max 3s, 256 MB/);
   assert.match(lambda.statistics["Direct Lambda candidates"], /paper-portfolio-monitor\.service: 2,058 runs\/mo, p95 4\.1m, max 5\.3m, 512 MB/);
   assert.match(lambda.statistics["Long-running blockers"], /massive-intraday-update\.service: max 6\.9h/);
-  assert.equal(lambda.statistics["EC2 elimination"], "Not yet; long-running jobs prevent eliminating the host as-is");
+  assert.equal(lambda.statistics["EC2 elimination"], "Not yet; long-running or incomplete jobs prevent eliminating the host as-is");
   assert.match(lambda.impactAnalysis, /exceeds Lambda's 15-minute execution model/);
 });
 
@@ -626,6 +626,57 @@ test("EC2 scheduled job Lambda recommendation requires runtime and memory eviden
   });
 
   assert.equal(report.findings.some((finding) => finding.id === "ec2-scheduled-jobs-to-lambda"), false);
+});
+
+test("EC2 scheduled job Lambda recommendation treats incomplete long jobs as blockers", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 7,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [{ Groups: [{ Keys: ["Amazon Elastic Compute Cloud - Compute"], Metrics: { UnblendedCost: { Amount: "60", Unit: "USD" } } }] }] } },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [{
+              InstanceId: "i-scanner",
+              State: { Name: "running" },
+              RootDeviceName: "/dev/xvda",
+              BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { VolumeId: "vol-root" } }],
+              Tags: [{ Key: "Name", Value: "scanner-worker" }],
+            }],
+          }],
+        },
+      },
+      ec2Metrics: { service: "CloudWatch EC2 Metrics", ok: true, data: { instances: [{ id: "i-scanner", averageCpu: 2, maximumCpu: 10, cpuStatus: "observed", rootDiskStatus: "observed", maximumRootDisk: 8 }] } },
+      ebsVolumes: { service: "EBS", ok: true, data: { Volumes: [{ VolumeId: "vol-root", State: "in-use", Size: 100, VolumeType: "gp3", Attachments: [{ InstanceId: "i-scanner", VolumeId: "vol-root" }] }] } },
+      albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
+      ec2JobRuntimes: {
+        service: "EC2 Job Runtime Logs",
+        ok: true,
+        data: {
+          jobs: [
+            { instanceId: "i-scanner", serviceName: "short.service", runs: 10, lookbackDays: 7, p95Seconds: 2, maxSeconds: 3, memoryMb: 256 },
+            { instanceId: "i-scanner", serviceName: "average-only.service", runs: 10, lookbackDays: 7, averageSeconds: 2, memoryMb: 256 },
+            { instanceId: "i-scanner", serviceName: "long-missing-memory.service", runs: 2, lookbackDays: 7, maxSeconds: 1200 },
+          ],
+        },
+      },
+    },
+  });
+  const lambda = report.findings.find((finding) => finding.id === "ec2-scheduled-jobs-to-lambda");
+
+  assert.ok(lambda);
+  assert.equal(lambda.estimatedMonthlySavings, null);
+  assert.match(lambda.statistics["Direct Lambda candidates"], /short\.service/);
+  assert.match(lambda.statistics["Long-running blockers"], /long-missing-memory\.service: max 20m/);
+  assert.match(lambda.statistics["Incomplete blockers"], /average-only\.service: missing runtime evidence/);
+  assert.match(lambda.statistics["Incomplete blockers"], /long-missing-memory\.service: missing memory evidence/);
+  assert.match(lambda.statistics["EC2 cost context"], /not used as claimed savings/);
 });
 
 test("EC2 batch host optimization does not shrink high-disk root volumes", () => {
