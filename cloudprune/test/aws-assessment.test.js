@@ -475,6 +475,9 @@ test("EC2 batch host optimization finds stockscanner-style disk and schedule opp
             cpuStatus: "observed",
             diskStatus: "observed",
             maximumDisk: 8,
+            rootDiskStatus: "observed",
+            maximumRootDisk: 8,
+            rootDiskDimensions: [{ Name: "path", Value: "/" }],
           }],
         },
       },
@@ -504,7 +507,7 @@ test("EC2 batch host optimization finds stockscanner-style disk and schedule opp
   assert.ok(batch);
   assert.equal(batch.title, "Assess scheduling and disk right-sizing for 1 EC2 batch host");
   assert.equal(batch.statistics["Root volume right-size"], "stocks-scanner-1: 150 GiB -> 20 GiB");
-  assert.equal(batch.statistics["Observed disk"], "stocks-scanner-1: 8%");
+  assert.equal(batch.statistics["Observed root disk"], "stocks-scanner-1: 8%");
   assert.match(batch.statistics["Batch/schedule signals"], /scanner/);
   assert.equal(batch.estimatedMonthlySavings, 10.4);
   assert.match(batch.impactAnalysis, /Root-volume shrink requires planned downtime/);
@@ -539,7 +542,7 @@ test("EC2 batch host optimization does not shrink high-disk root volumes", () =>
       ec2Metrics: {
         service: "CloudWatch EC2 Metrics",
         ok: true,
-        data: { instances: [{ id: "i-busy-batch", averageCpu: 3, maximumCpu: 12, cpuStatus: "observed", diskStatus: "observed", maximumDisk: 82 }] },
+        data: { instances: [{ id: "i-busy-batch", averageCpu: 3, maximumCpu: 12, cpuStatus: "observed", diskStatus: "observed", maximumDisk: 82, rootDiskStatus: "observed", maximumRootDisk: 82 }] },
       },
       ebsVolumes: {
         service: "EBS",
@@ -586,6 +589,47 @@ test("EC2 batch host optimization requires observed CPU and disk metrics", () =>
         service: "EBS",
         ok: true,
         data: { Volumes: [{ VolumeId: "vol-unsampled-root", State: "in-use", Size: 150, VolumeType: "gp3", Attachments: [{ InstanceId: "i-unsampled-scanner", VolumeId: "vol-unsampled-root" }] }] },
+      },
+      albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
+    },
+  });
+
+  assert.equal(report.findings.some((finding) => finding.id === "ec2-batch-host-optimization"), false);
+});
+
+test("EC2 batch host optimization requires root filesystem disk telemetry", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [] } },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [{
+              InstanceId: "i-nonroot-scanner",
+              State: { Name: "running" },
+              RootDeviceName: "/dev/xvda",
+              BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { VolumeId: "vol-nonroot" } }],
+              Tags: [{ Key: "Name", Value: "nonroot-scanner-worker" }],
+            }],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: { instances: [{ id: "i-nonroot-scanner", averageCpu: 2, maximumCpu: 10, cpuStatus: "observed", diskStatus: "observed", maximumDisk: 4, rootDiskStatus: "missing", maximumRootDisk: null }] },
+      },
+      ebsVolumes: {
+        service: "EBS",
+        ok: true,
+        data: { Volumes: [{ VolumeId: "vol-nonroot", State: "in-use", Size: 150, VolumeType: "gp3", Attachments: [{ InstanceId: "i-nonroot-scanner", VolumeId: "vol-nonroot" }] }] },
       },
       albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
     },

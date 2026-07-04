@@ -695,8 +695,8 @@ function batchEc2OptimizationCandidate(instances, metrics, volumes, ec2Cost, sig
     const signalsFound = batchWorkloadSignal(instance, inventoryItem);
     const attachedTargetGroups = albMappings.filter((group) => (group.targets || []).some((target) => target.id === instance.InstanceId));
     if (!rootVolume || Number(rootVolume.Size || 0) < 80 || attachedTargetGroups.length) return null;
-    if (metric.cpuStatus !== "observed" || metric.diskStatus !== "observed") return null;
-    const targetGiB = targetRootVolumeSizeGiB(Number(rootVolume.Size || 0), metric.maximumDisk);
+    if (metric.cpuStatus !== "observed" || metric.rootDiskStatus !== "observed") return null;
+    const targetGiB = targetRootVolumeSizeGiB(Number(rootVolume.Size || 0), metric.maximumRootDisk);
     if (!targetGiB || targetGiB > Number(rootVolume.Size || 0) * 0.75) return null;
     const lowCpu = metric.averageCpu != null && Number(metric.averageCpu) <= 15;
     const noLargeCpuSpike = metric.maximumCpu != null && Number(metric.maximumCpu) <= 70;
@@ -720,11 +720,11 @@ function batchEc2OptimizationCandidate(instances, metrics, volumes, ec2Cost, sig
   return {
     candidates,
     estimatedSavings: dollars(storageSavings),
-    confidence: candidates.every((item) => item.metric.diskStatus === "observed" && item.metric.cpuStatus === "observed") ? "medium" : "low",
+    confidence: candidates.every((item) => item.metric.rootDiskStatus === "observed" && item.metric.cpuStatus === "observed") ? "medium" : "low",
     statistics: {
       "Candidate hosts": String(candidates.length),
       "Root volume right-size": candidates.map((item) => `${instanceName(item.instance)}: ${item.rootVolume.Size} GiB -> ${item.targetGiB} GiB`).join(", "),
-      "Observed disk": candidates.map((item) => `${instanceName(item.instance)}: ${item.metric.maximumDisk == null ? "not available" : formatPercent(item.metric.maximumDisk)}`).join(", "),
+      "Observed root disk": candidates.map((item) => `${instanceName(item.instance)}: ${item.metric.maximumRootDisk == null ? "not available" : formatPercent(item.metric.maximumRootDisk)}`).join(", "),
       "Observed CPU": candidates.map((item) => `${instanceName(item.instance)}: avg ${item.metric.averageCpu == null ? "not available" : formatPercent(item.metric.averageCpu)}, peak ${item.metric.maximumCpu == null ? "not available" : formatPercent(item.metric.maximumCpu)}`).join(", "),
       "Batch/schedule signals": candidates.map((item) => `${instanceName(item.instance)}: ${item.signalsFound.length ? item.signalsFound.join(", ") : "none"}`).join(", "),
       "Storage savings": `$${dollars(storageSavings).toLocaleString()}/mo before snapshots`,

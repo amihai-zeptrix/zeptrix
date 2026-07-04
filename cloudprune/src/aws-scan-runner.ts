@@ -191,6 +191,15 @@ function s3StorageStatsFromMetricData(data: any) {
   };
 }
 
+function dimensionValue(dimensions: any[], name: string): string | null {
+  return dimensions.find((dimension) => String(dimension.Name || "").toLowerCase() === name.toLowerCase())?.Value || null;
+}
+
+function isRootDiskMetric(dimensions: any[]): boolean {
+  const path = dimensionValue(dimensions, "path") || dimensionValue(dimensions, "mount") || dimensionValue(dimensions, "mountpoint");
+  return path === "/";
+}
+
 async function cloudWatchAgentMetricSummary(scanEnv: Record<string, string>, region: string, instanceId: string, metricName: string) {
   const listed = await runAwsJsonCheck([
     "cloudwatch", "list-metrics",
@@ -219,15 +228,23 @@ async function cloudWatchAgentMetricSummary(scanEnv: Record<string, string>, reg
       summaries.push({
         average: metricAverage(data.data?.Datapoints),
         maximum: metricMaximum(data.data?.Datapoints),
+        dimensions: metric.Dimensions || [],
       });
     }
   }
   const averages = summaries.map((summary) => summary.average).filter((value) => value != null);
   const maximums = summaries.map((summary) => summary.maximum).filter((value) => value != null);
+  const rootSummaries = metricName === "disk_used_percent" ? summaries.filter((summary) => isRootDiskMetric(summary.dimensions)) : [];
+  const rootAverages = rootSummaries.map((summary) => summary.average).filter((value) => value != null);
+  const rootMaximums = rootSummaries.map((summary) => summary.maximum).filter((value) => value != null);
   return {
     status: averages.length || maximums.length ? "observed" : "no-data",
     average: averages.length ? Math.max(...averages) : null,
     maximum: maximums.length ? Math.max(...maximums) : null,
+    rootStatus: metricName === "disk_used_percent" ? (rootAverages.length || rootMaximums.length ? "observed" : "missing") : null,
+    rootAverage: rootAverages.length ? Math.max(...rootAverages) : null,
+    rootMaximum: rootMaximums.length ? Math.max(...rootMaximums) : null,
+    rootDimensions: rootSummaries[0]?.dimensions || null,
     error: null,
   };
 }
@@ -697,6 +714,10 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
           averageDisk: disk.average,
           maximumDisk: disk.maximum,
           diskStatus: disk.status,
+          averageRootDisk: disk.rootAverage,
+          maximumRootDisk: disk.rootMaximum,
+          rootDiskStatus: disk.rootStatus,
+          rootDiskDimensions: disk.rootDimensions,
           diskError: disk.error,
         });
         completedSteps += 1;
