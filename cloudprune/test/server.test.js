@@ -329,6 +329,30 @@ test("generated CloudPrune resource pages expose canonical and social metadata",
   assert.match(pageHtml, /<meta name="twitter:description" content="Unattached EBS volumes keep charging/);
 });
 
+test("generated CloudPrune resource pages expose structured data", () => {
+  const resourcesRoot = path.join(__dirname, "..", "cloudprune", "resources");
+  const readJsonLd = (html) => {
+    const match = html.match(/<script type="application\/ld\+json">([^<]+)<\/script>/);
+    assert.ok(match, "page has JSON-LD script");
+    return JSON.parse(match[1]);
+  };
+
+  const indexHtml = fs.readFileSync(path.join(resourcesRoot, "index.html"), "utf8");
+  const indexData = readJsonLd(indexHtml);
+  assert.equal(indexData["@type"], "CollectionPage");
+  assert.equal(indexData.url, "https://zeptrix.io/cloudprune/resources/");
+  assert.equal(indexData.mainEntity["@type"], "ItemList");
+  assert.equal(indexData.mainEntity.itemListElement.length, 10);
+
+  const pageSlug = "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them";
+  const pageHtml = fs.readFileSync(path.join(resourcesRoot, pageSlug, "index.html"), "utf8");
+  const pageData = readJsonLd(pageHtml);
+  assert.equal(pageData["@type"], "Article");
+  assert.equal(pageData.url, `https://zeptrix.io/cloudprune/resources/${pageSlug}`);
+  assert.equal(pageData.author.name, "CloudPrune");
+  assert.match(pageData.description, /Unattached EBS volumes keep charging/);
+});
+
 test("compiled server serves app shell and copied assets", async () => {
   await withHttpServer(server, async (baseUrl) => {
     const root = await fetch(`${baseUrl}/cloudprune/`);
