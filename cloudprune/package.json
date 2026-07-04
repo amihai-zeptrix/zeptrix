@@ -8,6 +8,8 @@
     "build": "tsc -p tsconfig.build.json && node scripts/copy-build-assets.js",
     "clean": "rm -rf dist",
     "dev": "npm run build && node dist/server.js",
+    "growth:followup": "node scripts/followup-growth-shortlist.js",
+    "growth:shortlist": "python3 scripts/cloudprune_growth_shortlist.py",
     "start": "node dist/server.js",
     "test": "npm run build && node --test",
     "typecheck": "tsc --noEmit",
@@ -21,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
+    "puppeteer-core": "^25.3.0",
     "typescript": "^6.0.3"
   }
 }
