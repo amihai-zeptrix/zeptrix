@@ -1,6 +1,7 @@
 [
   {
     "title": "Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them",
+    "seoTitle": "Unattached EBS Volumes Cost Money",
     "slug": "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them",
     "score": "36",
     "query": "unused EBS volumes cost / find unattached EBS volumes AWS",
@@ -12,6 +13,7 @@
   },
   {
     "title": "FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform",
+    "seoTitle": "FinOps for Small Teams",
     "slug": "finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform",
     "score": "35",
     "query": "FinOps tools for small teams / cloud cost optimization tools for small companies",
@@ -23,6 +25,7 @@
   },
   {
     "title": "Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path",
+    "seoTitle": "Are Unattached EBS Volumes Charged?",
     "slug": "are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path",
     "score": "35",
     "query": "are unattached EBS volumes charged",
@@ -34,6 +37,7 @@
   },
   {
     "title": "Why Is My AWS Bill Suddenly High? A 15-Minute Triage Checklist",
+    "seoTitle": "Why Is My AWS Bill Suddenly High?",
     "slug": "why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist",
     "score": "32",
     "query": "AWS bill suddenly high / why is my AWS bill so high",
@@ -45,6 +49,7 @@
   },
   {
     "title": "AWS Cost Explorer Shows the Spend. What Should You Do Next?",
+    "seoTitle": "AWS Cost Explorer Next Steps",
     "slug": "aws-cost-explorer-shows-the-spend-what-should-you-do-next",
     "score": "31",
     "query": "unexpected high AWS billing",
@@ -56,6 +61,7 @@
   },
   {
     "title": "Cloud Cost Optimization Tools That Actually Work: What to Test in a Proof of Value",
+    "seoTitle": "Cloud Cost Optimization Tools That Work",
     "slug": "cloud-cost-optimization-tools-that-actually-work-what-to-test-in-a-proof-of-value",
     "score": "30",
     "query": "cloud cost optimization tools that actually work",
@@ -67,6 +73,7 @@
   },
   {
     "title": "CloudWatch Costs Too High? Find the Log Groups and Metrics Driving the Bill",
+    "seoTitle": "CloudWatch Costs Too High?",
     "slug": "cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill",
     "score": "29",
     "query": "CloudWatch cost optimization / reduce CloudWatch charges",
@@ -78,6 +85,7 @@
   },
   {
     "title": "CloudWatch Logs Cost Optimization: Retention Helps, But Ingestion Is the Real Bill Driver",
+    "seoTitle": "CloudWatch Logs Cost Optimization",
     "slug": "cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver",
     "score": "28",
     "query": "CloudWatch logs cost optimisation techniques",
@@ -89,6 +97,7 @@
   },
   {
     "title": "Trusted Advisor, Compute Optimizer, or Cost Optimization Hub: Which AWS Recommendation Source Should You Use?",
+    "seoTitle": "AWS Cost Recommendation Sources",
     "slug": "trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source",
     "score": "27",
     "query": "Trusted Advisor vs Cost Optimization Hub",
@@ -100,6 +109,7 @@
   },
   {
     "title": "AWS Cost Optimization Hub vs CloudPrune: Recommendations Are Only Step One",
+    "seoTitle": "AWS Cost Optimization Hub vs CloudPrune",
     "slug": "aws-cost-optimization-hub-vs-cloudprune-recommendations-are-only-step-one",
     "score": "27",
     "query": "AWS cost recommendations / Cost Optimization Hub recommendations",

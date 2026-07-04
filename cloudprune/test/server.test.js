@@ -301,6 +301,19 @@ test("serves generated CloudPrune growth resource pages", async () => {
   });
 });
 
+test("generated CloudPrune resource pages keep concise SEO titles", () => {
+  const resourcesRoot = path.join(__dirname, "..", "cloudprune", "resources");
+  const directories = fs.readdirSync(resourcesRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  assert.equal(directories.length, 10);
+  for (const directory of directories) {
+    const html = fs.readFileSync(path.join(resourcesRoot, directory.name, "index.html"), "utf8");
+    const title = html.match(/<title>(.*?)<\/title>/)?.[1] || "";
+    assert.ok(title.length > 0, `${directory.name} has a title`);
+    assert.ok(title.length <= 90, `${directory.name} title is ${title.length} characters`);
+    assert.match(html, /<h1>[^<]+<\/h1>/);
+  }
+});
+
 test("compiled server serves app shell and copied assets", async () => {
   await withHttpServer(server, async (baseUrl) => {
     const root = await fetch(`${baseUrl}/cloudprune/`);
