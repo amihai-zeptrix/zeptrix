@@ -359,7 +359,7 @@ function memoryMbFromMessage(message: string): number | null {
 function summarizeEc2JobRuntimeEvents(events: any[], lookbackDays: number): any[] {
   const pending = new Map<string, number>();
   const jobs = new Map<string, any>();
-  const serviceFrom = (message: string, verb: string) => message.match(new RegExp(`${verb}\\\\s+([^\\\\s]+\\\\.service)\\\\b`, "i"))?.[1] || null;
+  const serviceFrom = (message: string, verb: string) => message.match(new RegExp(`${verb}\\s+([^\\s]+\\.service)\\b`, "i"))?.[1] || null;
   const addJob = (instanceId: string, serviceName: string) => {
     const key = `${instanceId}\0${serviceName}`;
     const current = jobs.get(key) || { instanceId, serviceName, runs: 0, lookbackDays, durations: [], memoryValues: [] };
@@ -682,6 +682,7 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
           "--query", "{events:events[].{timestamp:timestamp,message:message,logStreamName:logStreamName}}",
         ], { env: scanEnv, timeoutMs: 45000 });
         if (events.ok) runtimeEvents.push(...(events.data?.events || []));
+        else errors.push({ check: "ec2JobRuntimes", message: `Unable to read runtime logs from ${logGroup.logGroupName}: ${events.error?.message || events.error}` });
         completedSteps += 1;
         await updateAwsScanProgress(scanId, completedSteps, totalSteps, `Completed EC2 job runtime logs for ${logGroup.logGroupName}.`);
       }
@@ -955,4 +956,5 @@ export {
   computeOptimizerMaxResults,
   elasticIpsCommand,
   performAwsScan,
+  summarizeEc2JobRuntimeEvents,
 };

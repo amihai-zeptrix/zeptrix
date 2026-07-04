@@ -9,7 +9,7 @@ const testAdminPassword = ["cloudprune", "test", "admin", "password"].join("-");
 process.env.CLOUDPRUNE_ADMIN_PASSWORD = testAdminPassword;
 const { buildReport } = require("../scripts/aws-assessment");
 const { awsScanCounts, buildAwsAssessment, costFromCostExplorer, publicRecommendation } = require(path.join(__dirname, "../dist/src/aws-scan-report.js"));
-const { capAwsRegionalResult, computeOptimizerEc2Command, computeOptimizerMaxResults, elasticIpsCommand } = require(path.join(__dirname, "../dist/src/aws-scan-runner.js"));
+const { capAwsRegionalResult, computeOptimizerEc2Command, computeOptimizerMaxResults, elasticIpsCommand, summarizeEc2JobRuntimeEvents } = require(path.join(__dirname, "../dist/src/aws-scan-runner.js"));
 const { maxJsonBodyBytes, readJson } = require(path.join(__dirname, "../dist/src/http-utils.js"));
 const { cloudpruneOAuthState, cookieValue, externalIdForAccount, googleRedirectUri, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan, server, signGoogleRegistration, signSession, staticFilePathForUrlPath, validateGoogleProfile, verifyCloudpruneOAuthState, verifyGoogleRegistration, verifySession } = require(path.join(__dirname, "../dist/server.js"));
 
@@ -1668,6 +1668,34 @@ test("AWS assessment exposes traffic mapping and app inventory checks", () => {
   assert.equal(assessment.checks.ssmInstances.data.InstanceInformationList[0].InstanceId, "i-1");
   assert.equal(assessment.checks.ssmApplications.data.instances[0].applications[0].name, "nodejs");
   assert.equal(assessment.checks.ec2JobRuntimes.data.jobs[0].serviceName, "job.service");
+});
+
+test("AWS assessment marks EC2 job runtime logs failed when collection fails", () => {
+  const assessment = buildAwsAssessment({ ec2JobRuntimes: [] }, ["us-east-1"], [
+    { check: "ec2JobRuntimes", message: "AccessDenied" },
+  ]);
+
+  assert.equal(assessment.checks.ec2JobRuntimes.ok, false);
+  assert.match(assessment.checks.ec2JobRuntimes.error, /AccessDenied/);
+});
+
+test("AWS scanner summarizes systemd runtime log events", () => {
+  const jobs = summarizeEc2JobRuntimeEvents([
+    { timestamp: 1000, logStreamName: "i-1234567890abcdef0/system", message: "systemd[1]: Starting trade-trigger-monitor.service - Stock Scanner manual trade trigger monitor..." },
+    { timestamp: 3000, logStreamName: "i-1234567890abcdef0/system", message: "systemd[1]: Finished trade-trigger-monitor.service - Stock Scanner manual trade trigger monitor." },
+    { timestamp: 3100, logStreamName: "i-1234567890abcdef0/system", message: "systemd[1]: trade-trigger-monitor.service: Consumed 1.2s CPU time." },
+    { timestamp: 4000, logStreamName: "i-1234567890abcdef0/system", message: "systemd[1]: trade-trigger-monitor.service: peak memory 256 MB." },
+    { timestamp: 10000, logStreamName: "i-1234567890abcdef0/system", message: "systemd[1]: Starting trade-trigger-monitor.service - Stock Scanner manual trade trigger monitor..." },
+    { timestamp: 13000, logStreamName: "i-1234567890abcdef0/system", message: "systemd[1]: Finished trade-trigger-monitor.service - Stock Scanner manual trade trigger monitor." },
+  ], 7);
+
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].instanceId, "i-1234567890abcdef0");
+  assert.equal(jobs[0].serviceName, "trade-trigger-monitor.service");
+  assert.equal(jobs[0].runs, 2);
+  assert.equal(jobs[0].maxSeconds, 3);
+  assert.equal(jobs[0].p95Seconds, 3);
+  assert.equal(jobs[0].memoryMb, 256);
 });
 
 test("AWS assessment marks regional services failed when every region fails", () => {

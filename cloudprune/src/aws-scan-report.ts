@@ -120,7 +120,7 @@ export function buildAwsAssessment(results: AwsJson, regions: string[], errors: 
       apiGatewayRest: awsCheck("API Gateway REST APIs", mergeAwsCollection(results.apiGatewayRest, "items"), regionalCheckError(errors, "apiGatewayRest", regions, results.apiGatewayRest)),
       ssmInstances: awsCheck("SSM Managed Instances", mergeAwsCollection(results.ssmInstances, "InstanceInformationList"), regionalCheckError(errors, "ssmInstances", regions, results.ssmInstances)),
       ssmApplications: awsCheck("SSM Application Inventory", { instances: results.ssmApplications || [] }, null),
-      ec2JobRuntimes: awsCheck("EC2 Job Runtime Logs", { jobs: results.ec2JobRuntimes || [] }, null),
+      ec2JobRuntimes: awsCheck("EC2 Job Runtime Logs", { jobs: results.ec2JobRuntimes || [] }, checkError(errors, "ec2JobRuntimes")),
       computeOptimizerEc2: awsCheck("Compute Optimizer", mergeAwsCollection(results.computeOptimizerEc2, "instanceRecommendations"), regionalCheckError(errors, "computeOptimizerEc2", regions, results.computeOptimizerEc2)),
     },
     regions,

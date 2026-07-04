@@ -761,7 +761,7 @@ function lambdaMonthlyCost(job, defaultLookbackDays) {
   const durationSeconds = Number(job.p95Seconds || job.averageSeconds || 0);
   if (!invocations || !memoryMb || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return null;
   const gbSeconds = invocations * durationSeconds * (memoryMb / 1024);
-  return dollars(gbSeconds * LAMBDA_X86_GB_SECOND_PRICE + invocations * LAMBDA_REQUEST_PRICE);
+  return gbSeconds * LAMBDA_X86_GB_SECOND_PRICE + invocations * LAMBDA_REQUEST_PRICE;
 }
 
 function formatDuration(seconds) {
