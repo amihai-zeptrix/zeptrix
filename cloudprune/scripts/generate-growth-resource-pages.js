@@ -93,6 +93,35 @@ function resourceTrackingScript(item, canonicalUrl) {
     </script>`;
 }
 
+function resourceIndexTrackingScript(canonicalUrl) {
+  const payload = JSON.stringify({
+    source: "resource-index",
+    resourceSlug: "cloudprune-resources",
+    resourceTitle: "CloudPrune AWS Cost Resources",
+    intent: "aws-cost-scan",
+    path: "/cloudprune/resources/",
+    url: canonicalUrl,
+  }).replace(/</g, "\\u003c");
+  return `<script>
+      (() => {
+        const payload = ${payload};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>`;
+}
+
 function field(body, names) {
   for (const name of names) {
     const match = body.match(new RegExp(`^- ${name}: (.*)$`, "m"));
@@ -293,6 +322,7 @@ function indexHtml(items) {
     ${jsonLdScript(structuredData)}
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    ${resourceIndexTrackingScript(canonicalUrl)}
   </head>
   <body>
     <header class="resource-hero">
@@ -300,7 +330,7 @@ function indexHtml(items) {
       <p class="eyebrow">CloudPrune resources</p>
       <h1>AWS cost reduction playbooks for real bill pain.</h1>
       <p>Short, practical guides that turn AWS cost questions into read-only checks, impact analysis, and safe next steps.</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="/cloudprune/">Start a read-only CloudPrune scan</a>
     </header>
     <main>
       <section class="resource-list">

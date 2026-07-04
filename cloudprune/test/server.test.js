@@ -326,6 +326,12 @@ test("generated CloudPrune resource pages expose intent-aware CTAs and tracking"
     assert.ok(fs.existsSync(path.join(resourcesRoot, slug, "index.html")), `${slug} page exists`);
   }
 
+  const indexHtml = fs.readFileSync(path.join(resourcesRoot, "index.html"), "utf8");
+  assert.match(indexHtml, /resource_page_view/);
+  assert.match(indexHtml, /resource_cta_click/);
+  assert.match(indexHtml, /resourceSlug":"cloudprune-resources/);
+  assert.match(indexHtml, /data-resource-cta href="\/cloudprune\/"/);
+
   const idleHtml = fs.readFileSync(path.join(resourcesRoot, idleEc2Slug, "index.html"), "utf8");
   assert.match(idleHtml, /Scan for idle EC2 instances/);
   assert.match(idleHtml, /href="\/cloudprune\/\?intent=idle-ec2&amp;source=how-to-find-idle-ec2-instances/);
