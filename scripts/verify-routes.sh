@@ -113,7 +113,8 @@ assert_contains "$tmp_dir/cloudprune-resources.html" 'resourceSlug":"cloudprune-
 assert_contains "$tmp_dir/cloudprune-resources.html" 'data-resource-cta href="/cloudprune/"'
 
 fetch "/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them" "$tmp_dir/cloudprune-resource-ebs.html"
-assert_contains "$tmp_dir/cloudprune-resource-ebs.html" "<title>Unattached EBS Volumes Still Cost Money | CloudPrune</title>"
+assert_contains "$tmp_dir/cloudprune-resource-ebs.html" "<title>Unattached EBS Volumes Cost Money | CloudPrune</title>"
+assert_contains "$tmp_dir/cloudprune-resource-ebs.html" "<h1>Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them</h1>"
 assert_contains "$tmp_dir/cloudprune-resource-ebs.html" 'resource_page_view'
 assert_contains "$tmp_dir/cloudprune-resource-ebs.html" 'resource_cta_click'
 
