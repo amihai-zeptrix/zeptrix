@@ -752,6 +752,31 @@ button:hover { background: #1e4d43; }
   font-style: normal;
   font-weight: 800;
 }
+.experiment-outcome {
+  margin-top: 10px;
+  color: var(--forest);
+  font-weight: 800;
+}
+.growth-experiment-update {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+.growth-experiment-update select,
+.growth-experiment-update input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+}
+.growth-experiment-update button {
+  min-height: 42px;
+  white-space: nowrap;
+}
 .admin-users-table-row td {
   height: auto;
   padding: 0 14px 14px;
@@ -1755,6 +1780,7 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   .growth-experiment-form,
   .growth-experiment { grid-template-columns: 1fr; }
   .experiment-metrics { grid-template-columns: 1fr; }
+  .growth-experiment-update { grid-template-columns: 1fr; }
   .admin-user-row,
   .admin-reset-form {
     grid-template-columns: 1fr;

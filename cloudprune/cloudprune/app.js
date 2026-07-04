@@ -1324,6 +1324,7 @@ function renderAdminGrowth() {
               <h3>${escapeHtml(item.name || "")}</h3>
               <p>${escapeHtml(item.hypothesis || "")}</p>
               <strong>${escapeHtml(item.targetType || "resource")}: ${escapeHtml(item.target || "")}</strong>
+              ${item.outcomeNotes ? `<p class="experiment-outcome">${escapeHtml(item.outcomeNotes)}</p>` : ""}
               <div class="experiment-metrics">
                 <div><span>Before CTR</span><strong>${Number(item.metrics?.before?.ctaRate || 0)}%</strong><em>${Number(item.metrics?.before?.ctaClicks || 0).toLocaleString()} clicks</em></div>
                 <div><span>After CTR</span><strong>${Number(item.metrics?.after?.ctaRate || 0)}%</strong><em>${Number(item.metrics?.after?.ctaClicks || 0).toLocaleString()} clicks</em></div>
@@ -1331,6 +1332,13 @@ function renderAdminGrowth() {
                 <div><span>AWS connects</span><strong>${Number(item.metrics?.after?.awsConnects || 0).toLocaleString()}</strong><em>${signedDelta(item.metrics?.delta?.awsConnects || 0)} vs before</em></div>
                 <div><span>Scans</span><strong>${Number(item.metrics?.after?.scans || 0).toLocaleString()}</strong><em>${signedDelta(item.metrics?.delta?.scans || 0)} vs before</em></div>
               </div>
+              <form class="growth-experiment-update" data-growth-experiment-update-form="${escapeHtml(item.id || "")}">
+                <select name="status" aria-label="Experiment status">
+                  ${["planned", "active", "paused", "completed"].map((status) => `<option value="${status}" ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}
+                </select>
+                <input name="outcomeNotes" maxlength="800" placeholder="Decision or next action" value="${escapeHtml(item.outcomeNotes || "")}" />
+                <button type="submit">Save outcome</button>
+              </form>
             </div>
           </article>
         `).join("") || `<div class="empty">No experiments yet. Create one before changing a page or onboarding step.</div>`}
@@ -2146,6 +2154,31 @@ document.addEventListener("paste", (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  const growthExperimentUpdateForm = event.target.closest("[data-growth-experiment-update-form]");
+  if (growthExperimentUpdateForm) {
+    event.preventDefault();
+    const experimentId = growthExperimentUpdateForm.dataset.growthExperimentUpdateForm;
+    state.adminMessage = "Saving experiment outcome...";
+    render();
+    try {
+      const response = await fetch(`${basePath()}/api/admin/growth/experiments/${encodeURIComponent(experimentId)}`, {
+        method: "POST",
+        headers: authHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({
+          status: growthExperimentUpdateForm.elements.status.value,
+          outcomeNotes: growthExperimentUpdateForm.elements.outcomeNotes.value,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not save experiment outcome.");
+      state.adminMessage = `Updated experiment: ${body.experiment?.name || "growth experiment"}.`;
+      await refreshAdminGrowth();
+    } catch (error) {
+      state.adminMessage = error.message;
+      render();
+    }
+    return;
+  }
   const growthExperimentForm = event.target.closest("[data-growth-experiment-form]");
   if (growthExperimentForm) {
     event.preventDefault();
