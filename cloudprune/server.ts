@@ -21,7 +21,7 @@ const { externalIdForAccount, normalizeAwsRoleArn, normalizeAwsScanRegions, publ
 const { adminAuditLog } = require("./src/audit-service");
 const { initDatabase, pool } = require("./src/db");
 const { adminOverview, adminResetUserPassword, adminSpoofUser, adminTenantUsers, submitFeedback } = require("./src/feedback-service");
-const { adminGrowthOverview, recordGrowthEvent } = require("./src/growth-service");
+const { adminGrowthCsv, adminGrowthOverview, recordGrowthEvent } = require("./src/growth-service");
 const { completeGoogleRegistration, loginUser, recordAuthEvent, registerUser, updateUserProfile, userFromSession } = require("./src/user-service");
 const { failOrphanedAwsScansOnStartup, getAwsScan, saveAwsConnection, startAwsScan, stopAwsScan, workspaceForRequest } = require("./src/workspace-service");
 const {
@@ -80,6 +80,15 @@ const mimeTypes = {
 
 function hashOauthCode(code: unknown): string {
   return crypto.createHash("sha256").update(String(code)).digest("hex");
+}
+
+function csv(res: ServerResponse, filename: string, body: string): void {
+  res.writeHead(200, {
+    "content-type": "text/csv; charset=utf-8",
+    "content-disposition": `attachment; filename="${filename}"`,
+    "cache-control": "no-store",
+  });
+  res.end(body);
 }
 
 async function createOauthCode({ user = null, registration = null }: OAuthCodeInput): Promise<string> {
@@ -214,6 +223,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: 
     }
     if (req.method === "GET" && apiPath === "/api/admin/growth") {
       return json(res, 200, await adminGrowthOverview(req));
+    }
+    if (req.method === "GET" && apiPath === "/api/admin/growth.csv") {
+      return csv(res, "cloudprune-growth-summary.csv", await adminGrowthCsv(req, "summary"));
+    }
+    if (req.method === "GET" && apiPath === "/api/admin/growth/events.csv") {
+      return csv(res, "cloudprune-growth-events.csv", await adminGrowthCsv(req, "events"));
     }
     const adminTenantUsersMatch = apiPath.match(/^\/api\/admin\/tenants\/([0-9a-f-]{36})\/users$/i);
     if (req.method === "GET" && adminTenantUsersMatch) {
