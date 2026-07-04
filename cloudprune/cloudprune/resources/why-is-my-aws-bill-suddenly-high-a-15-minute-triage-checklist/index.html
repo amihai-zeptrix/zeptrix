@@ -17,6 +17,24 @@
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Why Is My AWS Bill Suddenly High? A 15-Minute Triage Checklist","description":"User sees an unexpected bill and needs to identify which service caused it.","url":"https://zeptrix.io/cloudprune/resources/why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","AWS bill suddenly high / why is my AWS bill so high"]}</script>
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist","resourceTitle":"Why Is My AWS Bill Suddenly High? A 15-Minute Triage Checklist","intent":"bill-shock","path":"/cloudprune/resources/why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist","url":"https://zeptrix.io/cloudprune/resources/why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
   </head>
   <body>
     <header class="resource-hero">
@@ -24,7 +42,7 @@
       <p class="eyebrow">AWS cost playbook</p>
       <h1>Why Is My AWS Bill Suddenly High? A 15-Minute Triage Checklist</h1>
       <p>User sees an unexpected bill and needs to identify which service caused it.</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=bill-shock&amp;source=why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist">Find what changed in my AWS bill</a>
     </header>
     <main>
       <section class="panel">
@@ -60,6 +78,7 @@
         <h2>How CloudPrune helps</h2>
         <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
         <p>Connect AWS read-only in CloudPrune and get a ranked savings scan: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=bill-shock&amp;source=why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist">Find what changed in my AWS bill</a>
       </section>
       <section class="panel">
         <h2>Related CloudPrune resources</h2>

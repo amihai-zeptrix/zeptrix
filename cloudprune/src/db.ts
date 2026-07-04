@@ -120,4 +120,23 @@ export async function initDatabase(): Promise<void> {
       created_at timestamptz not null default now()
     )
   `);
+  await pool.query(`
+    create table if not exists cloudprune_growth_events (
+      id uuid primary key default gen_random_uuid(),
+      account_id uuid references cloudprune_accounts(id) on delete set null,
+      user_id uuid references cloudprune_users(id) on delete set null,
+      actor_email citext,
+      event_type text not null,
+      intent text,
+      source text,
+      resource_slug text,
+      path text,
+      metadata jsonb not null default '{}'::jsonb,
+      ip_address text,
+      user_agent text,
+      created_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`create index if not exists cloudprune_growth_events_created_at_idx on cloudprune_growth_events (created_at desc)`);
+  await pool.query(`create index if not exists cloudprune_growth_events_intent_idx on cloudprune_growth_events (intent, created_at desc)`);
 }

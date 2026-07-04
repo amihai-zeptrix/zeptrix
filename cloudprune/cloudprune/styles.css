@@ -1331,6 +1331,58 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   box-shadow: 0 14px 34px rgba(0, 0, 0, .16);
 }
 
+.intent-card {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(18, 51, 45, .12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .92);
+  color: var(--ink);
+  box-shadow: 0 12px 30px rgba(18, 51, 45, .1);
+}
+
+.auth-hero .intent-card {
+  max-width: 680px;
+  background: rgba(245, 255, 249, .95);
+}
+
+.intent-card h3 {
+  margin: 4px 0 8px;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.intent-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.intent-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.intent-card div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.intent-card dt {
+  color: #45615a;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.intent-card dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 750;
+}
+
 .auth-signal-grid {
   position: relative;
   z-index: 1;

@@ -17,6 +17,24 @@
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform","description":"Small teams want savings without buying heavy enterprise FinOps platforms.","url":"https://zeptrix.io/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","FinOps tools for small teams / cloud cost optimization tools for small companies"]}</script>
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform","resourceTitle":"FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform","intent":"small-team-finops","path":"/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform","url":"https://zeptrix.io/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
   </head>
   <body>
     <header class="resource-hero">
@@ -24,7 +42,7 @@
       <p class="eyebrow">AWS cost playbook</p>
       <h1>FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform</h1>
       <p>Small teams want savings without buying heavy enterprise FinOps platforms.</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=small-team-finops&amp;source=finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform">Start a lightweight FinOps scan</a>
     </header>
     <main>
       <section class="panel">
@@ -60,6 +78,7 @@
         <h2>How CloudPrune helps</h2>
         <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
         <p>Start with CloudPrune read-only onboarding: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=small-team-finops&amp;source=finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform">Start a lightweight FinOps scan</a>
       </section>
       <section class="panel">
         <h2>Related CloudPrune resources</h2>

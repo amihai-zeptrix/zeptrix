@@ -23,7 +23,9 @@
         "question": "What is the safest cleanup path?",
         "answer": "Start with a read-only inventory, confirm ownership, snapshot or export data when rollback matters, delete only reviewed volumes, and keep the rollback reference through the validation window."
       }
-    ]
+    ],
+    "intent": "ebs-cleanup",
+    "ctaLabel": "Scan for unattached EBS volumes"
   },
   {
     "title": "FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform",
@@ -35,7 +37,9 @@
     "sourceStatus": "200 OK",
     "pain": "Small teams want savings without buying heavy enterprise FinOps platforms.",
     "angle": "CloudPrune can be positioned as lightweight, read-only first, concrete recommendations, and free trial/free-until campaign.",
-    "cta": "Start with CloudPrune read-only onboarding: https://zeptrix.io/cloudprune/"
+    "cta": "Start with CloudPrune read-only onboarding: https://zeptrix.io/cloudprune/",
+    "intent": "small-team-finops",
+    "ctaLabel": "Start a lightweight FinOps scan"
   },
   {
     "title": "Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path",
@@ -61,7 +65,9 @@
         "question": "How should CloudPrune users review this recommendation?",
         "answer": "Review the volume ID, size, age, tags, snapshot status, recent attachment signal, and owner notes before approving deletion or keeping the volume."
       }
-    ]
+    ],
+    "intent": "ebs-cleanup",
+    "ctaLabel": "Scan for unattached EBS volumes"
   },
   {
     "title": "Why Is My AWS Bill Suddenly High? A 15-Minute Triage Checklist",
@@ -73,7 +79,9 @@
     "sourceStatus": "200 OK",
     "pain": "User sees an unexpected bill and needs to identify which service caused it.",
     "angle": "CloudPrune can scan the account, summarize the likely waste drivers, and turn the bill shock into prioritized actions with risk notes.",
-    "cta": "Connect AWS read-only in CloudPrune and get a ranked savings scan: https://zeptrix.io/cloudprune/"
+    "cta": "Connect AWS read-only in CloudPrune and get a ranked savings scan: https://zeptrix.io/cloudprune/",
+    "intent": "bill-shock",
+    "ctaLabel": "Find what changed in my AWS bill"
   },
   {
     "title": "AWS Cost Explorer Shows the Spend. What Should You Do Next?",
@@ -85,7 +93,9 @@
     "sourceStatus": "200 OK",
     "pain": "User asks the community how to identify the services behind an unexpected AWS bill.",
     "angle": "CloudPrune should position itself as the next step after Cost Explorer: find concrete resources, impact, and safe cleanup steps.",
-    "cta": "Use CloudPrune to convert AWS spend into actionable recommendations: https://zeptrix.io/cloudprune/"
+    "cta": "Use CloudPrune to convert AWS spend into actionable recommendations: https://zeptrix.io/cloudprune/",
+    "intent": "bill-shock",
+    "ctaLabel": "Turn spend into recommendations"
   },
   {
     "title": "Cloud Cost Optimization Tools That Actually Work: What to Test in a Proof of Value",
@@ -97,7 +107,9 @@
     "sourceStatus": "200 OK",
     "pain": "Buyers are skeptical that tools only provide dashboards and generic recommendations.",
     "angle": "CloudPrune should lead with proof: scan entities, show exact evidence, savings, impact, and dry-run automation path.",
-    "cta": "Run a CloudPrune proof-of-value scan on your AWS account: https://zeptrix.io/cloudprune/"
+    "cta": "Run a CloudPrune proof-of-value scan on your AWS account: https://zeptrix.io/cloudprune/",
+    "intent": "proof-of-value",
+    "ctaLabel": "Run a proof-of-value scan"
   },
   {
     "title": "CloudWatch Costs Too High? Find the Log Groups and Metrics Driving the Bill",
@@ -123,7 +135,9 @@
         "question": "What should be reviewed before reducing CloudWatch data?",
         "answer": "Check incident response needs, compliance retention, debugging workflows, alerting coverage, and whether lower-volume logs can move to a cheaper storage or analytics path."
       }
-    ]
+    ],
+    "intent": "cloudwatch-costs",
+    "ctaLabel": "Scan CloudWatch cost drivers"
   },
   {
     "title": "CloudWatch Logs Cost Optimization: Retention Helps, But Ingestion Is the Real Bill Driver",
@@ -149,7 +163,9 @@
         "question": "Can CloudPrune automatically change retention?",
         "answer": "CloudPrune should first show the evidence and impact. Automation should stay controlled because retention changes can affect audits, incident response, and troubleshooting."
       }
-    ]
+    ],
+    "intent": "cloudwatch-costs",
+    "ctaLabel": "Scan CloudWatch log groups"
   },
   {
     "title": "Trusted Advisor, Compute Optimizer, or Cost Optimization Hub: Which AWS Recommendation Source Should You Use?",
@@ -161,7 +177,9 @@
     "sourceStatus": "200 OK",
     "pain": "Users are confused which AWS-native recommendation source they should trust.",
     "angle": "CloudPrune can publish a comparison matrix and explain how to combine native tools with account scans.",
-    "cta": "Use CloudPrune to normalize recommendations into one prioritized view: https://zeptrix.io/cloudprune/"
+    "cta": "Use CloudPrune to normalize recommendations into one prioritized view: https://zeptrix.io/cloudprune/",
+    "intent": "aws-recommendations",
+    "ctaLabel": "Normalize AWS recommendations"
   },
   {
     "title": "AWS Cost Optimization Hub vs CloudPrune: Recommendations Are Only Step One",
@@ -173,6 +191,92 @@
     "sourceStatus": "200 OK",
     "pain": "Users want a centralized list of AWS savings recommendations across accounts and regions.",
     "angle": "CloudPrune can differentiate on impact analysis, workflow, tenant-friendly onboarding, and recommendations saved outside the AWS console.",
-    "cta": "Try CloudPrune when you need impact analysis and a savings workflow: https://zeptrix.io/cloudprune/"
+    "cta": "Try CloudPrune when you need impact analysis and a savings workflow: https://zeptrix.io/cloudprune/",
+    "intent": "aws-recommendations",
+    "ctaLabel": "Add impact analysis to AWS recommendations"
+  },
+  {
+    "title": "How to Find Idle EC2 Instances Before They Become Permanent AWS Waste",
+    "seoTitle": "How to Find Idle EC2 Instances",
+    "slug": "how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste",
+    "score": "34",
+    "query": "find idle EC2 instances / AWS idle instances cost",
+    "source": "[View Amazon EC2 instance recommendations](https://docs.aws.amazon.com/compute-optimizer/latest/ug/view-ec2-recommendations.html) (AWS docs)",
+    "sourceStatus": "200 OK",
+    "pain": "Idle EC2 instances keep charging even when CPU, network, and application traffic show little or no useful work.",
+    "angle": "CloudPrune combines EC2 inventory, CloudWatch utilization, traffic mapping, and app inventory before recommending stop, resize, schedule, or consolidation actions.",
+    "cta": "Use CloudPrune to find idle EC2 instances with evidence and rollback notes: https://zeptrix.io/cloudprune/",
+    "intent": "idle-ec2",
+    "ctaLabel": "Scan for idle EC2 instances",
+    "faqs": [
+      {
+        "question": "What signals identify an idle EC2 instance?",
+        "answer": "Start with low CPU, low network, no meaningful load balancer or API traffic, old launch time, and missing application inventory. One signal alone is not enough for safe action."
+      },
+      {
+        "question": "Should idle EC2 instances be terminated immediately?",
+        "answer": "Usually no. Stop or schedule first when ownership is unclear, verify rollback, and terminate only after the validation window proves the instance is not needed."
+      },
+      {
+        "question": "How does CloudPrune reduce the risk?",
+        "answer": "CloudPrune keeps the recommendation evidence together: instance identity, utilization, traffic, owner tags, expected savings, downtime risk, and rollback path."
+      }
+    ]
+  },
+  {
+    "title": "Should Scheduled EC2 Jobs Move to Lambda? A Cost and Runtime Checklist",
+    "seoTitle": "Should Scheduled EC2 Jobs Move to Lambda?",
+    "slug": "should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist",
+    "score": "33",
+    "query": "move scheduled EC2 job to Lambda cost / EC2 vs Lambda scheduled job",
+    "source": "[AWS Lambda pricing](https://aws.amazon.com/lambda/pricing/) (AWS pricing)",
+    "sourceStatus": "200 OK",
+    "pain": "Small scheduled jobs often keep an EC2 instance running all day even though the useful runtime is only minutes or seconds.",
+    "angle": "CloudPrune can compare observed job runtime, memory needs, schedule frequency, root disk size, and app dependencies before suggesting a Lambda migration.",
+    "cta": "Use CloudPrune to compare EC2 scheduled jobs with Lambda economics: https://zeptrix.io/cloudprune/",
+    "intent": "ec2-to-lambda",
+    "ctaLabel": "Assess EC2 to Lambda savings",
+    "faqs": [
+      {
+        "question": "When is Lambda cheaper than EC2 for scheduled work?",
+        "answer": "Lambda is often cheaper when jobs are short, infrequent, stateless, and fit within Lambda runtime, memory, storage, and networking constraints."
+      },
+      {
+        "question": "What data is needed for the decision?",
+        "answer": "You need job frequency, p95 and max runtime, memory needs, network dependencies, package size, stateful storage needs, and the EC2 instance cost being replaced."
+      },
+      {
+        "question": "What should not move first?",
+        "answer": "Avoid moving long-running, stateful, latency-sensitive, or dependency-heavy jobs until the runtime and rollback path are proven."
+      }
+    ]
+  },
+  {
+    "title": "How to Reduce AWS Cost Without Breaking Production",
+    "seoTitle": "Reduce AWS Cost Without Breaking Production",
+    "slug": "how-to-reduce-aws-cost-without-breaking-production",
+    "score": "32",
+    "query": "reduce AWS cost without downtime / safe AWS cost optimization",
+    "source": "[AWS Well-Architected Framework: Cost Optimization](https://docs.aws.amazon.com/wellarchitected/latest/cost-optimization-pillar/welcome.html) (AWS docs)",
+    "sourceStatus": "200 OK",
+    "pain": "Teams want lower AWS bills, but unsafe cost cleanup can cause downtime, data loss, or hidden operational risk.",
+    "angle": "CloudPrune treats every recommendation as a workflow with evidence, impact analysis, rollback, and controlled execution instead of a generic savings list.",
+    "cta": "Use CloudPrune to review AWS savings with impact analysis first: https://zeptrix.io/cloudprune/",
+    "intent": "safe-cost-reduction",
+    "ctaLabel": "Start safe AWS cost review",
+    "faqs": [
+      {
+        "question": "What AWS cost actions are usually safest first?",
+        "answer": "Read-only discovery, unattached volume review, idle Elastic IP review, retention policy planning, and commitment analysis are usually safer than production resizing or deletion."
+      },
+      {
+        "question": "How do you minimize downtime during cost optimization?",
+        "answer": "Prefer dry-run review, small batches, maintenance windows, traffic draining, pre-change snapshots, owner approval, and explicit rollback steps."
+      },
+      {
+        "question": "Why is impact analysis required?",
+        "answer": "Savings estimates are incomplete without knowing what can break, who owns the resource, how rollback works, and whether compliance or incident response depends on it."
+      }
+    ]
   }
 ]

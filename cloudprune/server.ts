@@ -21,6 +21,7 @@ const { externalIdForAccount, normalizeAwsRoleArn, normalizeAwsScanRegions, publ
 const { adminAuditLog } = require("./src/audit-service");
 const { initDatabase, pool } = require("./src/db");
 const { adminOverview, adminResetUserPassword, adminSpoofUser, adminTenantUsers, submitFeedback } = require("./src/feedback-service");
+const { recordGrowthEvent } = require("./src/growth-service");
 const { completeGoogleRegistration, loginUser, recordAuthEvent, registerUser, updateUserProfile, userFromSession } = require("./src/user-service");
 const { failOrphanedAwsScansOnStartup, getAwsScan, saveAwsConnection, startAwsScan, stopAwsScan, workspaceForRequest } = require("./src/workspace-service");
 const {
@@ -201,6 +202,9 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: 
     }
     if (req.method === "POST" && apiPath === "/api/feedback") {
       return json(res, 201, { feedback: await submitFeedback(req, await readJson(req)) });
+    }
+    if (req.method === "POST" && apiPath === "/api/growth/events") {
+      return json(res, 202, await recordGrowthEvent(req, await readJson(req)));
     }
     if (req.method === "GET" && apiPath === "/api/admin/overview") {
       return json(res, 200, await adminOverview(req));

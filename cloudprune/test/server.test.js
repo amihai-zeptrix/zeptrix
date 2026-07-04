@@ -53,6 +53,7 @@ function bootCloudPruneApp(pathname, session = null, fetchHandler = null) {
   const store = new Map(session ? [["cloudprune.session", session]] : []);
   const fetchCalls = [];
   const script = fs.readFileSync(path.join(__dirname, "../cloudprune/app.js"), "utf8");
+  const browserUrl = new URL(pathname, "https://zeptrix.io");
   const context = {
     URL,
     URLSearchParams,
@@ -95,8 +96,8 @@ function bootCloudPruneApp(pathname, session = null, fetchHandler = null) {
       removeItem: (key) => store.delete(key),
     },
     location: {
-      href: `https://zeptrix.io${pathname}`,
-      pathname,
+      href: browserUrl.toString(),
+      pathname: browserUrl.pathname,
     },
   };
   vm.runInNewContext(script, context, { filename: "cloudprune/app.js" });
@@ -293,7 +294,8 @@ test("serves generated CloudPrune growth resource pages", async () => {
     assert.equal(page.status, 200);
     const body = await page.text();
     assert.match(body, /Unattached EBS volumes keep charging/);
-    assert.match(body, /Start a read-only CloudPrune scan/);
+    assert.match(body, /Scan for unattached EBS volumes/);
+    assert.match(body, /intent=ebs-cleanup/);
 
     const shortPage = await fetch(`${baseUrl}/cp/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them`);
     assert.equal(shortPage.status, 200);
@@ -304,7 +306,7 @@ test("serves generated CloudPrune growth resource pages", async () => {
 test("generated CloudPrune resource pages keep concise SEO titles", () => {
   const resourcesRoot = path.join(__dirname, "..", "cloudprune", "resources");
   const directories = fs.readdirSync(resourcesRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  assert.equal(directories.length, 10);
+  assert.equal(directories.length, 13);
   for (const directory of directories) {
     const html = fs.readFileSync(path.join(resourcesRoot, directory.name, "index.html"), "utf8");
     const title = html.match(/<title>(.*?)<\/title>/)?.[1] || "";
@@ -312,6 +314,32 @@ test("generated CloudPrune resource pages keep concise SEO titles", () => {
     assert.ok(title.length <= 90, `${directory.name} title is ${title.length} characters`);
     assert.match(html, /<h1>[^<]+<\/h1>/);
   }
+});
+
+test("generated CloudPrune resource pages expose intent-aware CTAs and tracking", () => {
+  const resourcesRoot = path.join(__dirname, "..", "cloudprune", "resources");
+  const idleEc2Slug = "how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste";
+  const lambdaSlug = "should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist";
+  const safeSlug = "how-to-reduce-aws-cost-without-breaking-production";
+
+  for (const slug of [idleEc2Slug, lambdaSlug, safeSlug]) {
+    assert.ok(fs.existsSync(path.join(resourcesRoot, slug, "index.html")), `${slug} page exists`);
+  }
+
+  const idleHtml = fs.readFileSync(path.join(resourcesRoot, idleEc2Slug, "index.html"), "utf8");
+  assert.match(idleHtml, /Scan for idle EC2 instances/);
+  assert.match(idleHtml, /href="\/cloudprune\/\?intent=idle-ec2&amp;source=how-to-find-idle-ec2-instances/);
+  assert.match(idleHtml, /resource_page_view/);
+  assert.match(idleHtml, /resource_cta_click/);
+  assert.match(idleHtml, /\/cloudprune\/api\/growth\/events/);
+
+  const lambdaHtml = fs.readFileSync(path.join(resourcesRoot, lambdaSlug, "index.html"), "utf8");
+  assert.match(lambdaHtml, /Assess EC2 to Lambda savings/);
+  assert.match(lambdaHtml, /intent=ec2-to-lambda/);
+
+  const safeHtml = fs.readFileSync(path.join(resourcesRoot, safeSlug, "index.html"), "utf8");
+  assert.match(safeHtml, /Start safe AWS cost review/);
+  assert.match(safeHtml, /intent=safe-cost-reduction/);
 });
 
 test("generated CloudPrune resource pages expose canonical and social metadata", () => {
@@ -343,7 +371,7 @@ test("generated CloudPrune resource pages expose structured data", () => {
   assert.equal(indexData["@type"], "CollectionPage");
   assert.equal(indexData.url, "https://zeptrix.io/cloudprune/resources/");
   assert.equal(indexData.mainEntity["@type"], "ItemList");
-  assert.equal(indexData.mainEntity.itemListElement.length, 10);
+  assert.equal(indexData.mainEntity.itemListElement.length, 13);
 
   const pageSlug = "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them";
   const pageHtml = fs.readFileSync(path.join(resourcesRoot, pageSlug, "index.html"), "utf8");
@@ -550,6 +578,36 @@ test("CloudPrune auth page links to growth resources", () => {
 
   const short = bootCloudPruneApp("/cp/");
   assert.match(short.app.innerHTML, /href="\/cp\/resources\/"/);
+});
+
+test("CloudPrune auth page persists resource intent and tracks funnel events", async () => {
+  const { app, fetchCalls, listeners, store } = bootCloudPruneApp("/cloudprune/?intent=idle-ec2&source=idle-ec2-page", null, (url) => {
+    if (String(url).endsWith("/api/growth/events")) return jsonResponse({ recorded: true });
+    return jsonResponse({});
+  });
+  assert.match(app.innerHTML, /Start by finding EC2 instances with weak usage evidence/);
+  assert.match(store.get("cloudprune.growthIntent"), /"intent":"idle-ec2"/);
+  assert.ok(fetchCalls.some((call) => {
+    if (!String(call.url).endsWith("/api/growth/events")) return false;
+    const body = JSON.parse(call.options.body);
+    return body.eventType === "auth_page_view" && body.intent === "idle-ec2";
+  }));
+
+  const form = { dataset: { authForm: "register" }, __entries: { name: "Ami", company: "Zeptrix", email: "ami@example.com" } };
+  const googleButton = {
+    closest(selector) {
+      if (selector === "[data-action='google-start']") return googleButton;
+      if (selector === "[data-auth-form]") return form;
+      return null;
+    },
+    disabled: false,
+  };
+  for (const handler of listeners.click || []) await handler({ target: googleButton });
+  assert.ok(fetchCalls.some((call) => {
+    if (!String(call.url).endsWith("/api/growth/events")) return false;
+    const body = JSON.parse(call.options.body);
+    return body.eventType === "google_sso_start" && body.intent === "idle-ec2";
+  }));
 });
 
 test("CloudPrune login form accepts admin credentials and stores an admin session", async () => {
@@ -1460,6 +1518,24 @@ test("auth API reports missing database instead of dropping requests", async () 
   });
 });
 
+test("growth event API accepts anonymous resource funnel events without a database", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/cloudprune/api/growth/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        eventType: "resource_cta_click",
+        intent: "idle-ec2",
+        source: "idle-ec2-resource",
+        resourceSlug: "how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste",
+        path: "/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste",
+      }),
+    });
+    assert.equal(response.status, 202);
+    assert.deepEqual(await response.json(), { recorded: false });
+  });
+});
+
 test("CloudPrune admin credentials create an admin session", async () => {
   await withServer(async (baseUrl) => {
     for (const password of [testAdminPassword, ` ${testAdminPassword} `]) {
@@ -1536,6 +1612,18 @@ test("CloudPrune audit log has a dedicated table, admin API, and owner email not
   assert.match(auditSource, /sesv2", "send-email"/);
   assert.match(auditSource, /cp audit log event|auditEmailSubject/);
   assert.match(auditSource, /amihaih@gmail\.com/);
+});
+
+test("CloudPrune growth events have a dedicated table and API", () => {
+  const dbSource = fs.readFileSync(path.join(__dirname, "../src/db.ts"), "utf8");
+  const serverSource = fs.readFileSync(path.join(__dirname, "../server.ts"), "utf8");
+  const growthSource = fs.readFileSync(path.join(__dirname, "../src/growth-service.ts"), "utf8");
+
+  assert.match(dbSource, /create table if not exists cloudprune_growth_events/);
+  assert.match(dbSource, /cloudprune_growth_events_intent_idx/);
+  assert.match(serverSource, /api\/growth\/events/);
+  assert.match(growthSource, /resource_cta_click/);
+  assert.match(growthSource, /recommendation_viewed/);
 });
 
 test("CloudPrune JSON request bodies are capped before parsing", async () => {
