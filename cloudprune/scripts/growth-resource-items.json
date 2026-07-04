@@ -1,0 +1,112 @@
+[
+  {
+    "title": "Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them",
+    "slug": "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them",
+    "score": "36",
+    "query": "unused EBS volumes cost / find unattached EBS volumes AWS",
+    "source": "[Delete unattached Amazon EBS volumes](https://docs.aws.amazon.com/prescriptive-guidance/latest/optimize-costs-microsoft-workloads/ebs-delete-ebs-volumes.html) (AWS prescriptive guidance)",
+    "sourceStatus": "200 OK",
+    "pain": "Unattached EBS volumes keep charging by provisioned GB-month even when no instance uses them.",
+    "angle": "CloudPrune can add age, attachment history, snapshot/rollback guidance, and a dry-run recommendation before deletion.",
+    "cta": "Use CloudPrune to find EBS cleanup opportunities with rollback notes: https://zeptrix.io/cloudprune/"
+  },
+  {
+    "title": "FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform",
+    "slug": "finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform",
+    "score": "35",
+    "query": "FinOps tools for small teams / cloud cost optimization tools for small companies",
+    "source": "[Do you have any advice on cloud cost optimization tools for small companies?](https://www.reddit.com/r/FinOps/comments/1r0ly03/do_you_have_any_advice_on_cloud_cost_optimization/) (Reddit)",
+    "sourceStatus": "200 OK",
+    "pain": "Small teams want savings without buying heavy enterprise FinOps platforms.",
+    "angle": "CloudPrune can be positioned as lightweight, read-only first, concrete recommendations, and free trial/free-until campaign.",
+    "cta": "Start with CloudPrune read-only onboarding: https://zeptrix.io/cloudprune/"
+  },
+  {
+    "title": "Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path",
+    "slug": "are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path",
+    "score": "35",
+    "query": "are unattached EBS volumes charged",
+    "source": "[Are the EBS volumes which are not attached to any instance charged?](https://www.reddit.com/r/aws/comments/15y3fry/are_the_ebs_volumes_which_are_not_attached_to_any/) (Reddit)",
+    "sourceStatus": "200 OK",
+    "pain": "Users are unsure whether detached volumes are still billed and what to do with them.",
+    "angle": "CloudPrune can make this an entry-level educational page with a scan CTA.",
+    "cta": "Scan for unattached EBS volumes in CloudPrune: https://zeptrix.io/cloudprune/"
+  },
+  {
+    "title": "Why Is My AWS Bill Suddenly High? A 15-Minute Triage Checklist",
+    "slug": "why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist",
+    "score": "32",
+    "query": "AWS bill suddenly high / why is my AWS bill so high",
+    "source": "[Understanding unexpected charges](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/checklistforunwantedcharges.html) (AWS docs)",
+    "sourceStatus": "200 OK",
+    "pain": "User sees an unexpected bill and needs to identify which service caused it.",
+    "angle": "CloudPrune can scan the account, summarize the likely waste drivers, and turn the bill shock into prioritized actions with risk notes.",
+    "cta": "Connect AWS read-only in CloudPrune and get a ranked savings scan: https://zeptrix.io/cloudprune/"
+  },
+  {
+    "title": "AWS Cost Explorer Shows the Spend. What Should You Do Next?",
+    "slug": "aws-cost-explorer-shows-the-spend-what-should-you-do-next",
+    "score": "31",
+    "query": "unexpected high AWS billing",
+    "source": "[Unexpected High Billing](https://repost.aws/questions/QUOc3c9GOqSHm1Gds8pHPwUg/unexpected-high-billing) (AWS re:Post)",
+    "sourceStatus": "200 OK",
+    "pain": "User asks the community how to identify the services behind an unexpected AWS bill.",
+    "angle": "CloudPrune should position itself as the next step after Cost Explorer: find concrete resources, impact, and safe cleanup steps.",
+    "cta": "Use CloudPrune to convert AWS spend into actionable recommendations: https://zeptrix.io/cloudprune/"
+  },
+  {
+    "title": "Cloud Cost Optimization Tools That Actually Work: What to Test in a Proof of Value",
+    "slug": "cloud-cost-optimization-tools-that-actually-work-what-to-test-in-a-proof-of-value",
+    "score": "30",
+    "query": "cloud cost optimization tools that actually work",
+    "source": "[Cloud cost optimization tools that actually work?](https://www.reddit.com/r/FinOps/comments/1r9p62f/cloud_cost_optimization_tools_that_actually_work/) (Reddit)",
+    "sourceStatus": "200 OK",
+    "pain": "Buyers are skeptical that tools only provide dashboards and generic recommendations.",
+    "angle": "CloudPrune should lead with proof: scan entities, show exact evidence, savings, impact, and dry-run automation path.",
+    "cta": "Run a CloudPrune proof-of-value scan on your AWS account: https://zeptrix.io/cloudprune/"
+  },
+  {
+    "title": "CloudWatch Costs Too High? Find the Log Groups and Metrics Driving the Bill",
+    "slug": "cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill",
+    "score": "29",
+    "query": "CloudWatch cost optimization / reduce CloudWatch charges",
+    "source": "[Analyzing, optimizing, and reducing CloudWatch costs](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_billing.html) (AWS docs)",
+    "sourceStatus": "200 OK",
+    "pain": "CloudWatch charges rise because of logs, custom metrics, metric streams, dashboards, or alarms.",
+    "angle": "CloudPrune can scan log groups, retention settings, and old/noisy log storage, then estimate monthly impact.",
+    "cta": "Run a CloudPrune scan to find CloudWatch cleanup candidates: https://zeptrix.io/cloudprune/"
+  },
+  {
+    "title": "CloudWatch Logs Cost Optimization: Retention Helps, But Ingestion Is the Real Bill Driver",
+    "slug": "cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver",
+    "score": "28",
+    "query": "CloudWatch logs cost optimisation techniques",
+    "source": "[Cloudwatch logs cost optimisation techniques](https://www.reddit.com/r/aws/comments/1kfx7bx/cloudwatch_logs_cost_optimisation_techniques/) (Reddit)",
+    "sourceStatus": "200 OK",
+    "pain": "Practitioners want concrete alternatives and retention strategies for expensive CloudWatch Logs.",
+    "angle": "CloudPrune can publish a pragmatic CloudWatch playbook: retention first, ingestion source review, IA class, and what not to automate.",
+    "cta": "Let CloudPrune identify CloudWatch log groups worth reviewing: https://zeptrix.io/cloudprune/"
+  },
+  {
+    "title": "Trusted Advisor, Compute Optimizer, or Cost Optimization Hub: Which AWS Recommendation Source Should You Use?",
+    "slug": "trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source",
+    "score": "27",
+    "query": "Trusted Advisor vs Cost Optimization Hub",
+    "source": "[Trusted Advisor vs Cost Optimization Hub](https://repost.aws/questions/QUjRLkV6q4RL-Tcdav6_7M_w/trusted-advisor-vs-cost-optimization-hub) (AWS re:Post)",
+    "sourceStatus": "200 OK",
+    "pain": "Users are confused which AWS-native recommendation source they should trust.",
+    "angle": "CloudPrune can publish a comparison matrix and explain how to combine native tools with account scans.",
+    "cta": "Use CloudPrune to normalize recommendations into one prioritized view: https://zeptrix.io/cloudprune/"
+  },
+  {
+    "title": "AWS Cost Optimization Hub vs CloudPrune: Recommendations Are Only Step One",
+    "slug": "aws-cost-optimization-hub-vs-cloudprune-recommendations-are-only-step-one",
+    "score": "27",
+    "query": "AWS cost recommendations / Cost Optimization Hub recommendations",
+    "source": "[New Cost Optimization Hub centralizes recommended actions](https://aws.amazon.com/blogs/aws/new-cost-optimization-hub-to-find-all-recommended-actions-in-one-place-for-saving-you-money/) (AWS blog)",
+    "sourceStatus": "200 OK",
+    "pain": "Users want a centralized list of AWS savings recommendations across accounts and regions.",
+    "angle": "CloudPrune can differentiate on impact analysis, workflow, tenant-friendly onboarding, and recommendations saved outside the AWS console.",
+    "cta": "Try CloudPrune when you need impact analysis and a savings workflow: https://zeptrix.io/cloudprune/"
+  }
+]

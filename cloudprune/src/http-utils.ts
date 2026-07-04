@@ -15,6 +15,11 @@ export function staticFilePathForUrlPath(urlPath: string): string | null {
   const prefix = routePrefix(urlPath);
   if (urlPath === "/" || urlPath === "/cloudprune" || urlPath === "/cloudprune/" || urlPath === "/cp" || urlPath === "/cp/") return path.join(publicRoot, "index.html");
   if (!prefix) return null;
+  if ((urlPath === `${prefix}/resources` || urlPath.startsWith(`${prefix}/resources/`)) && !path.basename(urlPath).includes(".")) {
+    const relativePath = urlPath === `${prefix}/resources` ? "resources" : urlPath.slice(`${prefix}/`.length);
+    const filePath = path.resolve(publicRoot, relativePath, "index.html");
+    return filePath.startsWith(`${publicRoot}${path.sep}`) ? filePath : null;
+  }
   if (!path.basename(urlPath).includes(".")) return path.join(publicRoot, "index.html");
 
   const relativePath = urlPath.slice(`${prefix}/`.length);
