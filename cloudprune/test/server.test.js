@@ -1659,6 +1659,7 @@ test("AWS assessment exposes traffic mapping and app inventory checks", () => {
     ssmInstances: [{ InstanceInformationList: [{ InstanceId: "i-1", ComputerName: "app", Region: "us-east-1" }] }],
     albTargetMappings: [{ name: "apps", targets: [{ id: "i-1", state: "healthy" }] }],
     ssmApplications: [{ id: "i-1", applications: [{ name: "nodejs" }] }],
+    ec2JobRuntimes: [{ instanceId: "i-1", serviceName: "job.service", runs: 4, p95Seconds: 2, memoryMb: 256 }],
   }, ["us-east-1"], []);
 
   assert.deepEqual(assessment.checks.albTargetMappings.data.targetGroups, [{ name: "apps", targets: [{ id: "i-1", state: "healthy" }] }]);
@@ -1666,6 +1667,7 @@ test("AWS assessment exposes traffic mapping and app inventory checks", () => {
   assert.equal(assessment.checks.apiGatewayRest.data.items[0].id, "rest-1");
   assert.equal(assessment.checks.ssmInstances.data.InstanceInformationList[0].InstanceId, "i-1");
   assert.equal(assessment.checks.ssmApplications.data.instances[0].applications[0].name, "nodejs");
+  assert.equal(assessment.checks.ec2JobRuntimes.data.jobs[0].serviceName, "job.service");
 });
 
 test("AWS assessment marks regional services failed when every region fails", () => {

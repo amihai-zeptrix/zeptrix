@@ -515,6 +515,119 @@ test("EC2 batch host optimization finds stockscanner-style disk and schedule opp
   assert.ok(batch.resources.includes("stocks-scanner-1 (i-stockscanner, vol-stock-root)"));
 });
 
+test("EC2 scheduled job Lambda recommendation uses observed runtime and memory evidence", () => {
+  const assessment = {
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 7,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: { ResultsByTime: [{ Groups: [{ Keys: ["Amazon Elastic Compute Cloud - Compute"], Metrics: { UnblendedCost: { Amount: "6", Unit: "USD" } } }] }] },
+      },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [{
+              InstanceId: "i-stockscanner",
+              InstanceType: "t3.small",
+              Architecture: "x86_64",
+              PlatformDetails: "Linux/UNIX",
+              VpcId: "vpc-1",
+              State: { Name: "running" },
+              RootDeviceName: "/dev/xvda",
+              BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { VolumeId: "vol-stock-root" } }],
+              Tags: [{ Key: "Name", Value: "stocks-scanner-1" }],
+            }],
+          }],
+        },
+      },
+      ec2Metrics: {
+        service: "CloudWatch EC2 Metrics",
+        ok: true,
+        data: {
+          instances: [{
+            id: "i-stockscanner",
+            averageCpu: 2.4,
+            maximumCpu: 18.6,
+            cpuStatus: "observed",
+            rootDiskStatus: "observed",
+            maximumRootDisk: 8,
+          }],
+        },
+      },
+      ebsVolumes: {
+        service: "EBS",
+        ok: true,
+        data: { Volumes: [{ VolumeId: "vol-stock-root", State: "in-use", Size: 150, VolumeType: "gp3", Attachments: [{ InstanceId: "i-stockscanner", VolumeId: "vol-stock-root", Device: "/dev/xvda" }] }] },
+      },
+      albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
+      ssmApplications: { service: "SSM Application Inventory", ok: true, data: { instances: [{ id: "i-stockscanner", applications: [{ name: "python3" }] }] } },
+      ec2JobRuntimes: {
+        service: "EC2 Job Runtime Logs",
+        ok: true,
+        data: {
+          jobs: [
+            { instanceId: "i-stockscanner", serviceName: "trade-trigger-monitor.service", runs: 97, lookbackDays: 7, p95Seconds: 2, maxSeconds: 3, memoryMb: 256 },
+            { instanceId: "i-stockscanner", serviceName: "paper-portfolio-monitor.service", runs: 480, lookbackDays: 7, p95Seconds: 246, maxSeconds: 320, memoryMb: 512 },
+            { instanceId: "i-stockscanner", serviceName: "massive-intraday-update.service", runs: 7, lookbackDays: 7, p95Seconds: 24789, maxSeconds: 24789, memoryMb: 512 },
+          ],
+        },
+      },
+    },
+  };
+  const report = buildReport(assessment);
+  const lambda = report.findings.find((finding) => finding.id === "ec2-scheduled-jobs-to-lambda");
+
+  assert.ok(lambda);
+  assert.equal(lambda.title, "Pilot Lambda/S3 for 2 short scheduled EC2 jobs");
+  assert.equal(lambda.estimatedMonthlySavings, null);
+  assert.match(lambda.statistics["Direct Lambda candidates"], /trade-trigger-monitor\.service: 416 runs\/mo, p95 2s, max 3s, 256 MB/);
+  assert.match(lambda.statistics["Direct Lambda candidates"], /paper-portfolio-monitor\.service: 2,058 runs\/mo, p95 4\.1m, max 5\.3m, 512 MB/);
+  assert.match(lambda.statistics["Long-running blockers"], /massive-intraday-update\.service: max 6\.9h/);
+  assert.equal(lambda.statistics["EC2 elimination"], "Not yet; long-running jobs prevent eliminating the host as-is");
+  assert.match(lambda.impactAnalysis, /exceeds Lambda's 15-minute execution model/);
+});
+
+test("EC2 scheduled job Lambda recommendation requires runtime and memory evidence", () => {
+  const report = buildReport({
+    generatedAt: "2026-06-27T10:00:00.000Z",
+    region: "us-east-1",
+    days: 7,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: { service: "Cost Explorer", ok: true, data: { ResultsByTime: [] } },
+      ec2Instances: {
+        service: "EC2",
+        ok: true,
+        data: {
+          Reservations: [{
+            Instances: [{
+              InstanceId: "i-scanner",
+              State: { Name: "running" },
+              RootDeviceName: "/dev/xvda",
+              BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { VolumeId: "vol-root" } }],
+              Tags: [{ Key: "Name", Value: "scanner-worker" }],
+            }],
+          }],
+        },
+      },
+      ec2Metrics: { service: "CloudWatch EC2 Metrics", ok: true, data: { instances: [{ id: "i-scanner", averageCpu: 2, maximumCpu: 10, cpuStatus: "observed", rootDiskStatus: "observed", maximumRootDisk: 8 }] } },
+      ebsVolumes: { service: "EBS", ok: true, data: { Volumes: [{ VolumeId: "vol-root", State: "in-use", Size: 100, VolumeType: "gp3", Attachments: [{ InstanceId: "i-scanner", VolumeId: "vol-root" }] }] } },
+      albTargetMappings: { service: "ELBv2 Target Mapping", ok: true, data: { targetGroups: [] } },
+      ec2JobRuntimes: { service: "EC2 Job Runtime Logs", ok: true, data: { jobs: [{ instanceId: "i-scanner", serviceName: "job.service", runs: 10, lookbackDays: 7, p95Seconds: 2 }] } },
+    },
+  });
+
+  assert.equal(report.findings.some((finding) => finding.id === "ec2-scheduled-jobs-to-lambda"), false);
+});
+
 test("EC2 batch host optimization does not shrink high-disk root volumes", () => {
   const report = buildReport({
     generatedAt: "2026-06-27T10:00:00.000Z",
