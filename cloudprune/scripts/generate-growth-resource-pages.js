@@ -33,6 +33,11 @@ function markdownLinkToHtml(value) {
   return `<a href="${escapeHtml(url)}" rel="noopener noreferrer">${escapeHtml(label)}</a>${suffix}`;
 }
 
+function jsonLdScript(value) {
+  const json = JSON.stringify(value).replace(/</g, "\\u003c");
+  return `<script type="application/ld+json">${json}</script>`;
+}
+
 function field(body, names) {
   for (const name of names) {
     const match = body.match(new RegExp(`^- ${name}: (.*)$`, "m"));
@@ -82,6 +87,25 @@ function pageHtml(item, allItems) {
   const description = item.pain || item.angle || "CloudPrune cloud cost optimization resource.";
   const canonicalUrl = `${publicBaseUrl}/cloudprune/resources/${item.slug}`;
   const related = allItems.filter((candidate) => candidate.slug !== item.slug).slice(0, 3);
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: item.title,
+    description,
+    url: canonicalUrl,
+    mainEntityOfPage: canonicalUrl,
+    author: {
+      "@type": "Organization",
+      name: "CloudPrune",
+      url: `${publicBaseUrl}/cloudprune/`,
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "CloudPrune",
+      url: `${publicBaseUrl}/cloudprune/`,
+    },
+    about: ["AWS cost optimization", "cloud cost reduction", item.query].filter(Boolean),
+  };
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -98,6 +122,7 @@ function pageHtml(item, allItems) {
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
+    ${jsonLdScript(structuredData)}
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
   </head>
@@ -160,6 +185,27 @@ function indexHtml(items) {
   const title = "CloudPrune AWS Cost Resources";
   const description = "CloudPrune AWS cost optimization resources for high-intent cost pain searches.";
   const canonicalUrl = `${publicBaseUrl}/cloudprune/resources/`;
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: title,
+    description,
+    url: canonicalUrl,
+    mainEntity: {
+      "@type": "ItemList",
+      itemListElement: items.map((item, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: item.title,
+        url: `${publicBaseUrl}/cloudprune/resources/${item.slug}`,
+      })),
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "CloudPrune",
+      url: `${publicBaseUrl}/cloudprune/`,
+    },
+  };
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -176,6 +222,7 @@ function indexHtml(items) {
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="${title}" />
     <meta name="twitter:description" content="${description}" />
+    ${jsonLdScript(structuredData)}
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
   </head>
