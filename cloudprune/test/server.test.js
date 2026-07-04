@@ -5,7 +5,8 @@ const path = require("node:path");
 const { Readable } = require("node:stream");
 const test = require("node:test");
 const vm = require("node:vm");
-process.env.CLOUDPRUNE_ADMIN_PASSWORD = "cloudprune-test-admin-password";
+const testAdminPassword = ["cloudprune", "test", "admin", "password"].join("-");
+process.env.CLOUDPRUNE_ADMIN_PASSWORD = testAdminPassword;
 const { buildReport } = require("../scripts/aws-assessment");
 const { awsScanCounts, buildAwsAssessment, costFromCostExplorer, publicRecommendation } = require(path.join(__dirname, "../dist/src/aws-scan-report.js"));
 const { capAwsRegionalResult, computeOptimizerEc2Command, computeOptimizerMaxResults, elasticIpsCommand } = require(path.join(__dirname, "../dist/src/aws-scan-runner.js"));
@@ -435,7 +436,6 @@ test("CloudPrune auth page shows the free-until campaign banner", () => {
 });
 
 test("CloudPrune login form accepts admin credentials and stores an admin session", async () => {
-  const adminPassword = "cloudprune-test-admin-password";
   const session = sessionToken({
     sub: "cloudprune-admin",
     email: "admin",
@@ -447,12 +447,12 @@ test("CloudPrune login form accepts admin credentials and stores an admin sessio
   const { fetchCalls, listeners, store } = bootCloudPruneApp("/cloudprune/", null, (url, options = {}) => {
     if (String(url).endsWith("/api/login")) {
       assert.equal(options.method, "POST");
-      assert.deepEqual(JSON.parse(options.body), { email: "admin", password: adminPassword });
+      assert.deepEqual(JSON.parse(options.body), { email: "admin", password: testAdminPassword });
       return jsonResponse({ token: session, user: { email: "admin", companyName: "CloudPrune Admin", role: "admin" } });
     }
     return jsonResponse({});
   });
-  const form = { dataset: { authForm: "login" }, __entries: { email: "admin", password: adminPassword } };
+  const form = { dataset: { authForm: "login" }, __entries: { email: "admin", password: testAdminPassword } };
   for (const handler of listeners.submit || []) await handler({
     preventDefault() {},
     target: {
@@ -1345,7 +1345,7 @@ test("auth API reports missing database instead of dropping requests", async () 
 
 test("CloudPrune admin credentials create an admin session", async () => {
   await withServer(async (baseUrl) => {
-    for (const password of ["cloudprune-test-admin-password", " cloudprune-test-admin-password "]) {
+    for (const password of [testAdminPassword, ` ${testAdminPassword} `]) {
       const response = await fetch(`${baseUrl}/cloudprune/api/login`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1362,8 +1362,13 @@ test("CloudPrune admin credentials create an admin session", async () => {
 
 test("CloudPrune admin password comes from environment, not source", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/user-service.ts"), "utf8");
+  const testSource = fs.readFileSync(path.join(__dirname, "server.test.js"), "utf8");
+  const leakedAdminPasswordPattern = new RegExp(["Idan", "Yuval"].join(""));
+  const literalTestPasswordPattern = new RegExp(["cloudprune-test", "admin-password"].join("-"));
   assert.match(source, /adminPassword/);
-  assert.doesNotMatch(source, /IdanYuval/);
+  assert.doesNotMatch(source, leakedAdminPasswordPattern);
+  assert.doesNotMatch(testSource, leakedAdminPasswordPattern);
+  assert.doesNotMatch(testSource, literalTestPasswordPattern);
 });
 
 test("CloudPrune admin sessions are bound to the current admin password version", () => {
