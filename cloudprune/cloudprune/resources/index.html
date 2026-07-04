@@ -17,6 +17,24 @@
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"CollectionPage","name":"CloudPrune AWS Cost Resources","description":"CloudPrune AWS cost optimization resources for high-intent cost pain searches.","url":"https://zeptrix.io/cloudprune/resources/","mainEntity":{"@type":"ItemList","itemListElement":[{"@type":"ListItem","position":1,"name":"Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them","url":"https://zeptrix.io/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them"},{"@type":"ListItem","position":2,"name":"FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform","url":"https://zeptrix.io/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform"},{"@type":"ListItem","position":3,"name":"Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path","url":"https://zeptrix.io/cloudprune/resources/are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path"},{"@type":"ListItem","position":4,"name":"Why Is My AWS Bill Suddenly High? A 15-Minute Triage Checklist","url":"https://zeptrix.io/cloudprune/resources/why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist"},{"@type":"ListItem","position":5,"name":"AWS Cost Explorer Shows the Spend. What Should You Do Next?","url":"https://zeptrix.io/cloudprune/resources/aws-cost-explorer-shows-the-spend-what-should-you-do-next"},{"@type":"ListItem","position":6,"name":"Cloud Cost Optimization Tools That Actually Work: What to Test in a Proof of Value","url":"https://zeptrix.io/cloudprune/resources/cloud-cost-optimization-tools-that-actually-work-what-to-test-in-a-proof-of-value"},{"@type":"ListItem","position":7,"name":"CloudWatch Costs Too High? Find the Log Groups and Metrics Driving the Bill","url":"https://zeptrix.io/cloudprune/resources/cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill"},{"@type":"ListItem","position":8,"name":"CloudWatch Logs Cost Optimization: Retention Helps, But Ingestion Is the Real Bill Driver","url":"https://zeptrix.io/cloudprune/resources/cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver"},{"@type":"ListItem","position":9,"name":"Trusted Advisor, Compute Optimizer, or Cost Optimization Hub: Which AWS Recommendation Source Should You Use?","url":"https://zeptrix.io/cloudprune/resources/trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source"},{"@type":"ListItem","position":10,"name":"AWS Cost Optimization Hub vs CloudPrune: Recommendations Are Only Step One","url":"https://zeptrix.io/cloudprune/resources/aws-cost-optimization-hub-vs-cloudprune-recommendations-are-only-step-one"},{"@type":"ListItem","position":11,"name":"How to Find Idle EC2 Instances Before They Become Permanent AWS Waste","url":"https://zeptrix.io/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste"},{"@type":"ListItem","position":12,"name":"Should Scheduled EC2 Jobs Move to Lambda? A Cost and Runtime Checklist","url":"https://zeptrix.io/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist"},{"@type":"ListItem","position":13,"name":"How to Reduce AWS Cost Without Breaking Production","url":"https://zeptrix.io/cloudprune/resources/how-to-reduce-aws-cost-without-breaking-production"}]},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"}}</script>
     <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource-index","resourceSlug":"cloudprune-resources","resourceTitle":"CloudPrune AWS Cost Resources","intent":"aws-cost-scan","path":"/cloudprune/resources/","url":"https://zeptrix.io/cloudprune/resources/"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
   </head>
   <body>
     <header class="resource-hero">
@@ -24,7 +42,7 @@
       <p class="eyebrow">CloudPrune resources</p>
       <h1>AWS cost reduction playbooks for real bill pain.</h1>
       <p>Short, practical guides that turn AWS cost questions into read-only checks, impact analysis, and safe next steps.</p>
-      <a class="button" href="/cloudprune/">Start a read-only CloudPrune scan</a>
+      <a class="button" data-resource-cta href="/cloudprune/">Start a read-only CloudPrune scan</a>
     </header>
     <main>
       <section class="resource-list">
