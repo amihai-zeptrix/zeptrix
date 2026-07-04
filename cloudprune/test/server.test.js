@@ -766,6 +766,68 @@ test("CloudPrune admin audit log route renders audit events", async () => {
   assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/admin/audit-log")));
 });
 
+test("CloudPrune admin growth route renders funnel metrics", async () => {
+  const session = sessionToken({
+    sub: "cloudprune-admin",
+    email: "admin",
+    accountId: "cloudprune-admin",
+    companyName: "CloudPrune Admin",
+    role: "admin",
+    adminPasswordVersion: "test-version",
+    exp: Date.now() + 10000,
+  });
+  const { app, fetchCalls } = bootCloudPruneApp("/cloudprune/admin/growth", session, (url) => {
+    if (String(url).endsWith("/api/admin/growth")) {
+      return jsonResponse({
+        eventTotals: [
+          { eventType: "resource_page_view", events: 20 },
+          { eventType: "resource_cta_click", events: 5 },
+          { eventType: "auth_success", events: 2 },
+          { eventType: "aws_scan_started", events: 1 },
+        ],
+        intents: [{
+          intent: "idle-ec2",
+          events: 12,
+          pageViews: 8,
+          ctaClicks: 3,
+          authSuccesses: 1,
+          awsConnects: 1,
+          scans: 1,
+          recommendationViews: 1,
+        }],
+        resources: [{
+          resource: "how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste",
+          title: "How to Find Idle EC2 Instances",
+          pageViews: 8,
+          ctaClicks: 3,
+          events: 11,
+        }],
+        recentEvents: [{
+          id: "growth-1",
+          eventType: "resource_cta_click",
+          intent: "idle-ec2",
+          source: "resource",
+          resourceSlug: "how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste",
+          path: "/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste",
+          actorEmail: "ami@example.com",
+          tenant: "Zeptrix",
+          createdAt: "2026-07-04T13:00:00.000Z",
+        }],
+      });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.match(app.innerHTML, /Growth funnel/);
+  assert.match(app.innerHTML, /Intent conversion/);
+  assert.match(app.innerHTML, /idle-ec2/);
+  assert.match(app.innerHTML, /How to Find Idle EC2 Instances/);
+  assert.match(app.innerHTML, /resource_cta_click/);
+  assert.match(app.innerHTML, /href="\/cloudprune\/admin\/growth"/);
+  assert.ok(fetchCalls.some((call) => String(call.url).endsWith("/api/admin/growth")));
+});
+
 test("CloudPrune admin can reset user password and spoof a tenant user", async () => {
   const adminSession = sessionToken({
     sub: "cloudprune-admin",
@@ -1622,8 +1684,10 @@ test("CloudPrune growth events have a dedicated table and API", () => {
   assert.match(dbSource, /create table if not exists cloudprune_growth_events/);
   assert.match(dbSource, /cloudprune_growth_events_intent_idx/);
   assert.match(serverSource, /api\/growth\/events/);
+  assert.match(serverSource, /api\/admin\/growth/);
   assert.match(growthSource, /resource_cta_click/);
   assert.match(growthSource, /recommendation_viewed/);
+  assert.match(growthSource, /admin_growth_viewed/);
 });
 
 test("CloudPrune JSON request bodies are capped before parsing", async () => {

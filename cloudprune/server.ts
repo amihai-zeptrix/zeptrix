@@ -21,7 +21,7 @@ const { externalIdForAccount, normalizeAwsRoleArn, normalizeAwsScanRegions, publ
 const { adminAuditLog } = require("./src/audit-service");
 const { initDatabase, pool } = require("./src/db");
 const { adminOverview, adminResetUserPassword, adminSpoofUser, adminTenantUsers, submitFeedback } = require("./src/feedback-service");
-const { recordGrowthEvent } = require("./src/growth-service");
+const { adminGrowthOverview, recordGrowthEvent } = require("./src/growth-service");
 const { completeGoogleRegistration, loginUser, recordAuthEvent, registerUser, updateUserProfile, userFromSession } = require("./src/user-service");
 const { failOrphanedAwsScansOnStartup, getAwsScan, saveAwsConnection, startAwsScan, stopAwsScan, workspaceForRequest } = require("./src/workspace-service");
 const {
@@ -211,6 +211,9 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: 
     }
     if (req.method === "GET" && apiPath === "/api/admin/audit-log") {
       return json(res, 200, await adminAuditLog(req));
+    }
+    if (req.method === "GET" && apiPath === "/api/admin/growth") {
+      return json(res, 200, await adminGrowthOverview(req));
     }
     const adminTenantUsersMatch = apiPath.match(/^\/api\/admin\/tenants\/([0-9a-f-]{36})\/users$/i);
     if (req.method === "GET" && adminTenantUsersMatch) {
