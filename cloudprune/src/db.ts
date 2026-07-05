@@ -97,6 +97,23 @@ export async function initDatabase(): Promise<void> {
   `);
   await pool.query(`alter table cloudprune_aws_scans add column if not exists updated_at timestamptz not null default now()`);
   await pool.query(`
+    create table if not exists cloudprune_automation_plans (
+      id uuid primary key default gen_random_uuid(),
+      account_id uuid not null references cloudprune_accounts(id) on delete cascade,
+      user_id uuid references cloudprune_users(id) on delete set null,
+      aws_scan_id uuid references cloudprune_aws_scans(id) on delete set null,
+      recommendation_id text not null,
+      title text not null,
+      status text not null default 'dry_run',
+      plan_json jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`create index if not exists cloudprune_automation_plans_account_id_idx on cloudprune_automation_plans (account_id, created_at desc)`);
+  await pool.query(`drop index if exists cloudprune_automation_plans_account_recommendation_idx`);
+  await pool.query(`create unique index if not exists cloudprune_automation_plans_account_scan_recommendation_idx on cloudprune_automation_plans (account_id, aws_scan_id, recommendation_id)`);
+  await pool.query(`
     create table if not exists cloudprune_oauth_codes (
       code_hash text primary key,
       user_id uuid references cloudprune_users(id) on delete cascade,

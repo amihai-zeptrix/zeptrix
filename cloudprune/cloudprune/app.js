@@ -239,6 +239,8 @@ let state = {
   awsScanRegions: ["us-east-1"],
   awsRegionPickerOpen: false,
   activeRecommendationActionId: "",
+  automationMessage: "",
+  automationSubmittingId: "",
   feedbackOpen: false,
   feedbackMessage: "",
   feedbackSubmitting: false,
@@ -605,6 +607,29 @@ function filteredRecommendations() {
   return state.cloud === "all" ? recommendations : recommendations.filter((item) => item.cloud === state.cloud);
 }
 
+function activeAutomationPlans() {
+  if (appRoute() === "demo") {
+    return RECOMMENDATIONS.filter((item) => item.risk === "Low").slice(0, 4).map((item, index) => ({
+      id: `demo-plan-${index + 1}`,
+      recommendationId: recommendationKey(item),
+      title: item.title,
+      status: "dry_run",
+      plan: {
+        mode: "dry_run",
+        risk: item.risk,
+        effort: item.effort,
+        estimatedMonthlySavings: item.impact,
+        summary: "Dry-run only. Demo automation shows the approval workflow before any execution.",
+        workflow: ["Inspect evidence", "Confirm owner and rollback", "Request approval", "Validate next scan"],
+        guardrails: ["No execution in demo", "Approval required", "Audit log recorded", "Rollback required"],
+        rollbackPath: item.rollbackPath || "Restore the previous state.",
+        validationWindow: item.validationWindow || "Re-scan after the change window.",
+      },
+    }));
+  }
+  return state.workspace?.automationPlans || [];
+}
+
 function recommendationKey(item) {
   return String(item.id || item.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
@@ -665,6 +690,46 @@ function demoActionCopy(item) {
     steps: ["Inspect resource evidence", "Confirm downtime and blast radius", "Decide whether to plan, dismiss, or stage"],
     cta: "Open review",
   };
+}
+
+async function createAutomationPlan(recommendationId) {
+  if (appRoute() === "demo") {
+    state.automationMessage = "Demo dry-run plan is visible in Automation.";
+    location.href = `${basePath()}/demo/automation`;
+    return;
+  }
+  if (!hasSession() || typeof fetch !== "function") {
+    state.automationMessage = "Login before creating an automation plan.";
+    render();
+    return;
+  }
+  state.automationSubmittingId = recommendationId;
+  state.automationMessage = "Creating dry-run automation plan...";
+  render();
+  try {
+    const response = await fetch(`${basePath()}/api/automation/plans`, {
+      method: "POST",
+      headers: authHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({ recommendationId }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "Could not create automation plan.");
+    state.workspace = {
+      ...(state.workspace || {}),
+      automationPlans: [
+        body.automationPlan,
+        ...((state.workspace?.automationPlans || []).filter((plan) => plan.id !== body.automationPlan.id && plan.recommendationId !== body.automationPlan.recommendationId)),
+      ],
+    };
+    state.automationMessage = "Dry-run automation plan created.";
+    location.href = `${basePath()}/automation`;
+  } catch (error) {
+    state.automationSubmittingId = "";
+    state.automationMessage = error.message;
+    render();
+  } finally {
+    state.automationSubmittingId = "";
+  }
 }
 
 function sum(items, key) {
@@ -1138,8 +1203,9 @@ function renderRecommendationAction(item) {
         <span>${escapeHtml(item.risk || "Medium")} risk</span>
         <span>${escapeHtml(item.effort || "Medium")} effort</span>
         <strong>${money(item.impact)} monthly impact</strong>
-        <button>${escapeHtml(action.cta)}</button>
+        <button data-action="create-automation-plan" data-recommendation-id="${escapeHtml(recommendationKey(item))}" ${state.automationSubmittingId === recommendationKey(item) ? "disabled" : ""}>${state.automationSubmittingId === recommendationKey(item) ? "Creating..." : "Create dry-run plan"}</button>
       </div>
+      ${state.automationMessage ? `<p class="auth-message">${escapeHtml(state.automationMessage)}</p>` : ""}
     </div>
   `;
 }
@@ -1496,14 +1562,71 @@ function renderAnomalies() {
 }
 
 function renderAutomationQueue() {
-  const queue = filteredRecommendations().filter((item) => item.risk === "Low").slice(0, 4);
+  const queue = activeAutomationPlans().slice(0, 4);
   return queue.map((item, index) => `
     <li>
       <span>${index + 1}</span>
-      <div><strong>${item.title}</strong><small>${money(item.impact)} monthly impact / ${item.owner}</small></div>
-      <button data-action="approve">Approve</button>
+      <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.status || "dry_run")} / approval required</small></div>
+      <button data-action="view-automation">Review</button>
     </li>
-  `).join("") || `<li class="muted-row">Select all clouds to see the automation queue.</li>`;
+  `).join("") || `<li class="muted-row">Create a dry-run plan from a recommendation.</li>`;
+}
+
+function renderAutomationPlans() {
+  const plans = activeAutomationPlans();
+  return plans.map((plan) => {
+    const detail = plan.plan || {};
+    const workflow = detail.workflow || [];
+    const guardrails = detail.guardrails || [];
+    return `
+      <article class="automation-plan">
+        <div class="automation-plan-head">
+          <div>
+            <span class="cloud-pill">${escapeHtml(plan.status || "dry_run")}</span>
+            <h3>${escapeHtml(plan.title)}</h3>
+            <p>${escapeHtml(detail.summary || "Dry-run plan. No cloud resources are changed.")}</p>
+          </div>
+          <strong>${money(detail.estimatedMonthlySavings || 0)}<small>/mo</small></strong>
+        </div>
+        <div class="automation-plan-grid">
+          <div>
+            <strong>Workflow</strong>
+            <ol>${workflow.map((step) => `<li>${escapeHtml(step)}</li>`).join("") || "<li>Inspect evidence and request approval.</li>"}</ol>
+          </div>
+          <div>
+            <strong>Guardrails</strong>
+            <ul>${guardrails.map((step) => `<li>${escapeHtml(step)}</li>`).join("") || "<li>Dry-run only.</li>"}</ul>
+          </div>
+          <div>
+            <strong>Rollback</strong>
+            <span>${escapeHtml(detail.rollbackPath || "Rollback must be documented before execution.")}</span>
+          </div>
+          <div>
+            <strong>Validation</strong>
+            <span>${escapeHtml(detail.validationWindow || "Re-scan and compare cost and health signals.")}</span>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("") || `<div class="empty">No automation plans yet. Open a recommendation and create a dry-run plan.</div>`;
+}
+
+function renderAutomationModule() {
+  return `
+    <section class="panel automation-module">
+      <div class="panel-head">
+        <div><span class="eyebrow">Automation</span><h2>Reviewed, reversible workflows</h2></div>
+        <a class="secondary-connect" href="${appRoute() === "demo" ? `${basePath()}/demo/recommendations` : `${basePath()}/recommendations`}">Create from recommendations</a>
+      </div>
+      <div class="automation-principles">
+        <p><strong>Recommendation</strong> says what may save money.</p>
+        <p><strong>Automation</strong> turns it into a reviewed, reversible workflow.</p>
+        <p><strong>Every action</strong> starts as dry-run, requires approval, records audit logs, and has rollback/validation steps.</p>
+      </div>
+      ${state.automationMessage ? `<p class="auth-message">${escapeHtml(state.automationMessage)}</p>` : ""}
+      <div class="automation-plan-list">${renderAutomationPlans()}</div>
+    </section>
+  `;
 }
 
 function renderAwsScanPanel(awsConnection) {
@@ -1550,6 +1673,7 @@ function renderAwsScanPanel(awsConnection) {
 }
 
 function renderMainPanel() {
+  if (workspaceRoute() === "automation") return renderAutomationModule();
   if (state.view === "services") {
     return `
       <section class="panel table-panel">
@@ -1587,6 +1711,23 @@ function renderEmptyWorkspace() {
       state.recommendationViewTrackedKey = trackKey;
       trackGrowthEvent("recommendation_viewed", { scanId: currentScan.id, recommendations: currentScan.recommendations.length });
     }
+  }
+  if (workspaceRoute() === "automation") {
+    return `
+      <div class="workspace">
+        ${renderAutomationModule()}
+        <aside class="right-rail">
+          <section class="panel compact empty-side-panel">
+            <div class="panel-head"><div><span class="eyebrow">Execution mode</span><h2>Dry-run only</h2></div></div>
+            <div class="empty">Automation plans do not modify AWS resources. Approval and audit logging are required before future execution.</div>
+          </section>
+          <section class="panel compact empty-side-panel">
+            <div class="panel-head"><div><span class="eyebrow">Source</span><h2>${scanResult()?.recommendations?.length || 0} findings</h2></div></div>
+            <div class="empty">${scanResult()?.recommendations?.length ? "Open a recommendation to create a dry-run plan." : "Run an AWS scan to generate recommendations first."}</div>
+          </section>
+        </aside>
+      </div>
+    `;
   }
   if (awsConnection) {
     if (workspaceRoute() === "recommendations") {
@@ -1852,6 +1993,11 @@ function renderAuth(app) {
           <h1>Prune cloud waste before it reaches the bill.</h1>
           <p>Connect AWS first, inspect the savings plan, and move from dry-run analysis to controlled automation when the impact is clear.</p>
           <div class="auth-campaign-banner">Enjoy totally free until September 2026</div>
+          <div class="auth-operating-promise" aria-label="CloudPrune operating promise">
+            <p><strong>Recommendation</strong> says what may save money.</p>
+            <p><strong>Automation</strong> turns it into a reviewed, reversible workflow.</p>
+            <p><strong>Every action</strong> starts as dry-run, requires approval, records audit logs, and has rollback/validation steps.</p>
+          </div>
           ${renderGrowthIntentCard("auth")}
         </div>
         <div class="auth-signal-grid" aria-label="CloudPrune preview metrics">
@@ -2029,6 +2175,17 @@ document.addEventListener("click", async (event) => {
   const logoutButton = event.target.closest("[data-action='logout']");
   if (logoutButton) {
     signOut();
+    return;
+  }
+  const createAutomationButton = event.target.closest("[data-action='create-automation-plan']");
+  if (createAutomationButton) {
+    if (createAutomationButton.disabled) return;
+    await createAutomationPlan(createAutomationButton.dataset.recommendationId);
+    return;
+  }
+  const viewAutomationButton = event.target.closest("[data-action='view-automation']");
+  if (viewAutomationButton) {
+    location.href = `${basePath()}${appRoute() === "demo" ? "/demo" : ""}/automation`;
     return;
   }
   const adminTenantUsersButton = event.target.closest("[data-action='toggle-admin-tenant-users']");

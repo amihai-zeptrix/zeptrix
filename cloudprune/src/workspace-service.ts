@@ -15,6 +15,7 @@ const { jsonb } = require("./http-utils");
 const { performAwsScan } = require("./aws-scan-runner");
 const { publicUser } = require("./auth");
 const { recordAuthEvent, userFromSession } = require("./user-service");
+const { listAutomationPlans } = require("./automation-service");
 
 interface RequestLike {
   headers: {
@@ -94,6 +95,7 @@ async function workspaceForRequest(req: RequestLike) {
       aws: byProvider.aws || null,
     },
     awsScan: publicAwsScan(latestScan.rows[0]),
+    automationPlans: (await listAutomationPlans(req)).automationPlans,
     awsSetup: {
       externalId: byProvider.aws?.externalId || externalIdForAccount(user.account_id),
       principalArn: awsPrincipalArn,
