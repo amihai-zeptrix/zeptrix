@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 const { awsExecutionOptions, buildReport, createLimiter, markdownTableCell, parseArgs, renderMarkdown } = require("../scripts/aws-assessment");
 
@@ -913,4 +915,26 @@ test("awsExecutionOptions preserves the shared limiter for nested collectors", (
   assert.equal(options.timeoutMs, 1234);
   assert.equal(options.awsLimiter, limiter);
   assert.equal(options.region, undefined);
+});
+
+test("AWS assessment TypeScript modules compile through the runtime shim", () => {
+  const root = path.join(__dirname, "..");
+  const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const tsconfig = JSON.parse(fs.readFileSync(path.join(root, "tsconfig.json"), "utf8"));
+  const buildConfig = JSON.parse(fs.readFileSync(path.join(root, "tsconfig.build.json"), "utf8"));
+  const shim = fs.readFileSync(path.join(root, "scripts/aws-assessment.js"), "utf8");
+  const entry = fs.readFileSync(path.join(root, "scripts/aws-assessment.ts"), "utf8");
+  const moduleDir = path.join(root, "scripts/aws-assessment");
+  const moduleFiles = fs.readdirSync(moduleDir).filter((name) => name.endsWith(".ts"));
+
+  assert.match(packageJson.scripts["assess:aws"], /npm run build --silent && node dist\/scripts\/aws-assessment\.js/);
+  assert.ok(tsconfig.include.includes("scripts/**/*.ts"));
+  assert.ok(buildConfig.exclude.includes("scripts/aws-assessment.js"));
+  assert.match(shim, /dist\/scripts\/aws-assessment\.js/);
+  assert.match(entry, /export \{/);
+  assert.ok(moduleFiles.length >= 9);
+  assert.doesNotMatch(entry, /@ts-nocheck|@ts-ignore/);
+  for (const fileName of moduleFiles) {
+    assert.doesNotMatch(fs.readFileSync(path.join(moduleDir, fileName), "utf8"), /@ts-nocheck|@ts-ignore/, fileName);
+  }
 });

@@ -11,6 +11,7 @@
     "cloudprune/**",
     "dist/**",
     "node_modules/**",
+    "scripts/aws-assessment.js",
     "test/**"
   ]
 }
