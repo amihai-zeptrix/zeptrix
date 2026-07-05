@@ -33,6 +33,27 @@ const CHECKS = [
     ],
   },
   {
+    id: "costHistoryByService",
+    service: "Cost Explorer",
+    command: ({ endDate }) => {
+      const start = new Date(`${endDate}T00:00:00Z`);
+      start.setUTCMonth(start.getUTCMonth() - 4);
+      return [
+        "ce",
+        "get-cost-and-usage",
+        "--time-period",
+        `Start=${start.toISOString().slice(0, 10)},End=${endDate}`,
+        "--granularity",
+        "MONTHLY",
+        "--metrics",
+        "UnblendedCost",
+        "--group-by",
+        "Type=DIMENSION,Key=SERVICE",
+      ];
+    },
+    global: true,
+  },
+  {
     id: "savingsPlansRecommendation",
     service: "Cost Explorer",
     command: [

@@ -348,6 +348,115 @@ test("S3 lifecycle findings require at least 10 percent cold or old measured S3 
   assert.equal(report.findings.some((finding) => finding.id === "storage-lifecycle"), false);
 });
 
+test("service cost anomalies compare current spend to a three-month baseline", () => {
+  const report = buildReport({
+    generatedAt: "2026-07-06T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: {
+          ResultsByTime: [{
+            Groups: [
+              { Keys: ["Amazon CloudWatch"], Metrics: { UnblendedCost: { Amount: "42", Unit: "USD" } } },
+              { Keys: ["Amazon Elastic Compute Cloud - Compute"], Metrics: { UnblendedCost: { Amount: "8", Unit: "USD" } } },
+            ],
+          }],
+        },
+      },
+      costHistoryByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: {
+          ResultsByTime: [
+            { TimePeriod: { Start: "2026-03-01", End: "2026-04-01" }, Groups: [{ Keys: ["Amazon CloudWatch"], Metrics: { UnblendedCost: { Amount: "8", Unit: "USD" } } }] },
+            { TimePeriod: { Start: "2026-04-01", End: "2026-05-01" }, Groups: [{ Keys: ["Amazon CloudWatch"], Metrics: { UnblendedCost: { Amount: "9", Unit: "USD" } } }] },
+            { TimePeriod: { Start: "2026-05-01", End: "2026-06-01" }, Groups: [{ Keys: ["Amazon CloudWatch"], Metrics: { UnblendedCost: { Amount: "10", Unit: "USD" } } }] },
+            { TimePeriod: { Start: "2026-06-01", End: "2026-07-01" }, Groups: [{ Keys: ["Amazon CloudWatch"], Metrics: { UnblendedCost: { Amount: "42", Unit: "USD" } } }] },
+          ],
+        },
+      },
+    },
+  });
+  const anomaly = report.findings.find((finding) => finding.id === "cost-anomaly-service-spike");
+
+  assert.ok(anomaly);
+  assert.equal(anomaly.title, "Investigate Amazon CloudWatch spend anomaly");
+  assert.equal(anomaly.strategy, "Cost anomaly investigation");
+  assert.equal(anomaly.statistics["3-month baseline"], "$9/mo");
+  assert.equal(anomaly.statistics["Increase vs baseline"], "$33 (366.7%)");
+  assert.equal(anomaly.statistics["Previous high month"], "$10");
+  assert.match(anomaly.impactAnalysis, /current Cost Explorer period versus a three-month baseline/);
+  assert.match(anomaly.minimizeImpact, /Start read-only/);
+  assert.deepEqual(anomaly.resources, ["Amazon CloudWatch"]);
+});
+
+test("service cost anomalies suppress low-value or low-change service noise", () => {
+  const report = buildReport({
+    generatedAt: "2026-07-06T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: { ResultsByTime: [{ Groups: [{ Keys: ["AWS Cost Explorer"], Metrics: { UnblendedCost: { Amount: "4.50", Unit: "USD" } } }] }] },
+      },
+      costHistoryByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: {
+          ResultsByTime: [
+            { TimePeriod: { Start: "2026-03-01", End: "2026-04-01" }, Groups: [{ Keys: ["AWS Cost Explorer"], Metrics: { UnblendedCost: { Amount: "2.90", Unit: "USD" } } }] },
+            { TimePeriod: { Start: "2026-04-01", End: "2026-05-01" }, Groups: [{ Keys: ["AWS Cost Explorer"], Metrics: { UnblendedCost: { Amount: "3.10", Unit: "USD" } } }] },
+            { TimePeriod: { Start: "2026-05-01", End: "2026-06-01" }, Groups: [{ Keys: ["AWS Cost Explorer"], Metrics: { UnblendedCost: { Amount: "3.00", Unit: "USD" } } }] },
+            { TimePeriod: { Start: "2026-06-01", End: "2026-07-01" }, Groups: [{ Keys: ["AWS Cost Explorer"], Metrics: { UnblendedCost: { Amount: "4.50", Unit: "USD" } } }] },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(report.findings.some((finding) => finding.id === "cost-anomaly-service-spike"), false);
+});
+
+test("service cost anomalies do not treat a sparse prior-month group as current spend", () => {
+  const report = buildReport({
+    generatedAt: "2026-07-06T10:00:00.000Z",
+    region: "us-east-1",
+    days: 30,
+    maxResources: 25,
+    checks: {
+      identity: { service: "STS", ok: true, required: true, data: { Account: "123" } },
+      costByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: { ResultsByTime: [{ Groups: [{ Keys: ["Amazon Elastic Compute Cloud - Compute"], Metrics: { UnblendedCost: { Amount: "10", Unit: "USD" } } }] }] },
+      },
+      costHistoryByService: {
+        service: "Cost Explorer",
+        ok: true,
+        data: {
+          ResultsByTime: [
+            { TimePeriod: { Start: "2026-03-01", End: "2026-04-01" }, Groups: [{ Keys: ["Amazon CloudWatch"], Metrics: { UnblendedCost: { Amount: "8", Unit: "USD" } } }] },
+            { TimePeriod: { Start: "2026-04-01", End: "2026-05-01" }, Groups: [{ Keys: ["Amazon CloudWatch"], Metrics: { UnblendedCost: { Amount: "9", Unit: "USD" } } }] },
+            { TimePeriod: { Start: "2026-05-01", End: "2026-06-01" }, Groups: [{ Keys: ["Amazon CloudWatch"], Metrics: { UnblendedCost: { Amount: "42", Unit: "USD" } } }] },
+            { TimePeriod: { Start: "2026-06-01", End: "2026-07-01" }, Groups: [{ Keys: ["Amazon Elastic Compute Cloud - Compute"], Metrics: { UnblendedCost: { Amount: "10", Unit: "USD" } } }] },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(report.findings.some((finding) => finding.id === "cost-anomaly-service-spike"), false);
+});
+
 test("EC2 consolidation finding is shown for low average CPU even with peak spikes", () => {
   const report = buildReport({
     generatedAt: "2026-06-27T10:00:00.000Z",

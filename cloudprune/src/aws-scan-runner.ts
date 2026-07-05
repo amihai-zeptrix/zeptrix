@@ -89,6 +89,12 @@ function monthStartEnd() {
   };
 }
 
+function monthsBefore(dateIso: string, months: number): string {
+  const date = new Date(`${dateIso}T00:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth() - months);
+  return date.toISOString().slice(0, 10);
+}
+
 function s3MetricWindow() {
   const end = new Date();
   const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -528,6 +534,14 @@ async function performAwsScan(scanId: string, user: any, aws: any, requestedRegi
       ["costByService", "Reading spend by AWS service.", [
         "ce", "get-cost-and-usage",
         "--time-period", `Start=${start},End=${end}`,
+        "--granularity", "MONTHLY",
+        "--metrics", "UnblendedCost",
+        "--group-by", "Type=DIMENSION,Key=SERVICE",
+        "--region", "us-east-1",
+      ]],
+      ["costHistoryByService", "Reading service spend history.", [
+        "ce", "get-cost-and-usage",
+        "--time-period", `Start=${monthsBefore(end, 4)},End=${end}`,
         "--granularity", "MONTHLY",
         "--metrics", "UnblendedCost",
         "--group-by", "Type=DIMENSION,Key=SERVICE",

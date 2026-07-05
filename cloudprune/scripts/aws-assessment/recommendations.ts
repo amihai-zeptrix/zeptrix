@@ -110,6 +110,73 @@ function trafficMappingSummary(albTargetMappings: AwsRecord[], apiGatewayV2: Aws
   };
 }
 
+function parseCostPeriods(check: AssessmentCheck | null | undefined) {
+  if (!check?.ok) return [];
+  return (check.data?.ResultsByTime || []).map((period) => ({
+    start: period.TimePeriod?.Start || "",
+    end: period.TimePeriod?.End || "",
+    groups: period.Groups || [],
+  })).filter((period) => period.start && period.groups.length);
+}
+
+function serviceCostFromGroup(group: AwsRecord): number {
+  return dollars(group.Metrics?.UnblendedCost?.Amount);
+}
+
+function serviceCostHistory(check: AssessmentCheck | null | undefined) {
+  const periods = parseCostPeriods(check);
+  const byService = new Map<string, Map<string, { amount: number; unit: string }>>();
+  for (const period of periods) {
+    for (const group of period.groups) {
+      const service = group.Keys?.[0] || "Unknown";
+      const amount = serviceCostFromGroup(group);
+      const unit = group.Metrics?.UnblendedCost?.Unit || "USD";
+      if (!Number.isFinite(amount)) continue;
+      const byPeriod = byService.get(service) || new Map();
+      byPeriod.set(period.start, { amount, unit });
+      byService.set(service, byPeriod);
+    }
+  }
+  return Array.from(byService.entries()).map(([service, byPeriod]) => {
+    const fallbackUnit = Array.from(byPeriod.values()).find((item) => item.unit)?.unit || "USD";
+    return {
+      service,
+      items: periods.map((period) => ({
+        period: period.start,
+        amount: dollars(byPeriod.get(period.start)?.amount || 0),
+        unit: byPeriod.get(period.start)?.unit || fallbackUnit,
+      })),
+    };
+  });
+}
+
+function costAnomalyCandidate(check: AssessmentCheck | null | undefined, totalCurrentCost: number) {
+  const histories = serviceCostHistory(check);
+  const candidates = histories.map(({ service, items }) => {
+    if (items.length < 4) return null;
+    const current = items[items.length - 1];
+    const baselineItems = items.slice(-4, -1);
+    const baselineAverage = baselineItems.reduce((total, item) => total + item.amount, 0) / baselineItems.length;
+    const baselineMax = Math.max(...baselineItems.map((item) => item.amount));
+    const increase = current.amount - baselineAverage;
+    const increasePercent = baselineAverage > 0 ? (increase / baselineAverage) * 100 : null;
+    const overPriorMax = current.amount - baselineMax;
+    const currentShare = totalCurrentCost > 0 ? (current.amount / totalCurrentCost) * 100 : null;
+    if (baselineAverage < 1 || current.amount < 5 || increase < 5 || overPriorMax < 3 || (increasePercent != null && increasePercent < 50)) return null;
+    return {
+      service,
+      current,
+      baselineAverage,
+      baselineMax,
+      baselineItems,
+      increase,
+      increasePercent,
+      currentShare,
+    };
+  }).filter(Boolean).sort((a, b) => b.increase - a.increase);
+  return candidates.length ? candidates[0] : null;
+}
+
 function ec2ConsolidationCandidate(instances: AwsRecord[], metrics: AwsRecord[], ec2Cost: number, signals: AwsRecord = {}) {
   const running = instances.filter((instance) => instance.State?.Name === "running");
   const metricsById = new Map(metrics.map((item) => [item.id, item]));
@@ -426,6 +493,34 @@ function buildFindings(assessment: Assessment): Finding[] {
   );
   const gravitonMigration = gravitonCandidates(instances);
   const savingsPlanSavings = estimatedSavingsFromSavingsPlans(checks.savingsPlansRecommendation);
+  const costAnomaly = costAnomalyCandidate(checks.costHistoryByService, totalCost);
+
+  if (costAnomaly) {
+    addFinding(findings, {
+      id: "cost-anomaly-service-spike",
+      strategy: "Cost anomaly investigation",
+      title: `Investigate ${costAnomaly.service} spend anomaly`,
+      estimatedMonthlySavings: null,
+      confidence: "medium",
+      blastRadius: `AWS service-level spend for ${costAnomaly.service}; affected resources still need drill-down before any remediation.`,
+      operationalRisk: "low",
+      downtimeRisk: "none for investigation; changes depend on the root cause",
+      impactAnalysis: `${costAnomaly.service} is $${dollars(costAnomaly.current.amount).toLocaleString()} in the current Cost Explorer period versus a three-month baseline of $${dollars(costAnomaly.baselineAverage).toLocaleString()}/mo, an increase of $${dollars(costAnomaly.increase).toLocaleString()}${costAnomaly.increasePercent == null ? "" : ` (${formatPercent(costAnomaly.increasePercent)})`}. Treat this as a spend alert until resource-level attribution confirms the driver.`,
+      minimizeImpact: "Start read-only: inspect Cost Explorer daily usage, tags, linked account, usage type, region, and recent deployments before stopping or deleting anything. Notify the service owner and apply reversible throttles or retention changes before destructive cleanup.",
+      rollbackPath: "No infrastructure rollback is needed for the alert. If a remediation is applied, revert the exact resource-level change and keep the Cost Explorer baseline as the validation reference.",
+      validationWindow: "Re-check daily Cost Explorer data for 48-72 hours after the root-cause fix and confirm the service returns near the prior three-month baseline.",
+      statistics: {
+        "Current service spend": `$${dollars(costAnomaly.current.amount).toLocaleString()}`,
+        "3-month baseline": `$${dollars(costAnomaly.baselineAverage).toLocaleString()}/mo`,
+        "Increase vs baseline": `$${dollars(costAnomaly.increase).toLocaleString()}${costAnomaly.increasePercent == null ? "" : ` (${formatPercent(costAnomaly.increasePercent)})`}`,
+        "Previous high month": `$${dollars(costAnomaly.baselineMax).toLocaleString()}`,
+        "Current account share": costAnomaly.currentShare == null ? "n/a" : formatPercent(costAnomaly.currentShare),
+        "Baseline periods": costAnomaly.baselineItems.map((item) => `${item.period}: $${dollars(item.amount).toLocaleString()}`).join(", "),
+        "Current period": `${costAnomaly.current.period}: $${dollars(costAnomaly.current.amount).toLocaleString()}`,
+      },
+      resources: [costAnomaly.service],
+    });
+  }
 
   if (unattachedVolumes.length) {
     const monthlyEstimate = unattachedVolumes.reduce((total, volume) => {
