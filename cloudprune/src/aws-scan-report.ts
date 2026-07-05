@@ -103,6 +103,7 @@ export function buildAwsAssessment(results: AwsJson, regions: string[], errors: 
     checks: {
       identity: awsCheck("STS", results.identity, checkError(errors, "identity")),
       costByService: awsCheck("Cost Explorer", results.costByService, checkError(errors, "costByService")),
+      costHistoryByService: awsCheck("Cost Explorer", results.costHistoryByService, checkError(errors, "costHistoryByService")),
       savingsPlansRecommendation: awsCheck("Cost Explorer", results.savingsPlansRecommendation, checkError(errors, "savingsPlansRecommendation")),
       ec2Instances: awsCheck("EC2", mergeAwsReservations(results.ec2Instances), regionalCheckError(errors, "ec2Instances", regions, results.ec2Instances)),
       ec2Metrics: awsCheck("CloudWatch EC2 Metrics", { instances: results.ec2Metrics || [] }, null),
