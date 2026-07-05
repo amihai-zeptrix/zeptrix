@@ -4,7 +4,7 @@
   "private": true,
   "description": "CloudPrune cloud cost monitoring and savings workspace.",
   "scripts": {
-    "assess:aws": "node scripts/aws-assessment.js",
+    "assess:aws": "npm run build --silent && node dist/scripts/aws-assessment.js",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-build-assets.js",
     "clean": "rm -rf dist",
     "dev": "npm run build && node dist/server.js",
