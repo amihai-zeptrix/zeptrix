@@ -17,6 +17,7 @@ const {
   verifyPassword,
   verifySession,
 } = require("./src/auth");
+const { createAutomationPlan, listAutomationPlans } = require("./src/automation-service");
 const { externalIdForAccount, normalizeAwsRoleArn, normalizeAwsScanRegions, publicAwsScan } = require("./src/aws-models");
 const { adminAuditLog } = require("./src/audit-service");
 const { initDatabase, pool } = require("./src/db");
@@ -208,6 +209,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, requestUrl: 
     }
     if (req.method === "GET" && apiPath === "/api/workspace") {
       return json(res, 200, await workspaceForRequest(req));
+    }
+    if (req.method === "GET" && apiPath === "/api/automation/plans") {
+      return json(res, 200, await listAutomationPlans(req));
+    }
+    if (req.method === "POST" && apiPath === "/api/automation/plans") {
+      return json(res, 201, { automationPlan: await createAutomationPlan(req, await readJson(req)) });
     }
     if (req.method === "POST" && apiPath === "/api/feedback") {
       return json(res, 201, { feedback: await submitFeedback(req, await readJson(req)) });

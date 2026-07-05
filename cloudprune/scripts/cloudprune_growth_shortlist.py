@@ -17,6 +17,7 @@ from typing import Iterable
 
 
 REGISTER_URL = "https://zeptrix.io/cloudprune/"
+OPERATING_PROMISE = "Recommendation says what may save money. Automation turns it into a reviewed, reversible workflow. Every action starts as dry-run, requires approval, records audit logs, and has rollback/validation steps."
 
 
 @dataclass(frozen=True)
@@ -159,7 +160,7 @@ SHORTLIST = [
         source_url="https://www.reddit.com/r/FinOps/comments/1r0ly03/do_you_have_any_advice_on_cloud_cost_optimization/",
         pain="Small teams want savings without buying heavy enterprise FinOps platforms.",
         current_answer="Community advice often favors native tools and simple automation before large platforms.",
-        cloudprune_angle="CloudPrune can be positioned as lightweight, read-only first, concrete recommendations, and free trial/free-until campaign.",
+        cloudprune_angle=f"CloudPrune can be positioned as lightweight, read-only first, concrete recommendations, and free trial/free-until campaign. {OPERATING_PROMISE}",
         content_title="FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform",
         primary_cta=f"Start with CloudPrune read-only onboarding: {REGISTER_URL}",
         intent_score=10,
@@ -173,7 +174,7 @@ SHORTLIST = [
         source_url="https://www.reddit.com/r/FinOps/comments/1r9p62f/cloud_cost_optimization_tools_that_actually_work/",
         pain="Buyers are skeptical that tools only provide dashboards and generic recommendations.",
         current_answer="Community emphasizes proof of value, governance, tagging, and actionability over charts.",
-        cloudprune_angle="CloudPrune should lead with proof: scan entities, show exact evidence, savings, impact, and dry-run automation path.",
+        cloudprune_angle=f"CloudPrune should lead with proof: scan entities, show exact evidence, savings, impact, and dry-run automation path. {OPERATING_PROMISE}",
         content_title="Cloud Cost Optimization Tools That Actually Work: What to Test in a Proof of Value",
         primary_cta=f"Run a CloudPrune proof-of-value scan on your AWS account: {REGISTER_URL}",
         intent_score=9,

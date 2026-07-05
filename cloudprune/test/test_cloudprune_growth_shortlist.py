@@ -28,6 +28,13 @@ class CloudPruneGrowthShortlistTest(unittest.TestCase):
         self.assertIn("Suggested outline", markdown)
         self.assertIn(growth.REGISTER_URL, markdown)
 
+    def test_growth_copy_keeps_operating_promise(self):
+        markdown = growth.markdown_brief(growth.ranked_opportunities())
+
+        self.assertIn("Recommendation says what may save money", markdown)
+        self.assertIn("Automation turns it into a reviewed, reversible workflow", markdown)
+        self.assertIn("Every action starts as dry-run", markdown)
+
     def test_csv_writer_includes_priority_score(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "shortlist.csv"

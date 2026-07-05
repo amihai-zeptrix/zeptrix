@@ -492,17 +492,17 @@ test("CloudPrune demo recommendation status buttons open workflow previews", () 
 
   click("stage", { recommendationId: "compute-commitments" });
   assert.match(app.innerHTML, /Open evidence review/);
-  assert.match(app.innerHTML, /Open review/);
+  assert.match(app.innerHTML, /Create dry-run plan/);
   assert.match(app.innerHTML, /Commit only to a conservative baseline/);
 
   click("stage", { recommendationId: "idle-ebs-volumes" });
   assert.match(app.innerHTML, /Stage safe execution/);
-  assert.match(app.innerHTML, /Add to queue/);
+  assert.match(app.innerHTML, /Create dry-run plan/);
   assert.doesNotMatch(app.innerHTML, /Open evidence review/);
 
   click("stage", { recommendationId: "storage-lifecycle" });
   assert.match(app.innerHTML, /Build rollout plan/);
-  assert.match(app.innerHTML, /Create plan/);
+  assert.match(app.innerHTML, /Create dry-run plan/);
   assert.doesNotMatch(app.innerHTML, /Stage safe execution/);
 
   click("close-demo-action");
@@ -578,6 +578,9 @@ test("CloudPrune login form sends normal user credentials and stores the returne
 test("CloudPrune auth page shows the free-until campaign banner", () => {
   const { app } = bootCloudPruneApp("/cloudprune/");
   assert.match(app.innerHTML, /Enjoy totally free until September 2026/);
+  assert.match(app.innerHTML, /Recommendation<\/strong> says what may save money/);
+  assert.match(app.innerHTML, /Automation<\/strong> turns it into a reviewed, reversible workflow/);
+  assert.match(app.innerHTML, /Every action<\/strong> starts as dry-run, requires approval, records audit logs, and has rollback\/validation steps/);
 });
 
 test("CloudPrune auth page links to growth resources", () => {
@@ -1628,6 +1631,63 @@ test("CloudPrune saved recommendation Review button opens workflow preview", asy
   assert.match(app.innerHTML, /Switch traffic back to the previous x86 instance type/);
 });
 
+test("CloudPrune automation route renders dry-run plans from workspace", async () => {
+  const session = sessionToken({
+    sub: "user-1",
+    email: "ami@example.com",
+    accountId: "account-1",
+    companyName: "Zeptrix",
+    exp: Date.now() + 10000,
+  });
+  const { app } = bootCloudPruneApp("/cloudprune/automation", session, (url) => {
+    if (String(url).endsWith("/api/workspace")) {
+      return jsonResponse({
+        user: { name: "Ami", email: "ami@example.com", companyName: "Zeptrix" },
+        connections: {
+          aws: {
+            provider: "aws",
+            awsAccountId: "123456789012",
+            roleArn: "arn:aws:iam::123456789012:role/CloudPruneReadOnlyRole",
+            externalId: "cloudprune-account-1",
+            status: "configured",
+          },
+        },
+        automationPlans: [{
+          id: "plan-1",
+          recommendationId: "idle-ebs-volumes",
+          title: "Review 1 unattached EBS volume",
+          status: "dry_run",
+          plan: {
+            summary: "Dry-run only. No AWS resources are changed by this plan.",
+            estimatedMonthlySavings: 8,
+            workflow: ["Inspect recommendation evidence", "Request approval before execution"],
+            guardrails: ["No execution from dry-run plans", "Audit log records plan creation"],
+            rollbackPath: "Create a new EBS volume from the retained snapshot.",
+            validationWindow: "Re-run CloudPrune after 24-72 hours.",
+          },
+        }],
+        awsScan: {
+          id: "scan-1",
+          status: "completed",
+          awsAccountId: "123456789012",
+          monthlyCost: 125,
+          recommendations: [{ id: "idle-ebs-volumes", title: "Review 1 unattached EBS volume" }],
+        },
+        awsSetup: {},
+      });
+    }
+    return jsonResponse({});
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.match(app.innerHTML, /Reviewed, reversible workflows/);
+  assert.match(app.innerHTML, /Recommendation<\/strong> says what may save money/);
+  assert.match(app.innerHTML, /Review 1 unattached EBS volume/);
+  assert.match(app.innerHTML, /No AWS resources are changed by this plan/);
+  assert.match(app.innerHTML, /Request approval before execution/);
+  assert.match(app.innerHTML, /Create a new EBS volume from the retained snapshot/);
+});
+
 test("CloudPrune recommendations route renders the top generated recommendation first", async () => {
   const session = sessionToken({
     sub: "user-1",
@@ -1850,6 +1910,22 @@ test("CloudPrune growth events have a dedicated table and API", () => {
   assert.match(growthSource, /growthInsights/);
   assert.match(growthSource, /adminGrowthCsv/);
   assert.match(growthSource, /createGrowthExperiment/);
+});
+
+test("CloudPrune automation plans have a dedicated table, API, and audit event", () => {
+  const dbSource = fs.readFileSync(path.join(__dirname, "../src/db.ts"), "utf8");
+  const serverSource = fs.readFileSync(path.join(__dirname, "../server.ts"), "utf8");
+  const automationSource = fs.readFileSync(path.join(__dirname, "../src/automation-service.ts"), "utf8");
+
+  assert.match(dbSource, /create table if not exists cloudprune_automation_plans/);
+  assert.match(dbSource, /drop index if exists cloudprune_automation_plans_account_recommendation_idx/);
+  assert.match(dbSource, /cloudprune_automation_plans_account_scan_recommendation_idx/);
+  assert.match(dbSource, /account_id, aws_scan_id, recommendation_id/);
+  assert.match(serverSource, /api\/automation\/plans/);
+  assert.match(automationSource, /status='dry_run'/);
+  assert.match(automationSource, /on conflict \(account_id, aws_scan_id, recommendation_id\)/);
+  assert.match(automationSource, /automation_plan_created/);
+  assert.match(automationSource, /No execution from dry-run plans/);
 });
 
 test("CloudPrune JSON request bodies are capped before parsing", async () => {

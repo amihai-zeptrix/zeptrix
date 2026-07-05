@@ -951,6 +951,74 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
 }
 .anomaly.high em { background: var(--red-soft); color: var(--red); }
 
+.automation-module { min-width: 0; }
+.automation-principles {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #effaf4, #eef8fb);
+}
+.automation-principles p {
+  margin: 0;
+  color: var(--muted);
+}
+.automation-principles strong { color: var(--ink); }
+.automation-plan-list { display: grid; gap: 14px; }
+.automation-plan {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.automation-plan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.automation-plan-head h3 {
+  margin: 8px 0 6px;
+  font-size: 22px;
+}
+.automation-plan-head p { margin: 0; color: var(--muted); }
+.automation-plan-head > strong {
+  display: grid;
+  justify-items: end;
+  color: var(--green);
+  font-size: 24px;
+  white-space: nowrap;
+}
+.automation-plan-head small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.automation-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.automation-plan-grid > div {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbf9;
+}
+.automation-plan-grid strong,
+.automation-plan-grid span { display: block; }
+.automation-plan-grid strong { margin-bottom: 8px; }
+.automation-plan-grid ol,
+.automation-plan-grid ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+.automation-plan-grid span { color: var(--muted); }
+
 .queue {
   display: grid;
   gap: 0;
@@ -1513,6 +1581,28 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   line-height: 1.2;
   box-shadow: 0 14px 34px rgba(0, 0, 0, .16);
 }
+
+.auth-operating-promise {
+  display: grid;
+  max-width: 680px;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-left: 4px solid var(--green);
+  border-radius: 8px;
+  background: rgba(9, 24, 21, .42);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, .14);
+}
+
+.auth-operating-promise p {
+  max-width: none;
+  margin: 0;
+  color: #def5ec;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.auth-operating-promise strong { color: #fff; }
 
 .intent-card {
   margin-top: 18px;
