@@ -478,6 +478,33 @@ test("CloudPrune demo includes example recommendations for every AWS engine type
   assert.match(demo, /Right-size production namespace requests/);
 });
 
+test("CloudPrune demo groups recommendations by deployment complexity", () => {
+  const demo = renderCloudPruneApp("/cloudprune/demo/recommendations");
+  assert.match(demo, /Deployment complexity/);
+  assert.match(demo, /Low deployment complexity/);
+  assert.match(demo, /Medium deployment complexity/);
+  assert.match(demo, /High deployment complexity/);
+  assert.match(demo, /Low complexity/);
+  assert.match(demo, /Medium complexity/);
+  assert.match(demo, /High complexity/);
+});
+
+test("CloudPrune demo complexity filter keeps the selected recommendation bucket", () => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
+  for (const handler of listeners.click || []) handler({
+    target: {
+      closest(selector) {
+        return selector === "[data-complexity]" ? { dataset: { complexity: "High" } } : null;
+      },
+    },
+  });
+
+  assert.match(app.innerHTML, /High deployment complexity/);
+  assert.match(app.innerHTML, /Assess whether low-utilization EC2 app entrypoints can move to Lambda/);
+  assert.doesNotMatch(app.innerHTML, /Low deployment complexity/);
+  assert.doesNotMatch(app.innerHTML, /Medium deployment complexity/);
+});
+
 test("CloudPrune demo recommendation status buttons open workflow previews", () => {
   const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
   const click = (action, dataset = {}) => {

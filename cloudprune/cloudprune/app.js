@@ -7,6 +7,13 @@ const CLOUDS = [
   { id: "data", label: "Data platforms" },
 ];
 
+const DEPLOYMENT_COMPLEXITIES = [
+  { id: "all", label: "All complexity" },
+  { id: "Low", label: "Low" },
+  { id: "Medium", label: "Medium" },
+  { id: "High", label: "High" },
+];
+
 const SERVICES = [
   { provider: "aws", name: "EC2 Compute", owner: "Platform", month: 124800, forecast: 137400, waste: 18400, trend: 11, score: 76 },
   { provider: "aws", name: "RDS", owner: "Core Apps", month: 39200, forecast: 41150, waste: 6200, trend: 5, score: 68 },
@@ -225,6 +232,7 @@ const ICONS = {
 
 let state = {
   cloud: "all",
+  recommendationComplexity: "all",
   view: "recommendations",
   automation: false,
   authMode: "register",
@@ -604,7 +612,11 @@ function activeRecommendations() {
 
 function filteredRecommendations() {
   const recommendations = activeRecommendations();
-  return state.cloud === "all" ? recommendations : recommendations.filter((item) => item.cloud === state.cloud);
+  return recommendations.filter((item) => {
+    const cloudMatches = state.cloud === "all" || item.cloud === state.cloud;
+    const complexityMatches = state.recommendationComplexity === "all" || recommendationComplexity(item) === state.recommendationComplexity;
+    return cloudMatches && complexityMatches;
+  });
 }
 
 function activeAutomationPlans() {
@@ -632,6 +644,40 @@ function activeAutomationPlans() {
 
 function recommendationKey(item) {
   return String(item.id || item.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function recommendationComplexity(item) {
+  const effort = String(item.deploymentComplexity || item.effort || "Medium").toLowerCase();
+  if (effort === "low") return "Low";
+  if (effort === "high") return "High";
+  return "Medium";
+}
+
+function groupedRecommendations() {
+  const groups = new Map(DEPLOYMENT_COMPLEXITIES.filter((item) => item.id !== "all").map((item) => [item.id, []]));
+  for (const recommendation of filteredRecommendations()) {
+    groups.get(recommendationComplexity(recommendation)).push(recommendation);
+  }
+  return DEPLOYMENT_COMPLEXITIES
+    .filter((item) => item.id !== "all")
+    .map((item) => ({ ...item, recommendations: groups.get(item.id) || [] }))
+    .filter((item) => item.recommendations.length);
+}
+
+function renderRecommendationControls() {
+  const complexityButtons = DEPLOYMENT_COMPLEXITIES.map((item) => `
+    <button class="segmented-button ${state.recommendationComplexity === item.id ? "active" : ""}" data-complexity="${escapeHtml(item.id)}" type="button">
+      ${escapeHtml(item.label)}
+    </button>
+  `).join("");
+  return `
+    <div class="recommendation-controls" aria-label="Recommendation filters">
+      <div>
+        <span>Deployment complexity</span>
+        <div class="filters compact">${complexityButtons}</div>
+      </div>
+    </div>
+  `;
 }
 
 function toggleRecommendationAction(recommendationId) {
@@ -1127,8 +1173,9 @@ function renderSpendBars() {
 }
 
 function renderRecommendations() {
+  const groups = groupedRecommendations();
   const recommendations = filteredRecommendations();
-  return recommendations.map((item) => {
+  const renderItems = (items) => items.map((item) => {
     const key = recommendationKey(item);
     const isOpen = state.activeRecommendationActionId === key;
     const actionLabel = isOpen ? "Close" : item.status || "Review";
@@ -1146,14 +1193,33 @@ function renderRecommendations() {
       <div class="rec-meta">
         <strong>${money(item.impact)}</strong>
         <span>${escapeHtml(item.owner || item.strategy || "CloudPrune")}</span>
-        <span>${escapeHtml(item.effort || "Medium")} effort</span>
+        <span>${escapeHtml(recommendationComplexity(item))} complexity</span>
         <span>${escapeHtml(item.risk || "Medium")} risk</span>
         <button data-action="stage" data-recommendation-id="${escapeHtml(key)}" aria-expanded="${isOpen ? "true" : "false"}" aria-label="${isOpen ? "Close" : "Open"} ${escapeHtml(item.status || "Review")} workflow for ${escapeHtml(item.title)}">${escapeHtml(actionLabel)}</button>
       </div>
       ${isOpen ? renderRecommendationAction(item) : ""}
     </article>
   `;
-  }).join("") || `<div class="empty">${appRoute() === "demo" ? "No recommendations match this cloud." : "No recommendations yet. Run an AWS scan to generate cost-saving findings."}</div>`;
+  }).join("");
+  if (!recommendations.length) return `<div class="empty">${appRoute() === "demo" ? "No recommendations match this filter." : "No recommendations yet. Run an AWS scan to generate cost-saving findings."}</div>`;
+  if (appRoute() === "demo") {
+    return groups.map((group) => {
+      const monthlyImpact = group.recommendations.reduce((total, item) => total + Number(item.impact || 0), 0);
+      return `
+        <section class="recommendation-group">
+          <div class="recommendation-group-head">
+            <div>
+              <span class="eyebrow">${escapeHtml(group.label)} deployment complexity</span>
+              <h3>${group.recommendations.length} recommendations</h3>
+            </div>
+            <strong>${money(monthlyImpact)} / mo</strong>
+          </div>
+          ${renderItems(group.recommendations)}
+        </section>
+      `;
+    }).join("");
+  }
+  return renderItems(recommendations);
 }
 
 function renderRecommendationStats(statistics) {
@@ -1694,6 +1760,7 @@ function renderMainPanel() {
         <div><span class="eyebrow">Savings inbox</span><h2>Prioritized recommendations</h2></div>
         <button data-view="services">View services</button>
       </div>
+      ${appRoute() === "demo" ? renderRecommendationControls() : ""}
       <div class="recommendation-list">${renderRecommendations()}</div>
     </section>
   `;
@@ -1738,6 +1805,7 @@ function renderEmptyWorkspace() {
               <div><span class="eyebrow">Savings inbox</span><h2>Prioritized recommendations</h2></div>
               <button data-action="scan-aws" ${state.awsScan.status === "scanning" ? "disabled" : ""}>${state.awsScan.status === "scanning" ? "Scanning..." : "Scan again"}</button>
             </div>
+            ${appRoute() === "demo" ? renderRecommendationControls() : ""}
             <div class="recommendation-list">${renderRecommendations()}</div>
           </section>
           <aside class="right-rail">
@@ -2253,6 +2321,13 @@ document.addEventListener("click", async (event) => {
   const cloudButton = event.target.closest("[data-cloud]");
   if (cloudButton) {
     state.cloud = cloudButton.dataset.cloud;
+    state.activeRecommendationActionId = "";
+    render();
+    return;
+  }
+  const complexityButton = event.target.closest("[data-complexity]");
+  if (complexityButton) {
+    state.recommendationComplexity = complexityButton.dataset.complexity;
     state.activeRecommendationActionId = "";
     render();
     return;
