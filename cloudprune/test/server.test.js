@@ -539,6 +539,51 @@ test("CloudPrune demo can group recommendations by service and vendor", () => {
   assert.doesNotMatch(app.innerHTML, /Partition high-scan BigQuery tables/);
 });
 
+test("CloudPrune demo provider filter also scopes recommendations and subfilters", () => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
+  const click = (selector, dataset) => {
+    for (const handler of listeners.click || []) handler({
+      target: {
+        closest(candidate) {
+          return candidate === selector ? { dataset } : null;
+        },
+      },
+    });
+  };
+
+  click("[data-cloud]", { cloud: "gcp" });
+  assert.match(app.innerHTML, /\$9,300 \/ mo <small>1 visible<\/small>/);
+  assert.match(app.innerHTML, /Partition high-scan BigQuery tables/);
+  assert.equal((app.innerHTML.match(/<article class="recommendation/g) || []).length, 1);
+
+  click("[data-recommendation-group]", { recommendationGroup: "service" });
+  assert.match(app.innerHTML, /All services/);
+  assert.match(app.innerHTML, /BigQuery/);
+  assert.doesNotMatch(app.innerHTML, /EC2 and Lambda/);
+});
+
+test("CloudPrune demo clears stale recommendation subfilters when provider changes", () => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
+  const click = (selector, dataset) => {
+    for (const handler of listeners.click || []) handler({
+      target: {
+        closest(candidate) {
+          return candidate === selector ? { dataset } : null;
+        },
+      },
+    });
+  };
+
+  click("[data-recommendation-group]", { recommendationGroup: "service" });
+  click("[data-recommendation-filter]", { recommendationFilter: "ec2" });
+  assert.match(app.innerHTML, /\$4,920 \/ mo <small>2 visible<\/small>/);
+
+  click("[data-cloud]", { cloud: "gcp" });
+  assert.match(app.innerHTML, /All services/);
+  assert.match(app.innerHTML, /\$9,300 \/ mo <small>1 visible<\/small>/);
+  assert.match(app.innerHTML, /Partition high-scan BigQuery tables/);
+});
+
 test("CloudPrune demo recommendation status buttons open workflow previews", () => {
   const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
   const click = (action, dataset = {}) => {
