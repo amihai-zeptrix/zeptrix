@@ -630,8 +630,14 @@ function activeRecommendations() {
   return appRoute() === "demo" ? RECOMMENDATIONS : scanResult()?.recommendations || [];
 }
 
-function filteredRecommendations() {
+function providerFilteredRecommendations() {
   const recommendations = activeRecommendations();
+  if (state.cloud === "all") return recommendations;
+  return recommendations.filter((item) => item.cloud === state.cloud);
+}
+
+function filteredRecommendations() {
+  const recommendations = providerFilteredRecommendations();
   const groupBy = activeRecommendationGroupBy();
   const filter = activeRecommendationFilter();
   if (filter === "all") return recommendations;
@@ -678,7 +684,9 @@ function activeRecommendationGroupBy() {
 
 function activeRecommendationFilter() {
   const groupBy = activeRecommendationGroupBy();
-  return state.recommendationFilters?.[groupBy] || "all";
+  const filter = state.recommendationFilters?.[groupBy] || "all";
+  const options = recommendationFilterOptions(groupBy);
+  return options.some((item) => item.id === filter) ? filter : "all";
 }
 
 function recommendationService(item) {
@@ -705,7 +713,7 @@ function recommendationGroupValue(item, groupBy = activeRecommendationGroupBy())
 }
 
 function recommendationFilterOptions(groupBy = activeRecommendationGroupBy()) {
-  const recommendations = activeRecommendations();
+  const recommendations = providerFilteredRecommendations();
   if (groupBy === "complexity") return DEPLOYMENT_COMPLEXITIES;
   const seen = new Map();
   for (const recommendation of recommendations) {
