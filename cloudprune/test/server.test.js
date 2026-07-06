@@ -480,29 +480,63 @@ test("CloudPrune demo includes example recommendations for every AWS engine type
 
 test("CloudPrune demo groups recommendations by deployment complexity", () => {
   const demo = renderCloudPruneApp("/cloudprune/demo/recommendations");
+  assert.match(demo, /Group by/);
+  assert.match(demo, /Vendor/);
+  assert.match(demo, /Service/);
   assert.match(demo, /Deployment complexity/);
-  assert.match(demo, /Low deployment complexity/);
-  assert.match(demo, /Medium deployment complexity/);
-  assert.match(demo, /High deployment complexity/);
+  assert.match(demo, /All complexity/);
+  assert.match(demo, /\$75,140 \/ mo/);
   assert.match(demo, /Low complexity/);
   assert.match(demo, /Medium complexity/);
   assert.match(demo, /High complexity/);
 });
 
-test("CloudPrune demo complexity filter keeps the selected recommendation bucket", () => {
+test("CloudPrune demo complexity filter keeps totals consistent with visible recommendations", () => {
   const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
+  assert.match(app.innerHTML, /\$75,140 \/ mo <small>14 visible<\/small>/);
   for (const handler of listeners.click || []) handler({
     target: {
       closest(selector) {
-        return selector === "[data-complexity]" ? { dataset: { complexity: "High" } } : null;
+        return selector === "[data-recommendation-filter]" ? { dataset: { recommendationFilter: "Low" } } : null;
       },
     },
   });
 
-  assert.match(app.innerHTML, /High deployment complexity/);
-  assert.match(app.innerHTML, /Assess whether low-utilization EC2 app entrypoints can move to Lambda/);
-  assert.doesNotMatch(app.innerHTML, /Low deployment complexity/);
-  assert.doesNotMatch(app.innerHTML, /Medium deployment complexity/);
+  assert.match(app.innerHTML, /\$32,720 \/ mo <small>6 visible<\/small>/);
+  assert.match(app.innerHTML, /Review 128 unattached EBS volumes/);
+  assert.doesNotMatch(app.innerHTML, /Assess whether low-utilization EC2 app entrypoints can move to Lambda/);
+});
+
+test("CloudPrune demo can group recommendations by service and vendor", () => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
+  const click = (selector, dataset) => {
+    for (const handler of listeners.click || []) handler({
+      target: {
+        closest(candidate) {
+          return candidate === selector ? { dataset } : null;
+        },
+      },
+    });
+  };
+
+  click("[data-recommendation-group]", { recommendationGroup: "service" });
+  assert.match(app.innerHTML, /All services/);
+  assert.match(app.innerHTML, /EC2/);
+  assert.match(app.innerHTML, /BigQuery/);
+  assert.match(app.innerHTML, /Savings Plans/);
+
+  click("[data-recommendation-filter]", { recommendationFilter: "ec2" });
+  assert.match(app.innerHTML, /\$4,920 \/ mo <small>2 visible<\/small>/);
+  assert.match(app.innerHTML, /Assess consolidating 2 low-utilization EC2 instances/);
+  assert.match(app.innerHTML, /Evaluate 9 EC2 Compute Optimizer recommendations/);
+
+  click("[data-recommendation-group]", { recommendationGroup: "vendor" });
+  assert.match(app.innerHTML, /All vendors/);
+  assert.match(app.innerHTML, /AWS/);
+  click("[data-recommendation-filter]", { recommendationFilter: "aws" });
+  assert.match(app.innerHTML, /\$37,940 \/ mo <small>10 visible<\/small>/);
+  assert.match(app.innerHTML, /Review AWS Savings Plans purchase recommendation/);
+  assert.doesNotMatch(app.innerHTML, /Partition high-scan BigQuery tables/);
 });
 
 test("CloudPrune demo recommendation status buttons open workflow previews", () => {

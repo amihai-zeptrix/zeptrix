@@ -369,8 +369,9 @@ button:hover { background: #1e4d43; }
 }
 
 .recommendation-controls {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.5fr) auto;
+  align-items: start;
   gap: 14px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
@@ -380,6 +381,21 @@ button:hover { background: #1e4d43; }
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
+  text-transform: uppercase;
+}
+.recommendation-total {
+  align-self: center;
+  color: var(--forest);
+  font: 900 18px Manrope, sans-serif;
+  text-align: right;
+  white-space: nowrap;
+}
+.recommendation-total small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
   text-transform: uppercase;
 }
 .recommendation-list { display: grid; gap: 0; }
@@ -399,6 +415,11 @@ button:hover { background: #1e4d43; }
 .recommendation-group-head h3 {
   margin: 2px 0 0;
   font-size: 18px;
+}
+.recommendation-group-head p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-weight: 800;
 }
 .recommendation-group-head strong {
   color: var(--forest);
@@ -1895,6 +1916,8 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   .kpi-grid { grid-template-columns: 1fr; }
   .hero-mark { display: none; }
   .recommendation { grid-template-columns: 42px minmax(0, 1fr); }
+  .recommendation-controls { grid-template-columns: 1fr; }
+  .recommendation-total { text-align: left; }
   .rec-meta { grid-column: 2; }
   .rec-meta { justify-items: start; }
   .demo-action-panel { grid-column: 1 / -1; }

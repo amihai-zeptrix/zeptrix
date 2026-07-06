@@ -14,6 +14,25 @@ const DEPLOYMENT_COMPLEXITIES = [
   { id: "High", label: "High" },
 ];
 
+const RECOMMENDATION_GROUPINGS = [
+  { id: "vendor", label: "Vendor" },
+  { id: "service", label: "Service" },
+  { id: "complexity", label: "Deployment complexity" },
+];
+
+const RECOMMENDATION_SERVICE_BY_ID = {
+  "compute-commitments": "Savings Plans",
+  "idle-ebs-volumes": "EBS",
+  "idle-elastic-ips": "Elastic IP",
+  "storage-lifecycle": "S3 and CloudWatch",
+  "ec2-app-consolidation": "EC2",
+  "idle-load-balancers": "Load Balancing",
+  "ec2-rightsizing": "EC2",
+  "ec2-to-lambda-assessment": "EC2 and Lambda",
+  "rds-rightsizing": "RDS",
+  "network-egress-review": "NAT Gateway",
+};
+
 const SERVICES = [
   { provider: "aws", name: "EC2 Compute", owner: "Platform", month: 124800, forecast: 137400, waste: 18400, trend: 11, score: 76 },
   { provider: "aws", name: "RDS", owner: "Core Apps", month: 39200, forecast: 41150, waste: 6200, trend: 5, score: 68 },
@@ -232,7 +251,8 @@ const ICONS = {
 
 let state = {
   cloud: "all",
-  recommendationComplexity: "all",
+  recommendationGroupBy: "complexity",
+  recommendationFilters: { vendor: "all", service: "all", complexity: "all" },
   view: "recommendations",
   automation: false,
   authMode: "register",
@@ -612,11 +632,10 @@ function activeRecommendations() {
 
 function filteredRecommendations() {
   const recommendations = activeRecommendations();
-  return recommendations.filter((item) => {
-    const cloudMatches = state.cloud === "all" || item.cloud === state.cloud;
-    const complexityMatches = state.recommendationComplexity === "all" || recommendationComplexity(item) === state.recommendationComplexity;
-    return cloudMatches && complexityMatches;
-  });
+  const groupBy = activeRecommendationGroupBy();
+  const filter = activeRecommendationFilter();
+  if (filter === "all") return recommendations;
+  return recommendations.filter((item) => recommendationGroupValue(item, groupBy).id === filter);
 }
 
 function activeAutomationPlans() {
@@ -653,30 +672,91 @@ function recommendationComplexity(item) {
   return "Medium";
 }
 
-function groupedRecommendations() {
-  const groups = new Map(DEPLOYMENT_COMPLEXITIES.filter((item) => item.id !== "all").map((item) => [item.id, []]));
-  for (const recommendation of filteredRecommendations()) {
-    groups.get(recommendationComplexity(recommendation)).push(recommendation);
+function activeRecommendationGroupBy() {
+  return RECOMMENDATION_GROUPINGS.some((item) => item.id === state.recommendationGroupBy) ? state.recommendationGroupBy : "complexity";
+}
+
+function activeRecommendationFilter() {
+  const groupBy = activeRecommendationGroupBy();
+  return state.recommendationFilters?.[groupBy] || "all";
+}
+
+function recommendationService(item) {
+  const key = recommendationKey(item);
+  if (RECOMMENDATION_SERVICE_BY_ID[key]) return RECOMMENDATION_SERVICE_BY_ID[key];
+  if (item.service) return String(item.service);
+  if (item.awsService) return String(item.awsService);
+  if (item.strategy) return String(item.strategy);
+  if (item.owner) return String(item.owner);
+  return providerLabel(item.cloud || "all");
+}
+
+function recommendationGroupValue(item, groupBy = activeRecommendationGroupBy()) {
+  if (groupBy === "vendor") {
+    const vendor = item.cloud || "all";
+    return { id: vendor, label: providerLabel(vendor) };
   }
-  return DEPLOYMENT_COMPLEXITIES
-    .filter((item) => item.id !== "all")
-    .map((item) => ({ ...item, recommendations: groups.get(item.id) || [] }))
-    .filter((item) => item.recommendations.length);
+  if (groupBy === "service") {
+    const service = recommendationService(item);
+    return { id: recommendationKey({ id: service }), label: service };
+  }
+  const complexity = recommendationComplexity(item);
+  return { id: complexity, label: complexity };
+}
+
+function recommendationFilterOptions(groupBy = activeRecommendationGroupBy()) {
+  const recommendations = activeRecommendations();
+  if (groupBy === "complexity") return DEPLOYMENT_COMPLEXITIES;
+  const seen = new Map();
+  for (const recommendation of recommendations) {
+    const value = recommendationGroupValue(recommendation, groupBy);
+    if (!seen.has(value.id)) seen.set(value.id, value.label);
+  }
+  return [
+    { id: "all", label: `All ${groupBy === "vendor" ? "vendors" : "services"}` },
+    ...[...seen.entries()].map(([id, label]) => ({ id, label })).sort((left, right) => left.label.localeCompare(right.label)),
+  ];
+}
+
+function groupedRecommendations() {
+  const groupBy = activeRecommendationGroupBy();
+  const options = recommendationFilterOptions(groupBy).filter((item) => item.id !== "all");
+  const groups = new Map(options.map((item) => [item.id, { ...item, recommendations: [] }]));
+  for (const recommendation of filteredRecommendations()) {
+    const value = recommendationGroupValue(recommendation, groupBy);
+    if (!groups.has(value.id)) groups.set(value.id, { ...value, recommendations: [] });
+    groups.get(value.id).recommendations.push(recommendation);
+  }
+  return [...groups.values()].filter((item) => item.recommendations.length);
 }
 
 function renderRecommendationControls() {
-  const complexityButtons = DEPLOYMENT_COMPLEXITIES.map((item) => `
-    <button class="segmented-button ${state.recommendationComplexity === item.id ? "active" : ""}" data-complexity="${escapeHtml(item.id)}" type="button">
+  const groupBy = activeRecommendationGroupBy();
+  const currentFilter = activeRecommendationFilter();
+  const visibleRecommendations = filteredRecommendations();
+  const visibleImpact = visibleRecommendations.reduce((total, item) => total + Number(item.impact || 0), 0);
+  const groupingButtons = RECOMMENDATION_GROUPINGS.map((item) => `
+    <button class="segmented-button ${groupBy === item.id ? "active" : ""}" data-recommendation-group="${escapeHtml(item.id)}" type="button">
+      ${escapeHtml(item.label)}
+    </button>
+  `).join("");
+  const filterButtons = recommendationFilterOptions(groupBy).map((item) => `
+    <button class="segmented-button ${currentFilter === item.id ? "active" : ""}" data-recommendation-filter="${escapeHtml(item.id)}" type="button">
       ${escapeHtml(item.label)}
     </button>
   `).join("");
   return `
     <div class="recommendation-controls" aria-label="Recommendation filters">
       <div>
-        <span>Deployment complexity</span>
-        <div class="filters compact">${complexityButtons}</div>
+        <span>Group by</span>
+        <div class="filters compact">${groupingButtons}</div>
       </div>
-    </div>
+      <div>
+        <span>${escapeHtml(RECOMMENDATION_GROUPINGS.find((item) => item.id === groupBy)?.label || "Filter")}</span>
+        <div class="filters compact">${filterButtons}</div>
+      </div>
+      <strong class="recommendation-total">${money(visibleImpact)} / mo <small>${visibleRecommendations.length} visible</small></strong>
+      </div>
   `;
 }
 
@@ -1209,8 +1289,9 @@ function renderRecommendations() {
         <section class="recommendation-group">
           <div class="recommendation-group-head">
             <div>
-              <span class="eyebrow">${escapeHtml(group.label)} deployment complexity</span>
+              <span class="eyebrow">${escapeHtml(RECOMMENDATION_GROUPINGS.find((item) => item.id === activeRecommendationGroupBy())?.label || "Group")}</span>
               <h3>${group.recommendations.length} recommendations</h3>
+              <p>${escapeHtml(group.label)}</p>
             </div>
             <strong>${money(monthlyImpact)} / mo</strong>
           </div>
@@ -2325,9 +2406,17 @@ document.addEventListener("click", async (event) => {
     render();
     return;
   }
-  const complexityButton = event.target.closest("[data-complexity]");
-  if (complexityButton) {
-    state.recommendationComplexity = complexityButton.dataset.complexity;
+  const recommendationGroupButton = event.target.closest("[data-recommendation-group]");
+  if (recommendationGroupButton) {
+    state.recommendationGroupBy = recommendationGroupButton.dataset.recommendationGroup;
+    state.activeRecommendationActionId = "";
+    render();
+    return;
+  }
+  const recommendationFilterButton = event.target.closest("[data-recommendation-filter]");
+  if (recommendationFilterButton) {
+    const groupBy = activeRecommendationGroupBy();
+    state.recommendationFilters = { ...(state.recommendationFilters || {}), [groupBy]: recommendationFilterButton.dataset.recommendationFilter };
     state.activeRecommendationActionId = "";
     render();
     return;
