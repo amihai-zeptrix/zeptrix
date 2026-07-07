@@ -306,7 +306,7 @@ test("serves generated CloudPrune growth resource pages", async () => {
 test("generated CloudPrune resource pages keep concise SEO titles", () => {
   const resourcesRoot = path.join(__dirname, "..", "cloudprune", "resources");
   const directories = fs.readdirSync(resourcesRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  assert.equal(directories.length, 13);
+  assert.equal(directories.length, 16);
   for (const directory of directories) {
     const html = fs.readFileSync(path.join(resourcesRoot, directory.name, "index.html"), "utf8");
     const title = html.match(/<title>(.*?)<\/title>/)?.[1] || "";
@@ -321,8 +321,11 @@ test("generated CloudPrune resource pages expose intent-aware CTAs and tracking"
   const idleEc2Slug = "how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste";
   const lambdaSlug = "should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist";
   const safeSlug = "how-to-reduce-aws-cost-without-breaking-production";
+  const natSlug = "nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities";
+  const rdsSlug = "idle-rds-instances-how-to-review-database-savings-without-breaking-apps";
+  const freeTierSlug = "aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money";
 
-  for (const slug of [idleEc2Slug, lambdaSlug, safeSlug]) {
+  for (const slug of [idleEc2Slug, lambdaSlug, safeSlug, natSlug, rdsSlug, freeTierSlug]) {
     assert.ok(fs.existsSync(path.join(resourcesRoot, slug, "index.html")), `${slug} page exists`);
   }
 
@@ -349,6 +352,18 @@ test("generated CloudPrune resource pages expose intent-aware CTAs and tracking"
   const safeHtml = fs.readFileSync(path.join(resourcesRoot, safeSlug, "index.html"), "utf8");
   assert.match(safeHtml, /Start safe AWS cost review/);
   assert.match(safeHtml, /intent=safe-cost-reduction/);
+
+  const natHtml = fs.readFileSync(path.join(resourcesRoot, natSlug, "index.html"), "utf8");
+  assert.match(natHtml, /Scan NAT Gateway cost drivers/);
+  assert.match(natHtml, /intent=nat-gateway-costs/);
+
+  const rdsHtml = fs.readFileSync(path.join(resourcesRoot, rdsSlug, "index.html"), "utf8");
+  assert.match(rdsHtml, /Scan idle RDS candidates/);
+  assert.match(rdsHtml, /intent=rds-rightsizing/);
+
+  const freeTierHtml = fs.readFileSync(path.join(resourcesRoot, freeTierSlug, "index.html"), "utf8");
+  assert.match(freeTierHtml, /Find my small-account bill drivers/);
+  assert.match(freeTierHtml, /intent=bill-shock/);
 });
 
 test("generated CloudPrune resource pages expose canonical and social metadata", () => {
@@ -380,7 +395,7 @@ test("generated CloudPrune resource pages expose structured data", () => {
   assert.equal(indexData["@type"], "CollectionPage");
   assert.equal(indexData.url, "https://zeptrix.io/cloudprune/resources/");
   assert.equal(indexData.mainEntity["@type"], "ItemList");
-  assert.equal(indexData.mainEntity.itemListElement.length, 13);
+  assert.equal(indexData.mainEntity.itemListElement.length, 16);
 
   const pageSlug = "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them";
   const pageHtml = fs.readFileSync(path.join(resourcesRoot, pageSlug, "index.html"), "utf8");
@@ -403,6 +418,9 @@ test("generated high-intent CloudPrune resource pages expose FAQ content and sch
     "are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path",
     "cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill",
     "cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver",
+    "nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities",
+    "idle-rds-instances-how-to-review-database-savings-without-breaking-apps",
+    "aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money",
   ];
 
   for (const slug of faqSlugs) {

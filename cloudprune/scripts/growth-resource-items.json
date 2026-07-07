@@ -278,5 +278,89 @@
         "answer": "Savings estimates are incomplete without knowing what can break, who owns the resource, how rollback works, and whether compliance or incident response depends on it."
       }
     ]
+  },
+  {
+    "title": "NAT Gateway Costs High? How to Find Endpoint and Routing Opportunities",
+    "seoTitle": "NAT Gateway Costs High?",
+    "slug": "nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities",
+    "score": "34",
+    "query": "NAT Gateway costs high / reduce NAT Gateway charges",
+    "source": "[Amazon VPC pricing](https://aws.amazon.com/vpc/pricing/) (AWS pricing)",
+    "sourceStatus": "200 OK",
+    "pain": "NAT Gateway charges can surprise small teams because hourly cost and processed data charges continue even when traffic is not tied to obvious application features.",
+    "angle": "CloudPrune can scan NAT gateways, route tables, endpoint candidates, and traffic context before suggesting gateway endpoints, interface endpoints, subnet routing changes, or consolidation.",
+    "cta": "Use CloudPrune to review NAT Gateway spend with routing impact and rollback notes: https://zeptrix.io/cloudprune/",
+    "intent": "nat-gateway-costs",
+    "ctaLabel": "Scan NAT Gateway cost drivers",
+    "faqs": [
+      {
+        "question": "Why are NAT Gateway costs high?",
+        "answer": "NAT Gateway cost usually comes from a combination of hourly gateway charges and per-GB data processing. Cross-AZ paths and private subnet traffic to AWS services can make the bill grow quickly."
+      },
+      {
+        "question": "What can reduce NAT Gateway charges?",
+        "answer": "Common options include S3 or DynamoDB gateway endpoints, interface endpoints for supported AWS services, route table cleanup, removing idle gateways, and making sure traffic does not cross availability zones unnecessarily."
+      },
+      {
+        "question": "Can NAT Gateway changes cause downtime?",
+        "answer": "Yes. Route table and endpoint policy changes can break outbound access. Review subnets, security groups, endpoint policies, DNS behavior, and rollback routes before changing production traffic."
+      }
+    ]
+  },
+  {
+    "title": "Idle RDS Instances: How to Review Database Savings Without Breaking Apps",
+    "seoTitle": "Idle RDS Instances",
+    "slug": "idle-rds-instances-how-to-review-database-savings-without-breaking-apps",
+    "score": "33",
+    "query": "idle RDS instances cost / RDS rightsizing low utilization",
+    "source": "[Viewing RDS recommendations](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Recommendations.html) (AWS docs)",
+    "sourceStatus": "200 OK",
+    "pain": "Low-use RDS instances keep charging for compute, storage, backups, and sometimes Multi-AZ capacity, but database cleanup is risky without application and rollback context.",
+    "angle": "CloudPrune can combine RDS inventory, CPU, connections, storage, backup, and owner-review signals before recommending stop, resize, schedule, or consolidation actions.",
+    "cta": "Use CloudPrune to review idle RDS savings with maintenance-window and rollback notes: https://zeptrix.io/cloudprune/",
+    "intent": "rds-rightsizing",
+    "ctaLabel": "Scan idle RDS candidates",
+    "faqs": [
+      {
+        "question": "What signals suggest an RDS instance is idle?",
+        "answer": "Low CPU, low database connections, low read/write IOPS, old application tags, non-production naming, and no recent traffic can suggest an idle or oversized database."
+      },
+      {
+        "question": "Why is RDS cleanup riskier than deleting idle compute?",
+        "answer": "Databases often contain state, backups, compliance data, and hidden dependencies. Stopping, resizing, or deleting a database can break applications even when utilization looks low."
+      },
+      {
+        "question": "What is the safer first step?",
+        "answer": "Start with read-only evidence, confirm ownership, verify snapshots and backups, choose a maintenance window, and test one small change before broader cleanup."
+      }
+    ]
+  },
+  {
+    "title": "AWS Free Tier Bill Shock: What to Check When a Small Account Suddenly Costs Money",
+    "seoTitle": "AWS Free Tier Bill Shock",
+    "slug": "aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money",
+    "score": "32",
+    "query": "AWS free tier bill suddenly high / AWS bill small account",
+    "source": "[Understanding unexpected charges](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/checklistforunwantedcharges.html) (AWS docs)",
+    "sourceStatus": "200 OK",
+    "pain": "A small AWS account can suddenly cost money because free-tier limits expired, public IPv4 addresses were allocated, storage was left behind, logs grew, or an instance kept running.",
+    "angle": "CloudPrune can give small teams a read-only first scan that highlights exact resources, likely bill drivers, and safe next steps instead of asking them to hunt through every AWS console page.",
+    "cta": "Use CloudPrune to scan a small AWS account for the bill drivers behind a surprise charge: https://zeptrix.io/cloudprune/",
+    "intent": "bill-shock",
+    "ctaLabel": "Find my small-account bill drivers",
+    "faqs": [
+      {
+        "question": "Why did my AWS free tier account start charging me?",
+        "answer": "Common reasons include free-tier expiration, resources outside free-tier limits, running EC2 instances, allocated public IPv4 addresses, EBS volumes, snapshots, CloudWatch logs, NAT gateways, and data transfer."
+      },
+      {
+        "question": "What should I check first?",
+        "answer": "Start with Billing and Cost Explorer by service, then inspect EC2, EBS, Elastic IPs, snapshots, CloudWatch Logs, RDS, and any networking resources that have hourly charges."
+      },
+      {
+        "question": "Can CloudPrune change my AWS account?",
+        "answer": "CloudPrune onboarding is read-only. It shows evidence, savings, impact, and rollback guidance before any future controlled automation step."
+      }
+    ]
   }
 ]

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A small AWS account can suddenly cost money because free-tier limits expired, public IPv4 addresses were allocated, storage was left behind, logs grew, or an instance kept running." />
+    <title>AWS Free Tier Bill Shock | CloudPrune</title>
+    <link rel="canonical" href="https://zeptrix.io/cloudprune/resources/aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="CloudPrune" />
+    <meta property="og:title" content="AWS Free Tier Bill Shock | CloudPrune" />
+    <meta property="og:description" content="A small AWS account can suddenly cost money because free-tier limits expired, public IPv4 addresses were allocated, storage was left behind, logs grew, or an instance kept running." />
+    <meta property="og:url" content="https://zeptrix.io/cloudprune/resources/aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="AWS Free Tier Bill Shock | CloudPrune" />
+    <meta name="twitter:description" content="A small AWS account can suddenly cost money because free-tier limits expired, public IPv4 addresses were allocated, storage was left behind, logs grew, or an instance kept running." />
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@context":"https://schema.org","@type":"Article","headline":"AWS Free Tier Bill Shock: What to Check When a Small Account Suddenly Costs Money","description":"A small AWS account can suddenly cost money because free-tier limits expired, public IPv4 addresses were allocated, storage was left behind, logs grew, or an instance kept running.","url":"https://zeptrix.io/cloudprune/resources/aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","AWS free tier bill suddenly high / AWS bill small account"]},{"@context":"https://schema.org","@type":"FAQPage","url":"https://zeptrix.io/cloudprune/resources/aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money","mainEntity":[{"@type":"Question","name":"Why did my AWS free tier account start charging me?","acceptedAnswer":{"@type":"Answer","text":"Common reasons include free-tier expiration, resources outside free-tier limits, running EC2 instances, allocated public IPv4 addresses, EBS volumes, snapshots, CloudWatch logs, NAT gateways, and data transfer."}},{"@type":"Question","name":"What should I check first?","acceptedAnswer":{"@type":"Answer","text":"Start with Billing and Cost Explorer by service, then inspect EC2, EBS, Elastic IPs, snapshots, CloudWatch Logs, RDS, and any networking resources that have hourly charges."}},{"@type":"Question","name":"Can CloudPrune change my AWS account?","acceptedAnswer":{"@type":"Answer","text":"CloudPrune onboarding is read-only. It shows evidence, savings, impact, and rollback guidance before any future controlled automation step."}}]}]}</script>
+    <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money","resourceTitle":"AWS Free Tier Bill Shock: What to Check When a Small Account Suddenly Costs Money","intent":"bill-shock","path":"/cloudprune/resources/aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money","url":"https://zeptrix.io/cloudprune/resources/aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="resource-hero">
+      <nav><a href="/cloudprune/">CloudPrune</a><a href="/cloudprune/resources/">Resources</a></nav>
+      <p class="eyebrow">AWS cost playbook</p>
+      <h1>AWS Free Tier Bill Shock: What to Check When a Small Account Suddenly Costs Money</h1>
+      <p>A small AWS account can suddenly cost money because free-tier limits expired, public IPv4 addresses were allocated, storage was left behind, logs grew, or an instance kept running.</p>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=bill-shock&amp;source=aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money">Find my small-account bill drivers</a>
+      <div class="trust-strip" aria-label="CloudPrune scan safety">
+        <span>Read-only scan</span>
+        <span>No AWS changes made</span>
+        <span>Impact and rollback notes</span>
+      </div>
+    </header>
+    <main>
+      <section class="panel">
+        <h2>The cost signal</h2>
+        <p>A small AWS account can suddenly cost money because free-tier limits expired, public IPv4 addresses were allocated, storage was left behind, logs grew, or an instance kept running. CloudPrune can give small teams a read-only first scan that highlights exact resources, likely bill drivers, and safe next steps instead of asking them to hunt through every AWS console page.</p>
+        <dl class="facts">
+          <div><dt>Search intent</dt><dd>AWS free tier bill suddenly high / AWS bill small account</dd></div>
+          <div><dt>Priority score</dt><dd>32</dd></div>
+          <div><dt>Reference</dt><dd><a href="https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/checklistforunwantedcharges.html" rel="noopener noreferrer">Understanding unexpected charges</a> <span>AWS docs</span> <small>200 OK</small></dd></div>
+        </dl>
+      </section>
+      <section class="grid">
+        <article>
+          <h2>How to verify manually</h2>
+          <ol>
+            <li>Open AWS Billing and Cost Explorer to confirm the service driving the spend.</li>
+            <li>Use the AWS console view for the affected service to identify candidate resources.</li>
+            <li>Run a read-only AWS CLI inventory command and export the resource IDs before changing anything.</li>
+            <li>Compare age, attachment, traffic, retention, and recent usage signals before deciding on cleanup.</li>
+          </ol>
+        </article>
+        <article>
+          <h2>Impact and rollback</h2>
+          <ol>
+            <li>Classify whether the action can affect production traffic, data retention, compliance, or incident response.</li>
+            <li>Prefer dry-run review first. For storage deletion, create or verify a snapshot/export when rollback matters.</li>
+            <li>Schedule changes with an owner and a validation window. Stop if the blast radius is unclear.</li>
+            <li>Keep the previous configuration or snapshot reference until post-change metrics are stable.</li>
+          </ol>
+        </article>
+      </section>
+      <section class="panel accent">
+        <h2>How CloudPrune helps</h2>
+        <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
+        <p>Use CloudPrune to scan a small AWS account for the bill drivers behind a surprise charge: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=bill-shock&amp;source=aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money">Find my small-account bill drivers</a>
+      </section>
+      <section class="panel faq">
+        <h2>Questions people ask</h2>
+        <details><summary>Why did my AWS free tier account start charging me?</summary><p>Common reasons include free-tier expiration, resources outside free-tier limits, running EC2 instances, allocated public IPv4 addresses, EBS volumes, snapshots, CloudWatch logs, NAT gateways, and data transfer.</p></details><details><summary>What should I check first?</summary><p>Start with Billing and Cost Explorer by service, then inspect EC2, EBS, Elastic IPs, snapshots, CloudWatch Logs, RDS, and any networking resources that have hourly charges.</p></details><details><summary>Can CloudPrune change my AWS account?</summary><p>CloudPrune onboarding is read-only. It shows evidence, savings, impact, and rollback guidance before any future controlled automation step.</p></details>
+      </section>
+      <section class="panel">
+        <h2>Related CloudPrune resources</h2>
+        <div class="related">
+          <a href="/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them">Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them</a><a href="/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform">FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform</a><a href="/cloudprune/resources/are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path">Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

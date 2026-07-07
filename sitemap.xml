@@ -144,4 +144,22 @@
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
+  <url>
+    <loc>https://zeptrix.io/cloudprune/resources/nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities</loc>
+    <lastmod>2026-07-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zeptrix.io/cloudprune/resources/idle-rds-instances-how-to-review-database-savings-without-breaking-apps</loc>
+    <lastmod>2026-07-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zeptrix.io/cloudprune/resources/aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money</loc>
+    <lastmod>2026-07-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="NAT Gateway charges can surprise small teams because hourly cost and processed data charges continue even when traffic is not tied to obvious application features." />
+    <title>NAT Gateway Costs High? | CloudPrune</title>
+    <link rel="canonical" href="https://zeptrix.io/cloudprune/resources/nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="CloudPrune" />
+    <meta property="og:title" content="NAT Gateway Costs High? | CloudPrune" />
+    <meta property="og:description" content="NAT Gateway charges can surprise small teams because hourly cost and processed data charges continue even when traffic is not tied to obvious application features." />
+    <meta property="og:url" content="https://zeptrix.io/cloudprune/resources/nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="NAT Gateway Costs High? | CloudPrune" />
+    <meta name="twitter:description" content="NAT Gateway charges can surprise small teams because hourly cost and processed data charges continue even when traffic is not tied to obvious application features." />
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@context":"https://schema.org","@type":"Article","headline":"NAT Gateway Costs High? How to Find Endpoint and Routing Opportunities","description":"NAT Gateway charges can surprise small teams because hourly cost and processed data charges continue even when traffic is not tied to obvious application features.","url":"https://zeptrix.io/cloudprune/resources/nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities","mainEntityOfPage":"https://zeptrix.io/cloudprune/resources/nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities","author":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"publisher":{"@type":"Organization","name":"CloudPrune","url":"https://zeptrix.io/cloudprune/"},"about":["AWS cost optimization","cloud cost reduction","NAT Gateway costs high / reduce NAT Gateway charges"]},{"@context":"https://schema.org","@type":"FAQPage","url":"https://zeptrix.io/cloudprune/resources/nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities","mainEntity":[{"@type":"Question","name":"Why are NAT Gateway costs high?","acceptedAnswer":{"@type":"Answer","text":"NAT Gateway cost usually comes from a combination of hourly gateway charges and per-GB data processing. Cross-AZ paths and private subnet traffic to AWS services can make the bill grow quickly."}},{"@type":"Question","name":"What can reduce NAT Gateway charges?","acceptedAnswer":{"@type":"Answer","text":"Common options include S3 or DynamoDB gateway endpoints, interface endpoints for supported AWS services, route table cleanup, removing idle gateways, and making sure traffic does not cross availability zones unnecessarily."}},{"@type":"Question","name":"Can NAT Gateway changes cause downtime?","acceptedAnswer":{"@type":"Answer","text":"Yes. Route table and endpoint policy changes can break outbound access. Review subnets, security groups, endpoint policies, DNS behavior, and rollback routes before changing production traffic."}}]}]}</script>
+    <link rel="icon" href="/cloudprune/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/cloudprune/resources/styles.css" />
+    <script>
+      (() => {
+        const payload = {"source":"resource","resourceSlug":"nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities","resourceTitle":"NAT Gateway Costs High? How to Find Endpoint and Routing Opportunities","intent":"nat-gateway-costs","path":"/cloudprune/resources/nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities","url":"https://zeptrix.io/cloudprune/resources/nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities"};
+        const endpoint = "/cloudprune/api/growth/events";
+        const send = (eventType, extra = {}) => {
+          const body = JSON.stringify({ eventType, ...payload, ...extra });
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+            return;
+          }
+          fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+        };
+        send("resource_page_view");
+        document.addEventListener("click", (event) => {
+          if (event.target.closest("[data-resource-cta]")) send("resource_cta_click");
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="resource-hero">
+      <nav><a href="/cloudprune/">CloudPrune</a><a href="/cloudprune/resources/">Resources</a></nav>
+      <p class="eyebrow">AWS cost playbook</p>
+      <h1>NAT Gateway Costs High? How to Find Endpoint and Routing Opportunities</h1>
+      <p>NAT Gateway charges can surprise small teams because hourly cost and processed data charges continue even when traffic is not tied to obvious application features.</p>
+      <a class="button" data-resource-cta href="/cloudprune/?intent=nat-gateway-costs&amp;source=nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities">Scan NAT Gateway cost drivers</a>
+      <div class="trust-strip" aria-label="CloudPrune scan safety">
+        <span>Read-only scan</span>
+        <span>No AWS changes made</span>
+        <span>Impact and rollback notes</span>
+      </div>
+    </header>
+    <main>
+      <section class="panel">
+        <h2>The cost signal</h2>
+        <p>NAT Gateway charges can surprise small teams because hourly cost and processed data charges continue even when traffic is not tied to obvious application features. CloudPrune can scan NAT gateways, route tables, endpoint candidates, and traffic context before suggesting gateway endpoints, interface endpoints, subnet routing changes, or consolidation.</p>
+        <dl class="facts">
+          <div><dt>Search intent</dt><dd>NAT Gateway costs high / reduce NAT Gateway charges</dd></div>
+          <div><dt>Priority score</dt><dd>34</dd></div>
+          <div><dt>Reference</dt><dd><a href="https://aws.amazon.com/vpc/pricing/" rel="noopener noreferrer">Amazon VPC pricing</a> <span>AWS pricing</span> <small>200 OK</small></dd></div>
+        </dl>
+      </section>
+      <section class="grid">
+        <article>
+          <h2>How to verify manually</h2>
+          <ol>
+            <li>Open AWS Billing and Cost Explorer to confirm the service driving the spend.</li>
+            <li>Use the AWS console view for the affected service to identify candidate resources.</li>
+            <li>Run a read-only AWS CLI inventory command and export the resource IDs before changing anything.</li>
+            <li>Compare age, attachment, traffic, retention, and recent usage signals before deciding on cleanup.</li>
+          </ol>
+        </article>
+        <article>
+          <h2>Impact and rollback</h2>
+          <ol>
+            <li>Classify whether the action can affect production traffic, data retention, compliance, or incident response.</li>
+            <li>Prefer dry-run review first. For storage deletion, create or verify a snapshot/export when rollback matters.</li>
+            <li>Schedule changes with an owner and a validation window. Stop if the blast radius is unclear.</li>
+            <li>Keep the previous configuration or snapshot reference until post-change metrics are stable.</li>
+          </ol>
+        </article>
+      </section>
+      <section class="panel accent">
+        <h2>How CloudPrune helps</h2>
+        <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
+        <p>Use CloudPrune to review NAT Gateway spend with routing impact and rollback notes: https://zeptrix.io/cloudprune/</p>
+        <a class="button inline" data-resource-cta href="/cloudprune/?intent=nat-gateway-costs&amp;source=nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities">Scan NAT Gateway cost drivers</a>
+      </section>
+      <section class="panel faq">
+        <h2>Questions people ask</h2>
+        <details><summary>Why are NAT Gateway costs high?</summary><p>NAT Gateway cost usually comes from a combination of hourly gateway charges and per-GB data processing. Cross-AZ paths and private subnet traffic to AWS services can make the bill grow quickly.</p></details><details><summary>What can reduce NAT Gateway charges?</summary><p>Common options include S3 or DynamoDB gateway endpoints, interface endpoints for supported AWS services, route table cleanup, removing idle gateways, and making sure traffic does not cross availability zones unnecessarily.</p></details><details><summary>Can NAT Gateway changes cause downtime?</summary><p>Yes. Route table and endpoint policy changes can break outbound access. Review subnets, security groups, endpoint policies, DNS behavior, and rollback routes before changing production traffic.</p></details>
+      </section>
+      <section class="panel">
+        <h2>Related CloudPrune resources</h2>
+        <div class="related">
+          <a href="/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them">Unattached EBS Volumes Still Cost Money: How to Find and Safely Remove Them</a><a href="/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform">FinOps for Small Teams: Start With Read-Only AWS Savings Before Buying a Heavy Platform</a><a href="/cloudprune/resources/are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path">Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
