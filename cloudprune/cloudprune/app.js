@@ -233,6 +233,7 @@ const ICONS = {
   `,
   dashboard: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm10 7h6V4h-6v16ZM4 20h6v-5H4v5Z"/></svg>`,
   recs: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.2l-5.2 2.7 1-5.8L3.6 9l5.8-.8L12 3Z"/></svg>`,
+  resources: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16.5A1.5 1.5 0 0 1 18.5 21H6.5A2.5 2.5 0 0 1 4 18.5v-13Zm15 0H6.5a.5.5 0 0 0 0 1H19V5.5ZM6.5 8H19v11H6.5a.5.5 0 0 1-.5-.5v-10A.5.5 0 0 1 6.5 8Zm2 2v1.5h6V10H8.5Zm0 3v1.5H16V13H8.5Z"/></svg>`,
   alert: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20L12 3Zm1 14h-2v-2h2v2Zm0-4h-2V8h2v5Z"/></svg>`,
   automation: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 10-13h-7l1-7Z"/></svg>`,
   settings: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.4-2.4 1a7.8 7.8 0 0 0-2.6-1.5L14 2h-4l-.4 3.1A7.8 7.8 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5c-.1.5-.1 1-.1 1.5s0 1 .1 1.5l-2 1.5 2 3.4 2.4-1a7.8 7.8 0 0 0 2.6 1.5L10 22h4l.4-3.1a7.8 7.8 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"/></svg>`,
@@ -2226,6 +2227,7 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
           <div class="tenant-label"><span>Tenant</span><strong>${tenantLabel}</strong></div>
           <a class="${route === "dashboard" ? "active" : ""}" href="${dashboardPath}">${ICONS.dashboard}<span>Dashboard</span></a>
           <a class="${route === "recommendations" ? "active" : ""}" href="${navPath}recommendations">${ICONS.recs}<span>Recommendations</span></a>
+          <a href="${base}/resources/">${ICONS.resources}<span>Resources</span></a>
           <a class="${route === "anomalies" ? "active" : ""}" href="${navPath}anomalies">${ICONS.alert}<span>Anomalies</span></a>
           <a class="${route === "automation" ? "active" : ""}" href="${navPath}automation">${ICONS.automation}<span>Automation</span></a>
           <a class="${route === "settings" ? "active" : ""}" href="${navPath}settings">${ICONS.settings}<span>Settings</span></a>

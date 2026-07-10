@@ -716,6 +716,12 @@ test("CloudPrune auth page links to growth resources", () => {
   assert.match(short.app.innerHTML, /href="\/cp\/resources\/"/);
 });
 
+test("CloudPrune demo navigation includes the resources section", () => {
+  const { app } = bootCloudPruneApp("/cloudprune/demo/");
+  assert.match(app.innerHTML, /href="\/cloudprune\/resources\/"/);
+  assert.match(app.innerHTML, /<span>Resources<\/span>/);
+});
+
 test("CloudPrune auth page persists resource intent and tracks funnel events", async () => {
   const { app, fetchCalls, listeners, store } = bootCloudPruneApp("/cloudprune/?intent=idle-ec2&source=idle-ec2-page", null, (url) => {
     if (String(url).endsWith("/api/growth/events")) return jsonResponse({ recorded: true });

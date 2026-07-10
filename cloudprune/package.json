@@ -9,6 +9,8 @@
     "clean": "rm -rf dist",
     "dev": "npm run build && node dist/server.js",
     "growth:followup": "node scripts/followup-growth-shortlist.js",
+    "growth:outreach": "node scripts/prepare-growth-outreach.js",
+    "growth:post": "node scripts/open-growth-post.js",
     "growth:resources": "node scripts/generate-growth-resource-pages.js",
     "growth:shortlist": "python3 scripts/cloudprune_growth_shortlist.py",
     "start": "node dist/server.js",
