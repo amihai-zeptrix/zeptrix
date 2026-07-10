@@ -720,6 +720,9 @@ test("CloudPrune demo navigation includes the resources section", () => {
   const { app } = bootCloudPruneApp("/cloudprune/demo/");
   assert.match(app.innerHTML, /href="\/cloudprune\/resources\/"/);
   assert.match(app.innerHTML, /<span>Resources<\/span>/);
+
+  const short = bootCloudPruneApp("/cp/demo/");
+  assert.match(short.app.innerHTML, /href="\/cp\/resources\/"/);
 });
 
 test("CloudPrune auth page persists resource intent and tracks funnel events", async () => {
