@@ -2,30 +2,24 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://zeptrix.io/</loc>
-    <lastmod>2026-05-23</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://zeptrix.io/cloudprune/</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://zeptrix.io/aws-cost-reduction</loc>
-    <lastmod>2026-05-23</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/aws-finops</loc>
-    <lastmod>2026-05-23</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://zeptrix.io/aws-cost-optimization</loc>
-    <lastmod>2026-05-23</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://zeptrix.io/reduce-aws-spend</loc>
     <lastmod>2026-05-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
@@ -62,103 +56,97 @@
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/finops-for-small-teams-start-with-read-only-aws-savings-before-buying-a-heavy-platform</loc>
-    <lastmod>2026-07-04</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://zeptrix.io/cloudprune/resources/are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/why-is-my-aws-bill-suddenly-high-a-15-minute-triage-checklist</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/aws-cost-explorer-shows-the-spend-what-should-you-do-next</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/cloud-cost-optimization-tools-that-actually-work-what-to-test-in-a-proof-of-value</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/trusted-advisor-compute-optimizer-or-cost-optimization-hub-which-aws-recommendation-source</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/aws-cost-optimization-hub-vs-cloudprune-recommendations-are-only-step-one</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/how-to-find-idle-ec2-instances-before-they-become-permanent-aws-waste</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/should-scheduled-ec2-jobs-move-to-lambda-a-cost-and-runtime-checklist</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/how-to-reduce-aws-cost-without-breaking-production</loc>
-    <lastmod>2026-07-04</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities</loc>
-    <lastmod>2026-07-07</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/idle-rds-instances-how-to-review-database-savings-without-breaking-apps</loc>
-    <lastmod>2026-07-07</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://zeptrix.io/cloudprune/resources/aws-free-tier-bill-shock-what-to-check-when-a-small-account-suddenly-costs-money</loc>
-    <lastmod>2026-07-07</lastmod>
+    <lastmod>2026-07-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

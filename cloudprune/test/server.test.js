@@ -229,6 +229,8 @@ test("maps CloudPrune app routes to the public index", () => {
   assert.match(staticFilePathForUrlPath("/cp/"), /cloudprune[/\\]index\.html$/);
   assert.match(staticFilePathForUrlPath("/cp/demo"), /cloudprune[/\\]index\.html$/);
   assert.match(staticFilePathForUrlPath("/cp/demo/recommendations"), /cloudprune[/\\]index\.html$/);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/this-does-not-exist"), null);
+  assert.equal(staticFilePathForUrlPath("/cloudprune/demo/this-does-not-exist"), null);
 });
 
 test("maps CloudPrune resource routes to static content pages", () => {
@@ -243,7 +245,10 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
     const root = await fetch(`${baseUrl}/cloudprune/`);
     assert.equal(root.status, 200);
     assert.match(root.headers.get("content-type"), /text\/html/);
-    assert.match(await root.text(), /CloudPrune \| Cloud Cost Workspace/);
+    const rootBody = await root.text();
+    assert.match(rootBody, /Zeptrix CloudPrune \| Read-Only AWS Cost Optimization/);
+    assert.match(rootBody, /<link rel="canonical" href="https:\/\/zeptrix\.io\/cloudprune\/" \/>/);
+    assert.match(rootBody, /Find AWS waste and plan safer savings/);
 
     const redirect = await fetch(`${baseUrl}/cloudprune`, { redirect: "manual" });
     assert.equal(redirect.status, 301);
@@ -271,15 +276,21 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
 
     const fallback = await fetch(`${baseUrl}/cloudprune/recommendations`);
     assert.equal(fallback.status, 200);
-    assert.match(await fallback.text(), /<div id="app"><\/div>/);
+    assert.match(await fallback.text(), /<div id="app">/);
 
     const demo = await fetch(`${baseUrl}/cloudprune/demo`);
     assert.equal(demo.status, 200);
-    assert.match(await demo.text(), /<div id="app"><\/div>/);
+    assert.equal(demo.headers.get("x-robots-tag"), "noindex, follow");
+    assert.match(await demo.text(), /<div id="app">/);
 
     const shortDemo = await fetch(`${baseUrl}/cp/demo`);
     assert.equal(shortDemo.status, 200);
-    assert.match(await shortDemo.text(), /<div id="app"><\/div>/);
+    assert.equal(shortDemo.headers.get("x-robots-tag"), "noindex, follow");
+    assert.match(await shortDemo.text(), /<div id="app">/);
+
+    const missing = await fetch(`${baseUrl}/cloudprune/this-does-not-exist`);
+    assert.equal(missing.status, 404);
+    assert.equal(await missing.text(), "Not found");
   });
 });
 
@@ -300,13 +311,17 @@ test("serves generated CloudPrune growth resource pages", async () => {
     const shortPage = await fetch(`${baseUrl}/cp/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them`);
     assert.equal(shortPage.status, 200);
     assert.match(await shortPage.text(), /Unattached EBS volumes keep charging/);
+
+    const legacyPage = await fetch(`${baseUrl}/cloudprune/resources/are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path`, { redirect: "manual" });
+    assert.equal(legacyPage.status, 301);
+    assert.equal(legacyPage.headers.get("location"), "/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them");
   });
 });
 
 test("generated CloudPrune resource pages keep concise SEO titles", () => {
   const resourcesRoot = path.join(__dirname, "..", "cloudprune", "resources");
   const directories = fs.readdirSync(resourcesRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  assert.equal(directories.length, 16);
+  assert.equal(directories.length, 15);
   for (const directory of directories) {
     const html = fs.readFileSync(path.join(resourcesRoot, directory.name, "index.html"), "utf8");
     const title = html.match(/<title>(.*?)<\/title>/)?.[1] || "";
@@ -395,14 +410,15 @@ test("generated CloudPrune resource pages expose structured data", () => {
   assert.equal(indexData["@type"], "CollectionPage");
   assert.equal(indexData.url, "https://zeptrix.io/cloudprune/resources/");
   assert.equal(indexData.mainEntity["@type"], "ItemList");
-  assert.equal(indexData.mainEntity.itemListElement.length, 16);
+  assert.equal(indexData.mainEntity.itemListElement.length, 15);
 
   const pageSlug = "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them";
   const pageHtml = fs.readFileSync(path.join(resourcesRoot, pageSlug, "index.html"), "utf8");
   const pageData = readJsonLd(pageHtml);
   const article = schemaNode(pageData, "Article");
   assert.equal(article.url, `https://zeptrix.io/cloudprune/resources/${pageSlug}`);
-  assert.equal(article.author.name, "CloudPrune");
+  assert.equal(article.author.name, "Zeptrix");
+  assert.equal(schemaNode(pageData, "BreadcrumbList").itemListElement.length, 4);
   assert.match(article.description, /Unattached EBS volumes keep charging/);
 });
 
@@ -415,7 +431,6 @@ test("generated high-intent CloudPrune resource pages expose FAQ content and sch
   };
   const faqSlugs = [
     "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them",
-    "are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path",
     "cloudwatch-costs-too-high-find-the-log-groups-and-metrics-driving-the-bill",
     "cloudwatch-logs-cost-optimization-retention-helps-but-ingestion-is-the-real-bill-driver",
     "nat-gateway-costs-high-how-to-find-endpoint-and-routing-opportunities",
@@ -443,7 +458,7 @@ test("compiled server serves app shell and copied assets", async () => {
     const root = await fetch(`${baseUrl}/cloudprune/`);
     assert.equal(root.status, 200);
     assert.match(root.headers.get("content-type"), /text\/html/);
-    assert.match(await root.text(), /CloudPrune \| Cloud Cost Workspace/);
+    assert.match(await root.text(), /Zeptrix CloudPrune \| Read-Only AWS Cost Optimization/);
 
     const script = await fetch(`${baseUrl}/cloudprune/app.js`);
     assert.equal(script.status, 200);
@@ -702,9 +717,10 @@ test("CloudPrune login form sends normal user credentials and stores the returne
 test("CloudPrune auth page shows the free-until campaign banner", () => {
   const { app } = bootCloudPruneApp("/cloudprune/");
   assert.match(app.innerHTML, /Enjoy totally free until September 2026/);
-  assert.match(app.innerHTML, /Recommendation<\/strong> says what may save money/);
-  assert.match(app.innerHTML, /Automation<\/strong> turns it into a reviewed, reversible workflow/);
-  assert.match(app.innerHTML, /Every action<\/strong> starts as dry-run, requires approval, records audit logs, and has rollback\/validation steps/);
+  assert.match(app.innerHTML, /Discover:<\/strong> start with read-only access/);
+  assert.match(app.innerHTML, /Decide:<\/strong> rank recommendations by savings, confidence, operational risk, and deployment effort/);
+  assert.match(app.innerHTML, /Act safely:<\/strong> use dry runs, approvals, audit evidence, rollback notes, and post-change validation/);
+  assert.match(app.innerHTML, /CloudPrune by Zeptrix/);
 });
 
 test("CloudPrune auth page links to growth resources", () => {
@@ -2353,11 +2369,11 @@ test("AWS assessment marks regional services failed when every region fails", ()
 test("rejects encoded traversal outside the public app directory", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/cloudprune/%2e%2e/server.ts`);
-    assert.equal(response.status, 403);
+    assert.equal(response.status, 404);
     assert.doesNotMatch(await response.text(), /createServer/);
 
     const shortResponse = await fetch(`${baseUrl}/cp/%2e%2e/server.ts`);
-    assert.equal(shortResponse.status, 403);
+    assert.equal(shortResponse.status, 404);
     assert.doesNotMatch(await shortResponse.text(), /createServer/);
   });
 });

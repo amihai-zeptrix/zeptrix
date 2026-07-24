@@ -334,10 +334,20 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
+  const legacyEbsResource = `${prefix}/resources/are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path`;
+  if (prefix && urlPath.replace(/\/+$/, "") === legacyEbsResource) {
+    res.writeHead(301, {
+      location: "/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them",
+    });
+    res.end();
+    return;
+  }
+
   let filePath: string | null = staticFilePathForUrlPath(urlPath);
   if (!filePath) {
-    res.writeHead(403);
-    res.end("Forbidden");
+    const traversalAttempt = /%2e/i.test(req.url || "") || urlPath.split("/").includes("..");
+    res.writeHead(traversalAttempt ? 403 : 404, { "content-type": "text/plain; charset=utf-8" });
+    res.end(traversalAttempt ? "Forbidden" : "Not found");
     return;
   }
 
@@ -349,6 +359,10 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
       "content-type": mimeTypes[ext] || "application/octet-stream",
       "cache-control": routePrefix(urlPath) ? "no-store" : "public, max-age=300",
     };
+    if (ext === ".html") {
+      const indexableCloudPrunePage = urlPath === "/cloudprune/" || urlPath.startsWith("/cloudprune/resources");
+      if (!indexableCloudPrunePage) headers["x-robots-tag"] = "noindex, follow";
+    }
     res.writeHead(200, headers);
     fs.createReadStream(filePath).pipe(res);
   } catch {

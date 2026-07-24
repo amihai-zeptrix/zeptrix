@@ -51,7 +51,7 @@ assert_content_type() {
 }
 
 fetch "/" "$tmp_dir/home.html"
-assert_contains "$tmp_dir/home.html" "<title>Zeptrix | AI AWS Cost Reduction</title>"
+assert_contains "$tmp_dir/home.html" "<title>Zeptrix CloudPrune | AI AWS Cost Reduction</title>"
 assert_contains "$tmp_dir/home.html" 'href="/styles.css"'
 
 fetch "/siteops" "$tmp_dir/siteops.html"
@@ -80,7 +80,7 @@ fetch "/mbh/" "$tmp_dir/mbh.html"
 assert_contains "$tmp_dir/mbh.html" '<html lang="he" dir="rtl">'
 assert_contains "$tmp_dir/mbh.html" "052-314-1458"
 assert_contains "$tmp_dir/mbh.html" 'href="styles.css"'
-assert_not_contains "$tmp_dir/mbh.html" "<title>Zeptrix | AI AWS Cost Reduction</title>"
+assert_not_contains "$tmp_dir/mbh.html" "<title>Zeptrix CloudPrune | AI AWS Cost Reduction</title>"
 
 fetch "/internal-crm/" "$tmp_dir/internal-crm.html"
 assert_contains "$tmp_dir/internal-crm.html" "<title>Zeptrix CRM</title>"
@@ -97,14 +97,15 @@ assert_contains "$tmp_dir/your-new-crm-promo.html" "<title>Zeptrix CRM | A Sales
 assert_contains "$tmp_dir/your-new-crm-promo.html" 'href="/your-new-crm/"'
 
 fetch "/cloudprune/" "$tmp_dir/cloudprune.html"
-assert_contains "$tmp_dir/cloudprune.html" "<title>CloudPrune | Cloud Cost Workspace</title>"
-assert_contains "$tmp_dir/cloudprune.html" '<div id="app"></div>'
+assert_contains "$tmp_dir/cloudprune.html" "<title>Zeptrix CloudPrune | Read-Only AWS Cost Optimization</title>"
+assert_contains "$tmp_dir/cloudprune.html" '<link rel="canonical" href="https://zeptrix.io/cloudprune/" />'
+assert_contains "$tmp_dir/cloudprune.html" '<div id="app">'
 assert_contains "$tmp_dir/cloudprune.html" 'href="/cloudprune/styles.css"'
 assert_contains "$tmp_dir/cloudprune.html" 'src="/cloudprune/app.js"'
 
 fetch "/cloudprune/demo" "$tmp_dir/cloudprune-demo.html"
-assert_contains "$tmp_dir/cloudprune-demo.html" "<title>CloudPrune | Cloud Cost Workspace</title>"
-assert_contains "$tmp_dir/cloudprune-demo.html" '<div id="app"></div>'
+assert_contains "$tmp_dir/cloudprune-demo.html" "<title>Zeptrix CloudPrune | Read-Only AWS Cost Optimization</title>"
+assert_contains "$tmp_dir/cloudprune-demo.html" '<div id="app">'
 assert_contains "$tmp_dir/cloudprune-demo.html" 'href="/cloudprune/styles.css"'
 
 fetch "/cloudprune/resources/" "$tmp_dir/cloudprune-resources.html"
@@ -119,13 +120,13 @@ assert_contains "$tmp_dir/cloudprune-resource-ebs.html" 'resource_page_view'
 assert_contains "$tmp_dir/cloudprune-resource-ebs.html" 'resource_cta_click'
 
 fetch "/cp/" "$tmp_dir/cp.html"
-assert_contains "$tmp_dir/cp.html" "<title>CloudPrune | Cloud Cost Workspace</title>"
-assert_contains "$tmp_dir/cp.html" '<div id="app"></div>'
+assert_contains "$tmp_dir/cp.html" "<title>Zeptrix CloudPrune | Read-Only AWS Cost Optimization</title>"
+assert_contains "$tmp_dir/cp.html" '<div id="app">'
 assert_contains "$tmp_dir/cp.html" 'href="/cloudprune/styles.css"'
 
 fetch "/cp/demo" "$tmp_dir/cp-demo.html"
-assert_contains "$tmp_dir/cp-demo.html" "<title>CloudPrune | Cloud Cost Workspace</title>"
-assert_contains "$tmp_dir/cp-demo.html" '<div id="app"></div>'
+assert_contains "$tmp_dir/cp-demo.html" "<title>Zeptrix CloudPrune | Read-Only AWS Cost Optimization</title>"
+assert_contains "$tmp_dir/cp-demo.html" '<div id="app">'
 
 assert_content_type "/mbh/styles.css" "text/css"
 assert_content_type "/mbh/script.js" "application/javascript" "text/javascript"
@@ -136,6 +137,7 @@ assert_content_type "/cloudprune/app.js" "application/javascript" "text/javascri
 assert_content_type "/cp/app.js" "application/javascript" "text/javascript"
 
 fetch "/sitemap.xml" "$tmp_dir/sitemap.xml"
+assert_contains "$tmp_dir/sitemap.xml" "https://zeptrix.io/cloudprune/"
 assert_contains "$tmp_dir/sitemap.xml" "https://zeptrix.io/cloudprune/resources/"
 assert_contains "$tmp_dir/sitemap.xml" "https://zeptrix.io/cloudprune/resources/unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them"
 
