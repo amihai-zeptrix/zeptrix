@@ -11,6 +11,22 @@ export function routePrefix(urlPath: string): "/cloudprune" | "/cp" | null {
   return null;
 }
 
+const appRouteSuffixes = new Set([
+  "/",
+  "/recommendations",
+  "/anomalies",
+  "/automation",
+  "/settings",
+  "/demo",
+  "/demo/recommendations",
+  "/demo/anomalies",
+  "/demo/automation",
+  "/demo/settings",
+  "/admin",
+  "/admin/growth",
+  "/admin/audit-log",
+]);
+
 export function staticFilePathForUrlPath(urlPath: string): string | null {
   const prefix = routePrefix(urlPath);
   if (urlPath === "/" || urlPath === "/cloudprune" || urlPath === "/cloudprune/" || urlPath === "/cp" || urlPath === "/cp/") return path.join(publicRoot, "index.html");
@@ -20,7 +36,11 @@ export function staticFilePathForUrlPath(urlPath: string): string | null {
     const filePath = path.resolve(publicRoot, relativePath, "index.html");
     return filePath.startsWith(`${publicRoot}${path.sep}`) ? filePath : null;
   }
-  if (!path.basename(urlPath).includes(".")) return path.join(publicRoot, "index.html");
+  if (!path.basename(urlPath).includes(".")) {
+    const rawSuffix = urlPath.slice(prefix.length) || "/";
+    const suffix = rawSuffix.length > 1 ? rawSuffix.replace(/\/+$/, "") : rawSuffix;
+    return appRouteSuffixes.has(suffix) ? path.join(publicRoot, "index.html") : null;
+  }
 
   const relativePath = urlPath.slice(`${prefix}/`.length);
   const filePath = path.resolve(publicRoot, relativePath);

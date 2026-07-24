@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Zeptrix is an AI-powered AWS cost reduction SaaS for mid-size companies that need measurable savings in days, not quarters.">
+  <meta name="description" content="Zeptrix CloudPrune finds AWS waste, ranks savings by risk and impact, and helps teams plan safer cloud cost reductions from read-only evidence.">
   <link rel="canonical" href="https://zeptrix.io/">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://zeptrix.io/">
-  <meta property="og:title" content="Zeptrix | AI AWS Cost Reduction">
-  <meta property="og:description" content="AI-powered AWS cost reduction for mid-size companies that need measurable savings in days, not quarters.">
+  <meta property="og:title" content="Zeptrix CloudPrune | AI AWS Cost Reduction">
+  <meta property="og:description" content="Read-only AWS cost discovery, risk-ranked recommendations, and controlled savings workflows.">
   <meta name="twitter:card" content="summary_large_image">
-  <title>Zeptrix | AI AWS Cost Reduction</title>
+  <title>Zeptrix CloudPrune | AI AWS Cost Reduction</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -25,7 +25,13 @@
         "@id": "https://zeptrix.io/#organization",
         "name": "Zeptrix",
         "url": "https://zeptrix.io/",
-        "logo": "https://zeptrix.io/favicon.svg"
+        "logo": "https://zeptrix.io/favicon.svg",
+        "email": "amihai@zeptrix.io",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "sales and support",
+          "email": "amihai@zeptrix.io"
+        }
       },
       {
         "@type": "WebSite",
@@ -36,12 +42,15 @@
       },
       {
         "@type": "SoftwareApplication",
-        "@id": "https://zeptrix.io/#app",
-        "name": "Zeptrix",
+        "@id": "https://zeptrix.io/cloudprune/#software",
+        "name": "CloudPrune",
+        "alternateName": "Zeptrix CloudPrune",
         "applicationCategory": "BusinessApplication",
+        "applicationSubCategory": "Cloud cost optimization",
         "operatingSystem": "Web",
-        "url": "https://zeptrix.io/",
-        "description": "AI-powered AWS cost reduction SaaS for mid-size companies.",
+        "url": "https://zeptrix.io/cloudprune/",
+        "description": "Read-only AWS cost discovery, risk-ranked recommendations, and controlled savings workflows.",
+        "brand": { "@id": "https://zeptrix.io/#organization" },
         "publisher": { "@id": "https://zeptrix.io/#organization" }
       }
     ]
@@ -50,7 +59,7 @@
 </head>
 <body>
   <header class="site-header" data-elevate>
-    <a class="brand" href="#top" aria-label="Zeptrix home">
+    <a class="brand" href="/" aria-label="Zeptrix home">
       <span class="brand-mark" aria-hidden="true">Z</span>
       <span>Zeptrix</span>
     </a>
@@ -58,9 +67,10 @@
       <a href="#platform">Platform</a>
       <a href="#outcomes">Outcomes</a>
       <a href="#proof">Proof</a>
+      <a href="/cloudprune/">CloudPrune</a>
       <a href="#contact">Contact</a>
     </nav>
-    <a class="header-cta" href="#contact">Start free analysis</a>
+    <a class="header-cta" href="/cloudprune/">Open CloudPrune</a>
   </header>
 
   <main id="top">
@@ -68,11 +78,11 @@
       <canvas id="signalCanvas" class="hero-canvas" aria-hidden="true"></canvas>
       <div class="hero-shade" aria-hidden="true"></div>
       <div class="hero-content">
-        <p class="eyebrow">AI FinOps for teams that run real AWS workloads</p>
-        <h1 id="hero-title">Zeptrix</h1>
-        <p class="hero-copy">Find waste, rank savings, and ship safe AWS cost reductions in days. Zeptrix connects usage, architecture, and business context so finance and engineering can act on the same truth.</p>
+        <p class="eyebrow">CloudPrune by Zeptrix</p>
+        <h1 id="hero-title">AI AWS cost reduction built around evidence and risk.</h1>
+        <p class="hero-copy">CloudPrune finds waste, ranks savings, and helps teams plan safer AWS cost reductions. Zeptrix connects usage, architecture, and business context so finance and engineering can act on the same evidence.</p>
         <div class="hero-actions" aria-label="Primary calls to action">
-          <a class="button primary" href="#contact">Start saving NOW</a>
+          <a class="button primary" href="/cloudprune/">Start with CloudPrune</a>
           <a class="button secondary" href="#platform">See the platform</a>
         </div>
       </div>
@@ -160,8 +170,8 @@
         </div>
         <div class="architecture-frame zeptrix-frame">
           <div class="frame-title">
-            <span>Zeptrix.io</span>
-            <strong>AI SaaS control plane</strong>
+            <span>Zeptrix CloudPrune</span>
+            <strong>AWS cost control plane</strong>
           </div>
           <div class="architecture-zone zeptrix-zone">
             <article class="arch-node analyzer">
@@ -282,11 +292,19 @@
 
     <section class="insight-band" aria-labelledby="insight-pages">
       <div class="section-copy compact">
-        <p class="eyebrow">SEO pages</p>
-        <h2 id="insight-pages">Search-focused pages for AWS cost reduction terms</h2>
-        <p>These pages give Google clear, focused entry points for the topics people actually search for.</p>
+        <p class="eyebrow">CloudPrune knowledge base</p>
+        <h2 id="insight-pages">Practical AWS cost guidance for engineering and finance.</h2>
+        <p>Use the product for read-only discovery, then use these playbooks to understand the evidence, production risk, and safer next step behind each recommendation.</p>
       </div>
       <div class="insight-grid seo-link-grid">
+        <a class="insight-card page-link-card" href="/cloudprune/">
+          <h3>Zeptrix CloudPrune</h3>
+          <p>Find AWS waste, rank savings by impact and risk, and plan controlled actions.</p>
+        </a>
+        <a class="insight-card page-link-card" href="/cloudprune/resources/">
+          <h3>CloudPrune AWS Playbooks</h3>
+          <p>Read-only checks, impact analysis, and rollback-aware guidance for common AWS cost problems.</p>
+        </a>
         <a class="insight-card page-link-card" href="/insights">
           <h3>Insights Hub</h3>
           <p>Long-form guidance and supporting notes for AWS cost reduction and FinOps.</p>
@@ -295,13 +313,9 @@
           <h3>AWS FinOps</h3>
           <p>How Zeptrix helps finance and engineering work from the same cost model.</p>
         </a>
-        <a class="insight-card page-link-card" href="/aws-cost-optimization">
-          <h3>AWS Cost Optimization</h3>
-          <p>Cost optimization patterns for modern AWS stacks, from compute to data.</p>
-        </a>
-        <a class="insight-card page-link-card" href="/reduce-aws-spend">
-          <h3>Reduce AWS Spend</h3>
-          <p>Practical ways to cut AWS spend without slowing down delivery teams.</p>
+        <a class="insight-card page-link-card" href="/aws-cost-reduction">
+          <h3>AWS Cost Reduction Guide</h3>
+          <p>A risk-aware framework for reducing compute, storage, database, observability, and network spend.</p>
         </a>
       </div>
     </section>
@@ -309,8 +323,8 @@
     <section id="contact" class="contact">
       <div class="contact-copy">
         <p class="eyebrow">Start</p>
-        <h2>Start saving NOW.</h2>
-        <p>Register for 14 days FREE deep analysis recommendations. Zeptrix will identify the fastest AWS savings path for your environment.</p>
+        <h2>Start with read-only AWS savings discovery.</h2>
+        <p>Tell us which AWS services are in scope, or create a CloudPrune workspace to begin with controlled, read-only analysis.</p>
       </div>
       <form class="lead-form" id="leadForm">
         <div class="form-grid">
@@ -372,11 +386,20 @@
           <span>Number of AWS accounts</span>
           <input name="awsAccounts" type="number" min="1" step="1" inputmode="numeric">
         </label>
-        <button class="button primary dark" type="submit">Register for free analysis</button>
+        <button class="button primary dark" type="submit">Request a free analysis</button>
         <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
       </form>
     </section>
   </main>
+
+  <footer class="site-footer">
+    <div><strong>Zeptrix</strong><span>Cloud cost intelligence for teams running real AWS workloads.</span></div>
+    <nav aria-label="Footer navigation">
+      <a href="/cloudprune/">CloudPrune</a>
+      <a href="/cloudprune/resources/">AWS cost playbooks</a>
+      <a href="/aws-cost-reduction">AWS cost reduction</a>
+    </nav>
+  </footer>
 
   <script src="/app.js"></script>
 </body>

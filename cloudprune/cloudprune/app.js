@@ -2143,25 +2143,32 @@ function renderAuth(app) {
   const draftEmail = escapeHtml(draft.email || "");
   const isGoogleStartDisabled = isRegister && !isRegisterDraftComplete(draft);
   app.innerHTML = `
-    <main class="auth-page">
+      <main class="auth-page">
       <section class="auth-visual">
-        <a class="auth-brand" href="${base}/" aria-label="CloudPrune">${ICONS.logo}<strong>CloudPrune</strong></a>
+        <a class="auth-brand" href="https://zeptrix.io/" aria-label="CloudPrune by Zeptrix">${ICONS.logo}<span><strong>CloudPrune</strong><small>by Zeptrix</small></span></a>
         <div class="auth-hero">
-          <span class="eyebrow">Cloud cost saving platform</span>
-          <h1>Prune cloud waste before it reaches the bill.</h1>
-          <p>Connect AWS first, inspect the savings plan, and move from dry-run analysis to controlled automation when the impact is clear.</p>
+          <span class="eyebrow">Read-only AWS cost optimization</span>
+          <h1>Find AWS waste and plan safer savings.</h1>
+          <p>CloudPrune connects billing, inventory, usage, and architecture evidence so engineering and finance can see what may save money, what could break, and what to review first.</p>
           <div class="auth-campaign-banner">Enjoy totally free until September 2026</div>
           <div class="auth-operating-promise" aria-label="CloudPrune operating promise">
-            <p><strong>Recommendation</strong> says what may save money.</p>
-            <p><strong>Automation</strong> turns it into a reviewed, reversible workflow.</p>
-            <p><strong>Every action</strong> starts as dry-run, requires approval, records audit logs, and has rollback/validation steps.</p>
+            <p><strong>Discover:</strong> start with read-only access and identify waste across AWS accounts and regions.</p>
+            <p><strong>Decide:</strong> rank recommendations by savings, confidence, operational risk, and deployment effort.</p>
+            <p><strong>Act safely:</strong> use dry runs, approvals, audit evidence, rollback notes, and post-change validation.</p>
+          </div>
+          <div class="auth-capabilities" aria-label="Supported AWS cost checks">
+            <span>EC2 and EBS</span>
+            <span>RDS and Aurora</span>
+            <span>NAT Gateway</span>
+            <span>CloudWatch and S3</span>
+            <span>Savings Plans</span>
           </div>
           ${renderGrowthIntentCard("auth")}
         </div>
         <div class="auth-signal-grid" aria-label="CloudPrune preview metrics">
-          <article><span>Verified waste</span><strong>$89K</strong><em>monthly demo signal</em></article>
-          <article><span>Risk scored</span><strong>42</strong><em>actions ready</em></article>
-          <article><span>Guardrails</span><strong>Dry run</strong><em>default mode</em></article>
+          <article><span>Initial access</span><strong>Read only</strong><em>No AWS changes during discovery</em></article>
+          <article><span>Recommendations</span><strong>Risk ranked</strong><em>Impact and rollback context</em></article>
+          <article><span>Execution</span><strong>Dry run</strong><em>Approval before controlled action</em></article>
         </div>
       </section>
       <section class="auth-panel" aria-label="CloudPrune sign in">

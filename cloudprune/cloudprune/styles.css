@@ -1609,7 +1609,26 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   text-decoration: none;
 }
 
+.auth-brand img {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.auth-brand > span {
+  display: grid;
+  gap: 1px;
+}
+
 .auth-brand strong { font: 800 20px Manrope, sans-serif; }
+
+.auth-brand small {
+  color: #b9d6ce;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
 
 .auth-hero {
   position: relative;
@@ -1662,6 +1681,24 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
 }
 
 .auth-operating-promise strong { color: #fff; }
+
+.auth-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 680px;
+  margin-top: 16px;
+}
+
+.auth-capabilities span {
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 999px;
+  color: #def5ec;
+  background: rgba(255, 255, 255, .08);
+  font-size: 12px;
+  font-weight: 800;
+}
 
 .intent-card {
   margin-top: 18px;
@@ -1758,6 +1795,34 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
 }
 
 .auth-panel-head h2 { font-size: 30px; }
+
+.auth-panel-copy {
+  margin: 16px 0 0;
+  color: var(--muted);
+}
+
+.static-auth-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  text-align: center;
+}
+
+.static-auth-actions a {
+  color: var(--forest);
+  font-weight: 800;
+}
+
+.static-auth-actions .static-auth-primary {
+  display: flex;
+  min-height: 45px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--forest);
+  text-decoration: none;
+}
 
 .auth-tabs {
   display: grid;

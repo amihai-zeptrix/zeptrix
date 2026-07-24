@@ -172,6 +172,29 @@ function loadItems() {
   return dataItems.map((item) => ({ ...item, slug: item.slug || slugify(item.title) })).filter((item) => item.title && item.slug);
 }
 
+function topicTokens(item) {
+  const stopWords = new Set(["and", "are", "aws", "before", "cloud", "cloudprune", "cost", "costs", "find", "for", "from", "how", "is", "of", "or", "the", "to", "what", "when", "which", "with", "without", "your"]);
+  return new Set(`${item.title || ""} ${item.query || ""} ${item.intent || ""}`
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 2 && !stopWords.has(token)));
+}
+
+function relatedItems(item, allItems) {
+  const tokens = topicTokens(item);
+  return allItems
+    .filter((candidate) => candidate.slug !== item.slug)
+    .map((candidate) => {
+      const candidateTokens = topicTokens(candidate);
+      const overlap = [...tokens].filter((token) => candidateTokens.has(token)).length;
+      const sameIntent = item.intent && item.intent === candidate.intent ? 3 : 0;
+      return { candidate, relevance: overlap + sameIntent };
+    })
+    .sort((left, right) => right.relevance - left.relevance || left.candidate.title.localeCompare(right.candidate.title))
+    .slice(0, 3)
+    .map(({ candidate }) => candidate);
+}
+
 function pageHtml(item, allItems) {
   const title = `${item.seoTitle || item.title} | CloudPrune`;
   const description = item.pain || item.angle || "CloudPrune cloud cost optimization resource.";
@@ -179,7 +202,7 @@ function pageHtml(item, allItems) {
   const intent = item.intent || "aws-cost-scan";
   const ctaLabel = item.ctaLabel || "Start a read-only CloudPrune scan";
   const ctaHref = `/cloudprune/?intent=${encodeURIComponent(intent)}&source=${encodeURIComponent(item.slug)}`;
-  const related = allItems.filter((candidate) => candidate.slug !== item.slug).slice(0, 3);
+  const related = relatedItems(item, allItems);
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "Article",
@@ -187,20 +210,32 @@ function pageHtml(item, allItems) {
     description,
     url: canonicalUrl,
     mainEntityOfPage: canonicalUrl,
+    dateModified: "2026-07-24",
     author: {
       "@type": "Organization",
-      name: "CloudPrune",
-      url: `${publicBaseUrl}/cloudprune/`,
+      "@id": `${publicBaseUrl}/#organization`,
+      name: "Zeptrix",
+      url: `${publicBaseUrl}/`,
     },
     publisher: {
       "@type": "Organization",
-      name: "CloudPrune",
-      url: `${publicBaseUrl}/cloudprune/`,
+      "@id": `${publicBaseUrl}/#organization`,
+      name: "Zeptrix",
+      url: `${publicBaseUrl}/`,
     },
     about: ["AWS cost optimization", "cloud cost reduction", item.query].filter(Boolean),
   };
   const faqData = faqStructuredData(item, canonicalUrl);
-  const pageStructuredData = faqData ? { "@context": "https://schema.org", "@graph": [structuredData, faqData] } : structuredData;
+  const breadcrumbs = {
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Zeptrix", item: `${publicBaseUrl}/` },
+      { "@type": "ListItem", position: 2, name: "CloudPrune", item: `${publicBaseUrl}/cloudprune/` },
+      { "@type": "ListItem", position: 3, name: "AWS cost playbooks", item: `${publicBaseUrl}/cloudprune/resources/` },
+      { "@type": "ListItem", position: 4, name: item.title, item: canonicalUrl },
+    ],
+  };
+  const pageStructuredData = { "@context": "https://schema.org", "@graph": [structuredData, breadcrumbs, ...(faqData ? [faqData] : [])] };
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -210,7 +245,7 @@ function pageHtml(item, allItems) {
     <title>${escapeHtml(title)}</title>
     <link rel="canonical" href="${canonicalUrl}" />
     <meta property="og:type" content="article" />
-    <meta property="og:site_name" content="CloudPrune" />
+    <meta property="og:site_name" content="Zeptrix CloudPrune" />
     <meta property="og:title" content="${escapeHtml(title)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:url" content="${canonicalUrl}" />
@@ -224,10 +259,11 @@ function pageHtml(item, allItems) {
   </head>
   <body>
     <header class="resource-hero">
-      <nav><a href="/cloudprune/">CloudPrune</a><a href="/cloudprune/resources/">Resources</a></nav>
+      <nav><a href="/">Zeptrix</a><a href="/cloudprune/">CloudPrune</a><a href="/cloudprune/resources/">AWS cost playbooks</a></nav>
       <p class="eyebrow">AWS cost playbook</p>
       <h1>${escapeHtml(item.title)}</h1>
       <p>${escapeHtml(item.pain)}</p>
+      <p class="resource-byline">Prepared by Zeptrix CloudPrune · Updated July 24, 2026</p>
       <a class="button" data-resource-cta href="${escapeHtml(ctaHref)}">${escapeHtml(ctaLabel)}</a>
       <div class="trust-strip" aria-label="CloudPrune scan safety">
         <span>Read-only scan</span>
@@ -240,9 +276,8 @@ function pageHtml(item, allItems) {
         <h2>The cost signal</h2>
         <p>${escapeHtml(item.pain)} ${escapeHtml(item.angle)}</p>
         <dl class="facts">
-          <div><dt>Search intent</dt><dd>${escapeHtml(item.query)}</dd></div>
-          <div><dt>Priority score</dt><dd>${escapeHtml(item.score || "n/a")}</dd></div>
-          <div><dt>Reference</dt><dd>${markdownLinkToHtml(item.source)}${item.sourceStatus ? ` <small>${escapeHtml(item.sourceStatus)}</small>` : ""}</dd></div>
+          <div><dt>Review method</dt><dd>Read-only evidence first, followed by owner review, rollback planning, and post-change validation.</dd></div>
+          <div><dt>Reference</dt><dd>${markdownLinkToHtml(item.source)}</dd></div>
         </dl>
       </section>
       <section class="grid">
@@ -268,7 +303,6 @@ function pageHtml(item, allItems) {
       <section class="panel accent">
         <h2>How CloudPrune helps</h2>
         <p>CloudPrune starts read-only, scans AWS evidence, stores the recommendation, and shows savings context with risk, downtime, impact analysis, and safer execution steps.</p>
-        <p>${escapeHtml(item.cta || "Use CloudPrune to turn the finding into an actionable savings workflow.")}</p>
         <a class="button inline" data-resource-cta href="${escapeHtml(ctaHref)}">${escapeHtml(ctaLabel)}</a>
       </section>
 ${faqSection(item)}      <section class="panel">
@@ -285,7 +319,7 @@ ${faqSection(item)}      <section class="panel">
 
 function indexHtml(items) {
   const title = "CloudPrune AWS Cost Resources";
-  const description = "CloudPrune AWS cost optimization resources for high-intent cost pain searches.";
+  const description = "Practical AWS cost playbooks with read-only checks, impact analysis, rollback guidance, and safer next steps from Zeptrix CloudPrune.";
   const canonicalUrl = `${publicBaseUrl}/cloudprune/resources/`;
   const structuredData = {
     "@context": "https://schema.org",
@@ -304,8 +338,9 @@ function indexHtml(items) {
     },
     publisher: {
       "@type": "Organization",
-      name: "CloudPrune",
-      url: `${publicBaseUrl}/cloudprune/`,
+      "@id": `${publicBaseUrl}/#organization`,
+      name: "Zeptrix",
+      url: `${publicBaseUrl}/`,
     },
   };
   return `<!doctype html>
@@ -317,7 +352,7 @@ function indexHtml(items) {
     <title>${title}</title>
     <link rel="canonical" href="${canonicalUrl}" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="CloudPrune" />
+    <meta property="og:site_name" content="Zeptrix CloudPrune" />
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:url" content="${canonicalUrl}" />
@@ -331,7 +366,7 @@ function indexHtml(items) {
   </head>
   <body>
     <header class="resource-hero">
-      <nav><a href="/cloudprune/">CloudPrune</a></nav>
+      <nav><a href="/">Zeptrix</a><a href="/cloudprune/">CloudPrune</a></nav>
       <p class="eyebrow">CloudPrune resources</p>
       <h1>AWS cost reduction playbooks for real bill pain.</h1>
       <p>Short, practical guides that turn AWS cost questions into read-only checks, impact analysis, and safe next steps.</p>
@@ -339,7 +374,7 @@ function indexHtml(items) {
     </header>
     <main>
       <section class="resource-list">
-        ${items.map((item) => `<article><span>${escapeHtml(item.score || "n/a")}</span><h2><a href="/cloudprune/resources/${escapeHtml(item.slug)}">${escapeHtml(item.title)}</a></h2><p>${escapeHtml(item.pain)}</p></article>`).join("")}
+        ${items.map((item) => `<article><h2><a href="/cloudprune/resources/${escapeHtml(item.slug)}">${escapeHtml(item.title)}</a></h2><p>${escapeHtml(item.pain)}</p></article>`).join("")}
       </section>
     </main>
   </body>
@@ -347,9 +382,9 @@ function indexHtml(items) {
 `;
 }
 
-const css = `:root{--ink:#17211f;--muted:#61716c;--line:#dae5df;--forest:#12332d;--green:#31b86f;--sky:#2598d1;--paper:#fff;--canvas:#f2f7f5}*{box-sizing:border-box}body{margin:0;background:linear-gradient(120deg,#e7f7ef,#eef7fb 42%,#f7fbf9);color:var(--ink);font:16px/1.62 Inter,system-ui,sans-serif}a{color:#176fb1;font-weight:800;text-decoration:none}a:hover{text-decoration:underline}.resource-hero{padding:28px max(24px,calc((100vw - 1040px)/2)) 56px;background:radial-gradient(circle at 12% 15%,rgba(49,184,111,.22),transparent 240px),linear-gradient(135deg,#12332d,#174d43 58%,#17658a);color:#f5fff9}.resource-hero nav{display:flex;gap:18px;margin-bottom:58px}.resource-hero nav a{color:#d9fff0}.eyebrow{margin:0 0 12px;color:#92edbd;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}.resource-hero h1{max-width:880px;margin:0;font-size:clamp(34px,5vw,64px);line-height:1.02;letter-spacing:0}.resource-hero p:not(.eyebrow){max-width:760px;margin:20px 0 0;color:#dbeee8;font-size:20px}.button{display:inline-flex;margin-top:28px;padding:14px 18px;border-radius:8px;background:#f5fff9;color:#12332d;box-shadow:0 18px 40px rgba(0,0,0,.18)}.trust-strip{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.trust-strip span{display:inline-flex;align-items:center;border:1px solid rgba(245,255,249,.34);border-radius:999px;background:rgba(245,255,249,.12);color:#f5fff9;padding:6px 10px;font-size:13px;font-weight:900}main{max-width:1040px;margin:-28px auto 72px;padding:0 24px}.panel,.grid article,.resource-list article{border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.92);box-shadow:0 16px 42px rgba(18,51,45,.1)}.panel{padding:28px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:20px}.grid article{padding:28px}h2{margin:0 0 12px;font-size:24px;line-height:1.2}p{margin:0 0 14px;color:var(--muted)}ol{margin:0;padding-left:22px;color:var(--muted)}li+li{margin-top:10px}.facts{display:grid;gap:12px;margin:24px 0 0}.facts div{display:grid;grid-template-columns:150px 1fr;gap:18px;border-top:1px solid var(--line);padding-top:12px}.facts dt{font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#45615a}.facts dd{margin:0;color:var(--ink);font-weight:700}.facts small{display:block;color:var(--muted);font-weight:700}.accent{background:linear-gradient(135deg,#e7f8ee,#e9f6ff)}.faq details{border-top:1px solid var(--line);padding:14px 0}.faq details:first-of-type{margin-top:8px}.faq summary{cursor:pointer;font-weight:900;color:var(--forest)}.faq p{margin:10px 0 0}.related{display:grid;gap:10px}.resource-list{display:grid;gap:14px}.resource-list article{padding:22px}.resource-list span{display:inline-flex;margin-bottom:10px;border-radius:999px;background:#e7f8ee;color:#17633c;padding:3px 10px;font-size:12px;font-weight:900}.resource-list h2{font-size:20px}.resource-list p{margin-bottom:0}@media (max-width:760px){.grid{grid-template-columns:1fr}.facts div{grid-template-columns:1fr;gap:4px}.resource-hero{padding-bottom:44px}.resource-hero nav{margin-bottom:38px}.trust-strip{display:grid;grid-template-columns:1fr;max-width:340px}}`;
+const css = `:root{--ink:#17211f;--muted:#61716c;--line:#dae5df;--forest:#12332d;--green:#31b86f;--sky:#2598d1;--paper:#fff;--canvas:#f2f7f5}*{box-sizing:border-box}body{margin:0;background:linear-gradient(120deg,#e7f7ef,#eef7fb 42%,#f7fbf9);color:var(--ink);font:16px/1.62 Inter,system-ui,sans-serif}a{color:#176fb1;font-weight:800;text-decoration:none}a:hover{text-decoration:underline}.resource-hero{padding:28px max(24px,calc((100vw - 1040px)/2)) 56px;background:radial-gradient(circle at 12% 15%,rgba(49,184,111,.22),transparent 240px),linear-gradient(135deg,#12332d,#174d43 58%,#17658a);color:#f5fff9}.resource-hero nav{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:58px}.resource-hero nav a{color:#d9fff0}.eyebrow{margin:0 0 12px;color:#92edbd;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}.resource-hero h1{max-width:880px;margin:0;font-size:clamp(34px,5vw,64px);line-height:1.02;letter-spacing:0}.resource-hero p:not(.eyebrow){max-width:760px;margin:20px 0 0;color:#dbeee8;font-size:20px}.resource-hero .resource-byline{font-size:14px!important;color:#b9d6ce!important}.button{display:inline-flex;margin-top:28px;padding:14px 18px;border-radius:8px;background:#f5fff9;color:#12332d;box-shadow:0 18px 40px rgba(0,0,0,.18)}.trust-strip{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.trust-strip span{display:inline-flex;align-items:center;border:1px solid rgba(245,255,249,.34);border-radius:999px;background:rgba(245,255,249,.12);color:#f5fff9;padding:6px 10px;font-size:13px;font-weight:900}main{max-width:1040px;margin:-28px auto 72px;padding:0 24px}.panel,.grid article,.resource-list article{border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.92);box-shadow:0 16px 42px rgba(18,51,45,.1)}.panel{padding:28px;margin-bottom:20px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:20px}.grid article{padding:28px}h2{margin:0 0 12px;font-size:24px;line-height:1.2}p{margin:0 0 14px;color:var(--muted)}ol{margin:0;padding-left:22px;color:var(--muted)}li+li{margin-top:10px}.facts{display:grid;gap:12px;margin:24px 0 0}.facts div{display:grid;grid-template-columns:150px 1fr;gap:18px;border-top:1px solid var(--line);padding-top:12px}.facts dt{font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#45615a}.facts dd{margin:0;color:var(--ink);font-weight:700}.facts small{display:block;color:var(--muted);font-weight:700}.accent{background:linear-gradient(135deg,#e7f8ee,#e9f6ff)}.faq details{border-top:1px solid var(--line);padding:14px 0}.faq details:first-of-type{margin-top:8px}.faq summary{cursor:pointer;font-weight:900;color:var(--forest)}.faq p{margin:10px 0 0}.related{display:grid;gap:10px}.resource-list{display:grid;gap:14px}.resource-list article{padding:22px}.resource-list h2{font-size:20px}.resource-list p{margin-bottom:0}@media (max-width:760px){.grid{grid-template-columns:1fr}.facts div{grid-template-columns:1fr;gap:4px}.resource-hero{padding-bottom:44px}.resource-hero nav{margin-bottom:38px}.trust-strip{display:grid;grid-template-columns:1fr;max-width:340px}}`;
 
-const items = loadItems();
+const items = loadItems().filter((item) => !item.redirectTo);
 
 fs.rmSync(outputRoot, { recursive: true, force: true });
 fs.mkdirSync(outputRoot, { recursive: true });

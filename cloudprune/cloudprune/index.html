@@ -3,8 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="CloudPrune monitors cloud spend and prioritizes cost-saving actions across cloud, Kubernetes, and data workloads." />
-    <title>CloudPrune | Cloud Cost Workspace</title>
+    <meta name="description" content="Zeptrix CloudPrune finds AWS waste with a read-only scan, ranks savings by risk and impact, and turns approved recommendations into controlled workflows." />
+    <title>Zeptrix CloudPrune | Read-Only AWS Cost Optimization</title>
+    <link rel="canonical" href="https://zeptrix.io/cloudprune/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Zeptrix" />
+    <meta property="og:title" content="Zeptrix CloudPrune | Read-Only AWS Cost Optimization" />
+    <meta property="og:description" content="Find AWS waste, review savings evidence, and plan safer cost reductions with read-only discovery and explicit guardrails." />
+    <meta property="og:url" content="https://zeptrix.io/cloudprune/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Zeptrix CloudPrune | Read-Only AWS Cost Optimization" />
+    <meta name="twitter:description" content="Read-only AWS cost discovery, risk-ranked recommendations, and controlled savings workflows." />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "@id": "https://zeptrix.io/cloudprune/#software",
+      "name": "CloudPrune",
+      "alternateName": "Zeptrix CloudPrune",
+      "url": "https://zeptrix.io/cloudprune/",
+      "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "Cloud cost optimization",
+      "operatingSystem": "Web",
+      "description": "CloudPrune finds AWS waste with a read-only scan, ranks savings by risk and impact, and turns approved recommendations into controlled workflows.",
+      "brand": {
+        "@type": "Organization",
+        "@id": "https://zeptrix.io/#organization",
+        "name": "Zeptrix",
+        "url": "https://zeptrix.io/"
+      },
+      "publisher": {
+        "@id": "https://zeptrix.io/#organization"
+      },
+      "featureList": [
+        "Read-only AWS cost assessment",
+        "Risk-ranked savings recommendations",
+        "Impact and rollback guidance",
+        "Dry-run workflow planning",
+        "EC2, EBS, RDS, NAT Gateway, CloudWatch, S3, and Savings Plans analysis"
+      ]
+    }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@700;800&display=swap" rel="stylesheet" />
@@ -12,7 +51,51 @@
     <link rel="stylesheet" href="/cloudprune/styles.css" />
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <main class="auth-page">
+        <section class="auth-visual">
+          <a class="auth-brand" href="https://zeptrix.io/" aria-label="CloudPrune by Zeptrix">
+            <img src="/cloudprune/favicon.svg" alt="" width="48" height="48" />
+            <span><strong>CloudPrune</strong><small>by Zeptrix</small></span>
+          </a>
+          <div class="auth-hero">
+            <span class="eyebrow">Read-only AWS cost optimization</span>
+            <h1>Find AWS waste and plan safer savings.</h1>
+            <p>CloudPrune connects billing, inventory, usage, and architecture evidence so engineering and finance can see what may save money, what could break, and what to review first.</p>
+            <div class="auth-operating-promise" aria-label="CloudPrune operating model">
+              <p><strong>Discover:</strong> start with read-only access and identify waste across AWS accounts and regions.</p>
+              <p><strong>Decide:</strong> rank recommendations by savings, confidence, operational risk, and deployment effort.</p>
+              <p><strong>Act safely:</strong> use dry runs, approvals, audit evidence, rollback notes, and post-change validation.</p>
+            </div>
+            <div class="auth-capabilities" aria-label="Supported AWS cost checks">
+              <span>EC2 and EBS</span>
+              <span>RDS and Aurora</span>
+              <span>NAT Gateway</span>
+              <span>CloudWatch and S3</span>
+              <span>Savings Plans</span>
+            </div>
+          </div>
+          <div class="auth-signal-grid" aria-label="CloudPrune product guardrails">
+            <article><span>Initial access</span><strong>Read only</strong><em>No AWS changes during discovery</em></article>
+            <article><span>Recommendations</span><strong>Risk ranked</strong><em>Impact and rollback context</em></article>
+            <article><span>Execution</span><strong>Dry run</strong><em>Approval before controlled action</em></article>
+          </div>
+        </section>
+        <section class="auth-panel" aria-label="Start with CloudPrune">
+          <div class="auth-panel-head">
+            <span class="eyebrow">Zeptrix CloudPrune</span>
+            <h2>Start with a read-only AWS savings assessment</h2>
+          </div>
+          <p class="auth-panel-copy">Create a workspace to connect AWS, inspect the evidence behind each recommendation, and decide which savings are safe to pursue.</p>
+          <div class="static-auth-actions">
+            <a class="static-auth-primary" href="/cloudprune/">Create a CloudPrune workspace</a>
+            <a href="/cloudprune/demo">Explore the interactive demo</a>
+            <a href="/cloudprune/resources/">Read AWS cost playbooks</a>
+          </div>
+          <noscript><p class="auth-message">JavaScript is required to register or sign in. The product overview and AWS cost playbooks remain available.</p></noscript>
+        </section>
+      </main>
+    </div>
     <script src="/cloudprune/app.js"></script>
   </body>
 </html>

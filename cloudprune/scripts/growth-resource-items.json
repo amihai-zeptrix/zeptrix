@@ -45,6 +45,7 @@
     "title": "Are Unattached EBS Volumes Charged? Yes. Here Is the Safe Cleanup Path",
     "seoTitle": "Are Unattached EBS Volumes Charged?",
     "slug": "are-unattached-ebs-volumes-charged-yes-here-is-the-safe-cleanup-path",
+    "redirectTo": "unattached-ebs-volumes-still-cost-money-how-to-find-and-safely-remove-them",
     "score": "35",
     "query": "are unattached EBS volumes charged",
     "source": "[Are the EBS volumes which are not attached to any instance charged?](https://www.reddit.com/r/aws/comments/15y3fry/are_the_ebs_volumes_which_are_not_attached_to_any/) (Reddit)",

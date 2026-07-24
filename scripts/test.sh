@@ -60,9 +60,10 @@ assert_file saas-crm/cloudprune/favicon.svg
 
 assert_not_exists wordpress-to-modern-websites.html
 
-assert_contains index.html "<title>Zeptrix | AI AWS Cost Reduction</title>"
+assert_contains index.html "<title>Zeptrix CloudPrune | AI AWS Cost Reduction</title>"
 assert_contains index.html 'href="/styles.css"'
 assert_contains index.html 'src="/app.js"'
+assert_contains index.html 'href="/cloudprune/"'
 
 assert_contains siteops.html '<link rel="canonical" href="https://zeptrix.io/siteops">'
 assert_contains siteops.html "<title>Zeptrix SiteOps | Modern Website Hosting and WordPress Care</title>"
@@ -95,7 +96,8 @@ assert_contains your-new-crm/index.html 'href="./styles.css"'
 assert_contains your-new-crm/index.html 'src="./app.js"'
 assert_contains your-new-crm.html "<title>Zeptrix CRM | A Sales Workspace That Drives Action</title>"
 assert_contains your-new-crm.html 'href="/your-new-crm/"'
-assert_contains cloudprune/cloudprune/index.html "<title>CloudPrune | Cloud Cost Workspace</title>"
+assert_contains cloudprune/cloudprune/index.html "<title>Zeptrix CloudPrune | Read-Only AWS Cost Optimization</title>"
+assert_contains cloudprune/cloudprune/index.html '<link rel="canonical" href="https://zeptrix.io/cloudprune/" />'
 assert_contains cloudprune/cloudprune/index.html 'href="/cloudprune/styles.css"'
 assert_contains cloudprune/cloudprune/index.html 'src="/cloudprune/app.js"'
 assert_contains saas-crm/cloudprune/index.html "<title>CloudPrune | Cloud Cost Workspace</title>"
@@ -113,7 +115,13 @@ assert_contains nginx-zeptrix.conf "location ^~ /internal-crm/"
 assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8008;"
 assert_contains nginx-zeptrix.conf "location = /cloudprune"
 assert_contains nginx-zeptrix.conf "location ^~ /cloudprune/"
+assert_contains nginx-zeptrix.conf "location = /aws-cost-optimization.html"
+assert_contains nginx-zeptrix.conf "location = /reduce-aws-spend.html"
+assert_contains nginx-zeptrix.conf "return 301 /aws-cost-reduction;"
+assert_contains nginx-zeptrix.conf 'return 301 https://zeptrix.io$request_uri;'
+assert_contains nginx-zeptrix.conf 'try_files $uri $uri/ $uri.html =404;'
 
+assert_contains sitemap.xml "https://zeptrix.io/cloudprune/"
 assert_contains sitemap.xml "https://zeptrix.io/cloudprune/resources/"
 while IFS= read -r resource_index; do
   resource_slug="${resource_index#cloudprune/cloudprune/resources/}"
