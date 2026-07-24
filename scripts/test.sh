@@ -115,6 +115,9 @@ assert_contains nginx-zeptrix.conf "location ^~ /internal-crm/"
 assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8008;"
 assert_contains nginx-zeptrix.conf "location = /cloudprune"
 assert_contains nginx-zeptrix.conf "location ^~ /cloudprune/"
+assert_contains nginx-zeptrix.conf "location = /aws-cost-optimization.html"
+assert_contains nginx-zeptrix.conf "location = /reduce-aws-spend.html"
+assert_contains nginx-zeptrix.conf "return 301 /aws-cost-reduction;"
 assert_contains nginx-zeptrix.conf 'return 301 https://zeptrix.io$request_uri;'
 assert_contains nginx-zeptrix.conf 'try_files $uri $uri/ $uri.html =404;'
 

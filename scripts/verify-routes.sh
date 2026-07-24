@@ -153,4 +153,16 @@ if [[ "$fast_site_location" != "$base_url/siteops" ]]; then
   exit 1
 fi
 
+aws_optimization_location="$(curl -fsSI --max-time 20 "$base_url/aws-cost-optimization.html" | awk 'tolower($1) == "location:" {print $2}' | tr -d '\r')"
+if [[ "$aws_optimization_location" != "$base_url/aws-cost-reduction" ]]; then
+  echo "Expected /aws-cost-optimization.html to redirect to $base_url/aws-cost-reduction, got: $aws_optimization_location" >&2
+  exit 1
+fi
+
+reduce_spend_location="$(curl -fsSI --max-time 20 "$base_url/reduce-aws-spend.html" | awk 'tolower($1) == "location:" {print $2}' | tr -d '\r')"
+if [[ "$reduce_spend_location" != "$base_url/aws-cost-reduction" ]]; then
+  echo "Expected /reduce-aws-spend.html to redirect to $base_url/aws-cost-reduction, got: $reduce_spend_location" >&2
+  exit 1
+fi
+
 echo "Route verification passed for $base_url"
