@@ -1,6 +1,18 @@
 # CloudPrune
 
-CloudPrune is a cloud cost workspace and read-only AWS assessment helper.
+CloudPrune is a multi-cloud cost workspace and read-only AWS assessment helper.
+
+## Azure demo support
+
+The demo workspace includes Azure service spend, provider-specific anomalies,
+and Azure counterparts for every AWS recommendation family, plus AKS capacity
+optimization. Azure recommendation workflows are synthetic dry runs and make
+no Azure API calls or resource changes.
+
+The product labels demo values explicitly so they cannot be mistaken for a
+tenant assessment. Live Azure subscription scanning is not enabled in this
+release. See [`AZURE_SUPPORT_PLAN.md`](AZURE_SUPPORT_PLAN.md) for the parity
+matrix, UX boundary, least-privilege connector design, and rollout sequence.
 
 ## AWS assessment
 

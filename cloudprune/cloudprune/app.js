@@ -31,6 +31,17 @@ const RECOMMENDATION_SERVICE_BY_ID = {
   "ec2-to-lambda-assessment": "EC2 and Lambda",
   "rds-rightsizing": "RDS",
   "network-egress-review": "NAT Gateway",
+  "azure-compute-commitments": "Azure savings plan",
+  "azure-idle-managed-disks": "Managed Disks",
+  "azure-idle-public-ips": "Public IP",
+  "azure-storage-lifecycle": "Blob and Log Analytics",
+  "azure-vm-consolidation": "Virtual Machines",
+  "azure-idle-load-balancers": "Load Balancing",
+  "azure-vm-rightsizing": "Virtual Machines",
+  "azure-functions-assessment": "Virtual Machines and Functions",
+  "azure-sql-rightsizing": "Azure SQL",
+  "azure-network-egress-review": "NAT Gateway and Private Link",
+  "azure-aks-consolidation": "AKS",
 };
 
 const SERVICES = [
@@ -38,7 +49,11 @@ const SERVICES = [
   { provider: "aws", name: "RDS", owner: "Core Apps", month: 39200, forecast: 41150, waste: 6200, trend: 5, score: 68 },
   { provider: "gcp", name: "BigQuery", owner: "Analytics", month: 53800, forecast: 66400, waste: 14300, trend: 24, score: 81 },
   { provider: "gcp", name: "GKE", owner: "Platform", month: 46250, forecast: 43900, waste: 9700, trend: -4, score: 72 },
+  { provider: "azure", name: "Virtual Machines", owner: "Platform", month: 68400, forecast: 72600, waste: 11600, trend: 9, score: 69 },
+  { provider: "azure", name: "Azure SQL", owner: "Core Apps", month: 28400, forecast: 30100, waste: 5400, trend: 6, score: 71 },
   { provider: "azure", name: "AKS", owner: "Customer Apps", month: 31900, forecast: 36650, waste: 8200, trend: 15, score: 64 },
+  { provider: "azure", name: "Storage & Monitor", owner: "Observability", month: 22100, forecast: 24800, waste: 5200, trend: 13, score: 66 },
+  { provider: "azure", name: "Networking", owner: "Network", month: 17400, forecast: 19100, waste: 4100, trend: 10, score: 73 },
   { provider: "kubernetes", name: "Production clusters", owner: "SRE", month: 77400, forecast: 80100, waste: 21500, trend: 8, score: 83 },
   { provider: "data", name: "Snowflake", owner: "Data", month: 28800, forecast: 37100, waste: 9100, trend: 31, score: 79 },
 ];
@@ -205,13 +220,167 @@ const RECOMMENDATIONS = [
   { cloud: "kubernetes", title: "Right-size production namespace requests", impact: 14200, effort: "Medium", risk: "Low", owner: "SRE", status: "Ready", detail: "CPU requests exceed p95 usage by 48% across 31 deployments." },
   { cloud: "gcp", title: "Partition high-scan BigQuery tables", impact: 9300, effort: "Medium", risk: "Medium", owner: "Analytics", status: "Plan", detail: "Three tables account for 41% of query spend and repeat full scans." },
   { cloud: "data", title: "Suspend idle Snowflake warehouses faster", impact: 7600, effort: "Low", risk: "Low", owner: "Data", status: "Ready", detail: "Warehouse idle windows average 22 minutes after query completion." },
-  { cloud: "azure", title: "Consolidate underused AKS node pools", impact: 6100, effort: "Medium", risk: "Medium", owner: "Customer Apps", status: "Review", detail: "Four node pools run below 34% memory utilization during business hours." },
+  {
+    id: "azure-compute-commitments",
+    cloud: "azure",
+    title: "Review Azure savings plan and reservation coverage",
+    impact: 7300,
+    effort: "Low",
+    risk: "High",
+    owner: "Commitment optimization",
+    status: "Approve",
+    detail: "Fifty-eight percent of eligible Azure compute spend has remained stable across the last 45 days.",
+    statistics: { "Estimated monthly savings": "$7,300", "Eligible stable baseline": "58%", "Confidence": "High" },
+    minimizeImpact: "Exclude existing benefits and volatile workloads, compare reservations, and commit only to a conservative hourly baseline.",
+    rollbackPath: "No technical rollback; reduce term and utilization risk by selecting a smaller commitment and appropriate billing scope.",
+  },
+  {
+    id: "azure-idle-managed-disks",
+    cloud: "azure",
+    title: "Review 76 unattached Azure managed disks",
+    impact: 3100,
+    effort: "Low",
+    risk: "Medium",
+    owner: "Idle resource cleanup",
+    status: "Ready",
+    detail: "Managed disks have no active attachment and no ownership activity in the last 30 days.",
+    statistics: { "Unattached disks": "76", "Measured storage": "13.2 TB", "Oldest unattached": "81 days" },
+    minimizeImpact: "Check resource locks and protected tags, snapshot first, notify owners, and quarantine disks before deletion.",
+    rollbackPath: "Create a new managed disk from the retained incremental snapshot.",
+  },
+  {
+    id: "azure-idle-public-ips",
+    cloud: "azure",
+    title: "Review 18 unassociated Azure public IP addresses",
+    impact: 130,
+    effort: "Low",
+    risk: "High",
+    owner: "Idle resource cleanup",
+    status: "Review",
+    detail: "Public IP resources are allocated but not associated with a network interface, load balancer, or application gateway.",
+    statistics: { "Idle addresses": "18", "Subscriptions": "3", "Monthly address waste": "$130" },
+    minimizeImpact: "Check DNS, allowlists, NAT rules, and disaster-recovery documentation before release.",
+    rollbackPath: "Allocate replacement public IPs and update dependent DNS or allowlists; the original address may not be recoverable.",
+  },
+  {
+    id: "azure-storage-lifecycle",
+    cloud: "azure",
+    title: "Tune Azure Blob and Log Analytics lifecycle",
+    impact: 5200,
+    effort: "Low",
+    risk: "Medium",
+    owner: "Storage lifecycle optimization",
+    status: "Plan",
+    detail: "Blob containers lack lifecycle rules and Log Analytics tables retain verbose data beyond the demo policy.",
+    statistics: { "Storage accounts": "11", "Log Analytics tables": "9", "Measured cold data": "64 TB" },
+    minimizeImpact: "Exclude legal holds and compliance data, tier before deletion, and validate incident-query and archive-rehydration needs.",
+    rollbackPath: "Increase retention going forward and rehydrate archived blobs when required; expired telemetry cannot be restored.",
+  },
+  {
+    id: "azure-vm-consolidation",
+    cloud: "azure",
+    title: "Assess consolidating 3 low-utilization Azure VMs",
+    impact: 1450,
+    effort: "Medium",
+    risk: "Medium",
+    owner: "VM consolidation",
+    status: "Review",
+    detail: "Three application VMs have low combined utilization and compatible availability and traffic requirements.",
+    statistics: { "Candidate VMs": "3", "Combined average CPU": "16.2%", "Traffic mapping": "1 application gateway, 3 backend targets" },
+    minimizeImpact: "Validate memory and zone requirements, drain one backend at a time, and keep the deallocated VM intact through validation.",
+    rollbackPath: "Start the previous VM and restore its backend-pool registration.",
+  },
+  {
+    id: "azure-idle-load-balancers",
+    cloud: "azure",
+    title: "Investigate 2 Azure load balancers with no observed traffic",
+    impact: 95,
+    effort: "Low",
+    risk: "Medium",
+    owner: "Idle resource cleanup",
+    status: "Review",
+    detail: "Azure Monitor reported no sampled data-path traffic during the demo observation window.",
+    statistics: { "No-traffic load balancers": "2", "Observed traffic": "0", "Observation window": "30 days" },
+    minimizeImpact: "Check health probes, rules, DNS, private consumers, and disaster-recovery use before removal.",
+    rollbackPath: "Restore the load balancer, frontend configuration, rules, probes, and backend pools from infrastructure-as-code.",
+  },
+  {
+    id: "azure-vm-rightsizing",
+    cloud: "azure",
+    title: "Evaluate 23 Azure VM rightsizing candidates",
+    impact: 6400,
+    effort: "Medium",
+    risk: "Medium",
+    owner: "VM rightsizing",
+    status: "Plan",
+    detail: "Azure Advisor candidates remain below conservative CPU, memory, disk, and network thresholds.",
+    statistics: { "Candidate VMs": "23", "Average CPU": "8.1%", "Observation window": "30 days" },
+    minimizeImpact: "Confirm SKU availability and feature limits, resize one service at a time, and disclose VM restart requirements.",
+    rollbackPath: "Resize to the previous VM SKU or restore the previous scale-set model.",
+  },
+  {
+    id: "azure-functions-assessment",
+    cloud: "azure",
+    title: "Assess whether scheduled Azure VM jobs can move to Functions",
+    impact: 1900,
+    effort: "High",
+    risk: "Medium",
+    owner: "Serverless migration assessment",
+    status: "Assess",
+    detail: "Low-duty-cycle jobs have runtime and dependency profiles that may fit Azure Functions or Container Apps jobs.",
+    statistics: { "Candidate jobs": "7", "Average duty cycle": "6.8%", "Runtime inventory": "Node.js, Python, and .NET" },
+    minimizeImpact: "Start with one stateless job, replay representative inputs, and keep the VM schedule as the fallback until parity is proven.",
+    rollbackPath: "Disable the new trigger and restore the existing VM job schedule.",
+  },
+  {
+    id: "azure-sql-rightsizing",
+    cloud: "azure",
+    title: "Review 7 low-utilization Azure SQL databases",
+    impact: 2500,
+    effort: "Medium",
+    risk: "High",
+    owner: "Database rightsizing",
+    status: "Review",
+    detail: "Azure SQL databases remain below conservative CPU, data IO, log IO, DTU, and vCore thresholds.",
+    statistics: { "Low-use databases": "7", "Average CPU": "5.1%", "Peak data IO": "28%" },
+    minimizeImpact: "Validate storage, failover, feature, and latency requirements before changing one service objective in a maintenance window.",
+    rollbackPath: "Restore the previous service objective or compute tier during the approved window.",
+  },
+  {
+    id: "azure-network-egress-review",
+    cloud: "azure",
+    title: "Review 3 Azure NAT gateways for private-access opportunities",
+    impact: 4100,
+    effort: "Medium",
+    risk: "Medium",
+    owner: "Network and data transfer waste",
+    status: "Assess",
+    detail: "NAT processed data and cross-zone service traffic may be reducible with private endpoints, service endpoints, or regional placement.",
+    statistics: { "Active NAT gateways": "3", "Data processed": "7.8 TB", "Candidate services": "Storage, Key Vault, Container Registry" },
+    minimizeImpact: "Add and validate private access before changing routes, DNS, firewall rules, or NAT capacity.",
+    rollbackPath: "Restore the previous route, DNS, endpoint, and firewall configuration.",
+  },
+  {
+    id: "azure-aks-consolidation",
+    cloud: "azure",
+    title: "Consolidate underused AKS node pools",
+    impact: 6100,
+    effort: "Medium",
+    risk: "Medium",
+    owner: "Customer Apps",
+    status: "Review",
+    detail: "Four node pools run below 34% memory utilization during business hours.",
+    statistics: { "Candidate node pools": "4", "Peak memory": "34%", "Observation window": "30 days" },
+    minimizeImpact: "Validate pod disruption budgets, scheduling constraints, autoscaler bounds, and retained capacity before a guarded drain.",
+    rollbackPath: "Restore the previous node count and pool layout before removing any retained rollback capacity.",
+  },
 ];
 
 const ANOMALIES = [
-  { label: "BigQuery query scans", value: "+38%", note: "Analytics workspace", severity: "high" },
-  { label: "NAT Gateway data transfer", value: "+19%", note: "us-east-1 shared VPC", severity: "medium" },
-  { label: "AKS burst nodes", value: "+14%", note: "checkout workloads", severity: "medium" },
+  { provider: "gcp", label: "BigQuery query scans", value: "+38%", note: "Analytics workspace", severity: "high" },
+  { provider: "aws", label: "NAT Gateway data transfer", value: "+19%", note: "us-east-1 shared VPC", severity: "medium" },
+  { provider: "azure", label: "Log Analytics ingestion", value: "+27%", note: "demo-observability", severity: "high" },
+  { provider: "azure", label: "AKS burst nodes", value: "+14%", note: "checkout workloads", severity: "medium" },
 ];
 
 const ICONS = {
@@ -250,12 +419,29 @@ const ICONS = {
   data: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c4.4 0 8 1.4 8 3.2v11.6c0 1.8-3.6 3.2-8 3.2s-8-1.4-8-3.2V6.2C4 4.4 7.6 3 12 3Zm0 2c-3.3 0-5.8.7-5.8 1.2S8.7 7.4 12 7.4s5.8-.7 5.8-1.2S15.3 5 12 5Zm5.8 4.2c-1.5.8-3.6 1.2-5.8 1.2s-4.3-.4-5.8-1.2v2.3c0 .5 2.5 1.2 5.8 1.2s5.8-.7 5.8-1.2V9.2Zm0 5.3c-1.5.8-3.6 1.2-5.8 1.2s-4.3-.4-5.8-1.2v2.6c0 .5 2.5 1.2 5.8 1.2s5.8-.7 5.8-1.2v-2.6Z"/></svg>`,
 };
 
+function demoRouteSelection() {
+  try {
+    const params = new URL(location.href).searchParams;
+    const recommendationId = String(params.get("plan") || "");
+    const recommendation = RECOMMENDATIONS.find((item) => recommendationKey(item) === recommendationId);
+    const requestedCloud = params.get("cloud");
+    return {
+      cloud: recommendation?.cloud || (CLOUDS.some((item) => item.id === requestedCloud) ? requestedCloud : "all"),
+      recommendationId: recommendation ? recommendationId : "",
+    };
+  } catch {
+    return { cloud: "all", recommendationId: "" };
+  }
+}
+
+const initialDemoSelection = demoRouteSelection();
+
 let state = {
-  cloud: "all",
+  cloud: initialDemoSelection.cloud,
   recommendationGroupBy: "complexity",
   recommendationFilters: { vendor: "all", service: "all", complexity: "all" },
   view: "recommendations",
-  automation: false,
+  automation: Boolean(initialDemoSelection.recommendationId),
   authMode: "register",
   authMessage: "",
   sessionRefreshStarted: false,
@@ -270,6 +456,7 @@ let state = {
   activeRecommendationActionId: "",
   automationMessage: "",
   automationSubmittingId: "",
+  demoAutomationRecommendationId: initialDemoSelection.recommendationId,
   feedbackOpen: false,
   feedbackMessage: "",
   feedbackSubmitting: false,
@@ -647,7 +834,12 @@ function filteredRecommendations() {
 
 function activeAutomationPlans() {
   if (appRoute() === "demo") {
-    return RECOMMENDATIONS.filter((item) => item.risk === "Low").slice(0, 4).map((item, index) => ({
+    const recommendations = providerFilteredRecommendations();
+    const selected = state.demoAutomationRecommendationId
+      ? recommendations.find((item) => recommendationKey(item) === state.demoAutomationRecommendationId)
+      : null;
+    const planRecommendations = selected ? [selected] : recommendations.filter((item) => item.risk === "Low").slice(0, 4);
+    return planRecommendations.map((item, index) => ({
       id: `demo-plan-${index + 1}`,
       recommendationId: recommendationKey(item),
       title: item.title,
@@ -829,8 +1021,14 @@ function demoActionCopy(item) {
 
 async function createAutomationPlan(recommendationId) {
   if (appRoute() === "demo") {
-    state.automationMessage = "Demo dry-run plan is visible in Automation.";
-    location.href = `${basePath()}/demo/automation`;
+    const recommendation = RECOMMENDATIONS.find((item) => recommendationKey(item) === recommendationId);
+    if (!recommendation) {
+      state.automationMessage = "This demo recommendation is no longer available.";
+      render();
+      return;
+    }
+    const params = new URLSearchParams({ plan: recommendationId, cloud: recommendation.cloud });
+    location.href = `${basePath()}/demo/automation?${params.toString()}`;
     return;
   }
   if (!hasSession() || typeof fetch !== "function") {
@@ -1215,6 +1413,27 @@ function renderProviderFilter() {
   `).join("");
 }
 
+function renderDemoDataNotice() {
+  const provider = state.cloud === "all" ? "Multi-cloud" : providerLabel(state.cloud);
+  const recommendations = providerFilteredRecommendations().length;
+  const serviceGroups = filteredServices().length;
+  return `
+    <section class="demo-data-notice" aria-label="Demo data source">
+      <div>
+        <span class="demo-data-badge"><span aria-hidden="true">●</span> Demo data</span>
+        <strong>${escapeHtml(provider)} demo workspace</strong>
+        <p>Synthetic spend and recommendations for product evaluation. No live cloud credentials were used.</p>
+      </div>
+      <dl>
+        <div><dt>Coverage</dt><dd>${recommendations} use cases</dd></div>
+        <div><dt>Services</dt><dd>${serviceGroups} groups</dd></div>
+        <div><dt>Live access</dt><dd>${state.cloud === "aws" ? "Connect separately" : "Not connected"}</dd></div>
+      </dl>
+      <p class="demo-data-boundary">Live AWS assessment is available after sign-in. Live Azure subscription scanning is not enabled in this release.</p>
+    </section>
+  `;
+}
+
 function renderKpis() {
   const services = filteredServices();
   const spend = sum(services, "month");
@@ -1224,7 +1443,7 @@ function renderKpis() {
   return `
     <section class="kpi-grid" aria-label="Cloud cost summary">
       <article class="kpi spend"><div class="kpi-icon">${ICONS.spend}</div><span>Month spend</span><strong>${money(spend)}</strong><em>${forecast > spend ? `${money(forecast - spend)} forecast overrun` : `${money(spend - forecast)} below forecast`}</em></article>
-      <article class="kpi waste"><div class="kpi-icon">${ICONS.waste}</div><span>Verified waste</span><strong>${money(waste)}</strong><em>${Math.round((waste / spend) * 100)}% of monitored spend</em></article>
+      <article class="kpi waste"><div class="kpi-icon">${ICONS.waste}</div><span>Modeled demo waste</span><strong>${money(waste)}</strong><em>${Math.round((waste / spend) * 100)}% of demo spend</em></article>
       <article class="kpi savings"><div class="kpi-icon">${ICONS.savings}</div><span>Potential annual saving</span><strong>${money(waste * 12)}</strong><em>Before implementation risk scoring</em></article>
       <article class="kpi score"><div class="kpi-icon">${ICONS.score}</div><span>Optimization score</span><strong>${score}</strong><em>${score >= 75 ? "Healthy with focused actions" : "Needs review this week"}</em></article>
     </section>
@@ -1709,12 +1928,13 @@ function renderAdminPage(app) {
 }
 
 function renderAnomalies() {
-  return ANOMALIES.map((item) => `
+  const anomalies = state.cloud === "all" ? ANOMALIES : ANOMALIES.filter((item) => item.provider === state.cloud);
+  return anomalies.map((item) => `
     <article class="anomaly ${item.severity}">
       <div class="anomaly-copy">${ICONS.alert}<div><strong>${item.label}</strong><span>${item.note}</span></div></div>
       <em>${item.value}</em>
     </article>
-  `).join("");
+  `).join("") || `<div class="empty">No demo anomalies for ${escapeHtml(providerLabel(state.cloud))}.</div>`;
 }
 
 function renderAutomationQueue() {
@@ -1725,7 +1945,9 @@ function renderAutomationQueue() {
       <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.status || "dry_run")} / approval required</small></div>
       <button data-action="view-automation">Review</button>
     </li>
-  `).join("") || `<li class="muted-row">Create a dry-run plan from a recommendation.</li>`;
+  `).join("") || `<li class="muted-row">${state.cloud === "all"
+    ? "Create a low-risk dry-run plan from a recommendation."
+    : `No low-risk ${escapeHtml(providerLabel(state.cloud))} demo actions are currently eligible.`}</li>`;
 }
 
 function renderAutomationPlans() {
@@ -1768,6 +1990,10 @@ function renderAutomationPlans() {
 }
 
 function renderAutomationModule() {
+  const selectedPlanIsVisible = activeAutomationPlans().some((plan) => plan.recommendationId === state.demoAutomationRecommendationId);
+  const demoPlanMessage = appRoute() === "demo" && state.demoAutomationRecommendationId && selectedPlanIsVisible
+    ? "Selected demo dry-run plan. No cloud resources are changed."
+    : "";
   return `
     <section class="panel automation-module">
       <div class="panel-head">
@@ -1779,7 +2005,7 @@ function renderAutomationModule() {
         <p><strong>Automation</strong> turns it into a reviewed, reversible workflow.</p>
         <p><strong>Every action</strong> starts as dry-run, requires approval, records audit logs, and has rollback/validation steps.</p>
       </div>
-      ${state.automationMessage ? `<p class="auth-message">${escapeHtml(state.automationMessage)}</p>` : ""}
+      ${state.automationMessage || demoPlanMessage ? `<p class="auth-message">${escapeHtml(state.automationMessage || demoPlanMessage)}</p>` : ""}
       <div class="automation-plan-list">${renderAutomationPlans()}</div>
     </section>
   `;
@@ -2253,12 +2479,13 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
           </div>
           <div class="hero-mark">${ICONS.logo}</div>
           <div class="top-actions">
-            <label class="toggle"><input type="checkbox" ${state.automation ? "checked" : ""} data-action="toggle-automation" /><span></span>Autopilot</label>
+            <label class="toggle"><input type="checkbox" ${state.automation ? "checked" : ""} data-action="toggle-automation" /><span></span>Queue preview</label>
             <button class="feedback-button" data-action="open-feedback" type="button">Send feedback</button>
-            <button data-action="connect" ${state.connectFormVisible ? "disabled" : ""}>Connect cloud</button>
+            <button data-action="connect" ${!showDemoData && state.connectFormVisible ? "disabled" : ""}>Connect AWS</button>
           </div>
         </header>
         ${showDemoData ? `<div class="filters" role="group" aria-label="Cloud provider filter">${renderProviderFilter()}</div>
+        ${renderDemoDataNotice()}
         ${renderKpis()}
         <div class="workspace">
           ${renderMainPanel()}
@@ -2268,8 +2495,10 @@ function renderDemo(app, showDemoData = appRoute() === "demo") {
               <div class="anomaly-list">${renderAnomalies()}</div>
             </section>
             <section class="panel compact">
-              <div class="panel-head"><div><span class="eyebrow">Automation queue</span><h2>${state.automation ? "Active" : "Dry run"}</h2></div></div>
-              <ol class="queue">${renderAutomationQueue()}</ol>
+              <div class="panel-head"><div><span class="eyebrow">Automation queue</span><h2>${state.automation ? "Preview shown" : "Preview off"}</h2></div></div>
+              ${state.automation
+                ? `<ol class="queue">${renderAutomationQueue()}</ol>`
+                : `<div class="empty">Turn on Queue preview to show eligible dry-run workflows.</div>`}
             </section>
           </aside>
         </div>` : `${renderEmptyKpis()}${renderEmptyWorkspace()}`}
@@ -2283,6 +2512,10 @@ document.addEventListener("click", async (event) => {
   const connectButton = event.target.closest("[data-action='connect']");
   if (connectButton) {
     if (connectButton.disabled) return;
+    if (appRoute() === "demo") {
+      location.href = `${basePath()}/?intent=aws-cost-scan`;
+      return;
+    }
     trackGrowthEvent("aws_connect_opened");
     state.connectFormVisible = true;
     state.connectMessage = "";
@@ -2419,6 +2652,7 @@ document.addEventListener("click", async (event) => {
   const cloudButton = event.target.closest("[data-cloud]");
   if (cloudButton) {
     state.cloud = cloudButton.dataset.cloud;
+    state.demoAutomationRecommendationId = "";
     state.activeRecommendationActionId = "";
     render();
     return;

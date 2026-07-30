@@ -101,7 +101,7 @@ function bootCloudPruneApp(pathname, session = null, fetchHandler = null) {
     },
   };
   vm.runInNewContext(script, context, { filename: "cloudprune/app.js" });
-  return { app, fetchCalls, listeners, store };
+  return { app, fetchCalls, listeners, store, location: context.location };
 }
 
 function recommendationAssessmentFixture() {
@@ -483,14 +483,16 @@ test("authenticated CloudPrune workspace starts empty while demo data remains in
   assert.doesNotMatch(workspace, /BigQuery query scans/);
 
   const demo = renderCloudPruneApp("/cloudprune/demo");
-  assert.match(demo, /\$402,150/);
+  assert.match(demo, /\$538,450/);
   assert.match(demo, /Prioritized recommendations/);
   assert.match(demo, /Review AWS Savings Plans purchase recommendation/);
+  assert.match(demo, /Multi-cloud demo workspace/);
+  assert.match(demo, /No live cloud credentials were used/);
   assert.match(demo, /BigQuery query scans/);
   assert.doesNotMatch(demo, /No cloud data yet/);
 });
 
-test("CloudPrune demo includes example recommendations for every AWS engine type", () => {
+test("CloudPrune demo includes example recommendations for every AWS and Azure use case", () => {
   const demo = renderCloudPruneApp("/cloudprune/demo/recommendations");
   const titles = [
     "Review AWS Savings Plans purchase recommendation",
@@ -506,8 +508,21 @@ test("CloudPrune demo includes example recommendations for every AWS engine type
   ];
 
   for (const title of titles) assert.match(demo, new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  const azureTitles = [
+    "Review Azure savings plan and reservation coverage",
+    "Review 76 unattached Azure managed disks",
+    "Review 18 unassociated Azure public IP addresses",
+    "Tune Azure Blob and Log Analytics lifecycle",
+    "Assess consolidating 3 low-utilization Azure VMs",
+    "Investigate 2 Azure load balancers with no observed traffic",
+    "Evaluate 23 Azure VM rightsizing candidates",
+    "Assess whether scheduled Azure VM jobs can move to Functions",
+    "Review 7 low-utilization Azure SQL databases",
+    "Review 3 Azure NAT gateways for private-access opportunities",
+    "Consolidate underused AKS node pools",
+  ];
+  for (const title of azureTitles) assert.match(demo, new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(demo, /Partition high-scan BigQuery tables/);
-  assert.match(demo, /Consolidate underused AKS node pools/);
   assert.match(demo, /Right-size production namespace requests/);
 });
 
@@ -518,7 +533,7 @@ test("CloudPrune demo groups recommendations by deployment complexity", () => {
   assert.match(demo, /Service/);
   assert.match(demo, /Deployment complexity/);
   assert.match(demo, /All complexity/);
-  assert.match(demo, /\$75,140 \/ mo/);
+  assert.match(demo, /\$107,315 \/ mo/);
   assert.match(demo, /Low complexity/);
   assert.match(demo, /Medium complexity/);
   assert.match(demo, /High complexity/);
@@ -526,7 +541,7 @@ test("CloudPrune demo groups recommendations by deployment complexity", () => {
 
 test("CloudPrune demo complexity filter keeps totals consistent with visible recommendations", () => {
   const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
-  assert.match(app.innerHTML, /\$75,140 \/ mo <small>14 visible<\/small>/);
+  assert.match(app.innerHTML, /\$107,315 \/ mo <small>24 visible<\/small>/);
   for (const handler of listeners.click || []) handler({
     target: {
       closest(selector) {
@@ -535,7 +550,7 @@ test("CloudPrune demo complexity filter keeps totals consistent with visible rec
     },
   });
 
-  assert.match(app.innerHTML, /\$32,720 \/ mo <small>6 visible<\/small>/);
+  assert.match(app.innerHTML, /\$48,545 \/ mo <small>11 visible<\/small>/);
   assert.match(app.innerHTML, /Review 128 unattached EBS volumes/);
   assert.doesNotMatch(app.innerHTML, /Assess whether low-utilization EC2 app entrypoints can move to Lambda/);
 });
@@ -595,6 +610,34 @@ test("CloudPrune demo provider filter also scopes recommendations and subfilters
   assert.doesNotMatch(app.innerHTML, /EC2 and Lambda/);
 });
 
+test("CloudPrune Azure demo filter exposes complete use-case and service coverage", () => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
+  const click = (selector, dataset) => {
+    for (const handler of listeners.click || []) handler({
+      target: {
+        closest(candidate) {
+          return candidate === selector ? { dataset } : null;
+        },
+      },
+    });
+  };
+
+  click("[data-cloud]", { cloud: "azure" });
+  assert.match(app.innerHTML, /\$38,275 \/ mo <small>11 visible<\/small>/);
+  assert.match(app.innerHTML, /\$168,200/);
+  assert.match(app.innerHTML, /Azure demo workspace/);
+  assert.match(app.innerHTML, /11 use cases/);
+  assert.match(app.innerHTML, /5 groups/);
+  assert.match(app.innerHTML, /Review Azure savings plan and reservation coverage/);
+  assert.match(app.innerHTML, /Review 3 Azure NAT gateways for private-access opportunities/);
+  assert.doesNotMatch(app.innerHTML, /BigQuery query scans/);
+
+  click("[data-recommendation-group]", { recommendationGroup: "service" });
+  for (const service of ["Azure savings plan", "Managed Disks", "Azure SQL", "AKS"]) {
+    assert.match(app.innerHTML, new RegExp(service));
+  }
+});
+
 test("CloudPrune demo clears stale recommendation subfilters when provider changes", () => {
   const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/recommendations");
   const click = (selector, dataset) => {
@@ -646,6 +689,99 @@ test("CloudPrune demo recommendation status buttons open workflow previews", () 
 
   click("close-demo-action");
   assert.doesNotMatch(app.innerHTML, /Build rollout plan/);
+});
+
+test("CloudPrune demo preserves a selected Azure dry-run plan across navigation", () => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/automation?plan=azure-idle-public-ips&cloud=azure");
+
+  assert.match(app.innerHTML, /Azure demo workspace/);
+  assert.match(app.innerHTML, /Selected demo dry-run plan/);
+  assert.match(app.innerHTML, /Review 18 unassociated Azure public IP addresses/);
+  assert.match(app.innerHTML, /the original address may not be recoverable/);
+  assert.doesNotMatch(app.innerHTML, /Review 128 unattached EBS volumes/);
+
+  for (const handler of listeners.click || []) {
+    handler({
+      target: {
+        closest(selector) {
+          return selector === "[data-cloud]" ? { dataset: { cloud: "aws" } } : null;
+        },
+      },
+    });
+  }
+
+  assert.match(app.innerHTML, /AWS demo workspace/);
+  assert.doesNotMatch(app.innerHTML, /Selected demo dry-run plan/);
+  assert.doesNotMatch(app.innerHTML, /Review 18 unassociated Azure public IP addresses/);
+});
+
+test("CloudPrune demo ignores stale plan parameters and derives a valid plan provider", () => {
+  const stale = renderCloudPruneApp("/cloudprune/demo/automation?plan=missing-plan&cloud=azure");
+  assert.doesNotMatch(stale, /Selected demo dry-run plan/);
+  assert.doesNotMatch(stale, /missing-plan/);
+
+  const mismatched = renderCloudPruneApp("/cloudprune/demo/automation?plan=azure-sql-rightsizing&cloud=aws");
+  assert.match(mismatched, /Azure demo workspace/);
+  assert.match(mismatched, /Selected demo dry-run plan/);
+  assert.match(mismatched, /Review 7 low-utilization Azure SQL databases/);
+  assert.doesNotMatch(mismatched, /Review 128 unattached EBS volumes/);
+});
+
+test("CloudPrune Azure workflow CTA navigates to its selected dry-run plan", async () => {
+  const { listeners, location } = bootCloudPruneApp("/cloudprune/demo/recommendations");
+  for (const handler of listeners.click || []) {
+    await handler({
+      target: {
+        closest(selector) {
+          return selector === "[data-action='create-automation-plan']"
+            ? { disabled: false, dataset: { recommendationId: "azure-sql-rightsizing" } }
+            : null;
+        },
+      },
+    });
+  }
+
+  assert.equal(location.href, "/cloudprune/demo/automation?plan=azure-sql-rightsizing&cloud=azure");
+});
+
+test("CloudPrune queue preview toggle controls queue visibility", () => {
+  const { app, listeners } = bootCloudPruneApp("/cloudprune/demo");
+  assert.match(app.innerHTML, /Preview off/);
+  assert.match(app.innerHTML, /Turn on Queue preview/);
+  assert.doesNotMatch(app.innerHTML, /<ol class="queue">/);
+
+  for (const handler of listeners.change || []) {
+    handler({
+      target: {
+        checked: true,
+        matches(selector) {
+          return selector === "[data-action='toggle-automation']";
+        },
+        closest() {
+          return null;
+        },
+      },
+    });
+  }
+
+  assert.match(app.innerHTML, /Preview shown/);
+  assert.match(app.innerHTML, /<ol class="queue">/);
+  assert.doesNotMatch(app.innerHTML, /Turn on Queue preview/);
+});
+
+test("CloudPrune demo Connect AWS action routes to sign-in onboarding", async () => {
+  const { listeners, location } = bootCloudPruneApp("/cloudprune/demo");
+  for (const handler of listeners.click || []) {
+    await handler({
+      target: {
+        closest(selector) {
+          return selector === "[data-action='connect']" ? { disabled: false } : null;
+        },
+      },
+    });
+  }
+
+  assert.equal(location.href, "/cloudprune/?intent=aws-cost-scan");
 });
 
 test("CloudPrune feedback button opens a typed report dialog", () => {
@@ -1235,7 +1371,7 @@ test("CloudPrune empty workspace opens AWS assume-role setup", () => {
   assert.match(workspace, /Assume role setup/);
   assert.match(workspace, /Connect AWS with one field/);
   assert.match(workspace, /<button data-action="connect" disabled>Connect AWS<\/button>/);
-  assert.match(workspace, /<button data-action="connect" disabled>Connect cloud<\/button>/);
+  assert.equal((workspace.match(/<button data-action="connect" disabled>Connect AWS<\/button>/g) || []).length, 2);
   assert.match(workspace, /Launch CloudFormation/);
   assert.match(workspace, /name="externalId" type="hidden" value="cloudprune-account-1"/);
   assert.match(workspace, /name="roleArn" type="hidden" value=""/);
