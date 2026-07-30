@@ -52,8 +52,13 @@ function bootCloudPruneApp(pathname, session = null, fetchHandler = null) {
   const listeners = {};
   const store = new Map(session ? [["cloudprune.session", session]] : []);
   const fetchCalls = [];
+  const historyCalls = [];
   const script = fs.readFileSync(path.join(__dirname, "../cloudprune/app.js"), "utf8");
   const browserUrl = new URL(pathname, "https://zeptrix.io");
+  const location = {
+    href: browserUrl.toString(),
+    pathname: browserUrl.pathname,
+  };
   const context = {
     URL,
     URLSearchParams,
@@ -88,20 +93,22 @@ function bootCloudPruneApp(pathname, session = null, fetchHandler = null) {
       },
     },
     history: {
-      replaceState() {},
+      replaceState(_state, _title, url) {
+        historyCalls.push(String(url));
+        const nextUrl = new URL(url, location.href);
+        location.href = nextUrl.toString();
+        location.pathname = nextUrl.pathname;
+      },
     },
     localStorage: {
       getItem: (key) => store.get(key) || null,
       setItem: (key, value) => store.set(key, String(value)),
       removeItem: (key) => store.delete(key),
     },
-    location: {
-      href: browserUrl.toString(),
-      pathname: browserUrl.pathname,
-    },
+    location,
   };
   vm.runInNewContext(script, context, { filename: "cloudprune/app.js" });
-  return { app, fetchCalls, listeners, store, location: context.location };
+  return { app, fetchCalls, historyCalls, listeners, store, location };
 }
 
 function recommendationAssessmentFixture() {
@@ -692,13 +699,25 @@ test("CloudPrune demo recommendation status buttons open workflow previews", () 
 });
 
 test("CloudPrune demo preserves a selected Azure dry-run plan across navigation", () => {
-  const { app, listeners } = bootCloudPruneApp("/cloudprune/demo/automation?plan=azure-idle-public-ips&cloud=azure");
+  const { app, historyCalls, listeners, location } = bootCloudPruneApp("/cloudprune/demo/automation?plan=azure-idle-public-ips&cloud=azure");
 
   assert.match(app.innerHTML, /Azure demo workspace/);
   assert.match(app.innerHTML, /Selected demo dry-run plan/);
   assert.match(app.innerHTML, /Review 18 unassociated Azure public IP addresses/);
   assert.match(app.innerHTML, /the original address may not be recoverable/);
   assert.doesNotMatch(app.innerHTML, /Review 128 unattached EBS volumes/);
+
+  for (const handler of listeners.click || []) {
+    handler({
+      target: {
+        closest(selector) {
+          return selector === "[data-cloud]" ? { dataset: { cloud: "azure" } } : null;
+        },
+      },
+    });
+  }
+  assert.match(app.innerHTML, /Selected demo dry-run plan/);
+  assert.equal(historyCalls.length, 0);
 
   for (const handler of listeners.click || []) {
     handler({
@@ -713,6 +732,13 @@ test("CloudPrune demo preserves a selected Azure dry-run plan across navigation"
   assert.match(app.innerHTML, /AWS demo workspace/);
   assert.doesNotMatch(app.innerHTML, /Selected demo dry-run plan/);
   assert.doesNotMatch(app.innerHTML, /Review 18 unassociated Azure public IP addresses/);
+  assert.equal(location.href, "https://zeptrix.io/cloudprune/demo/automation?cloud=aws");
+  assert.deepEqual(historyCalls, ["/cloudprune/demo/automation?cloud=aws"]);
+
+  const refreshed = renderCloudPruneApp(`${location.pathname}?cloud=aws`);
+  assert.match(refreshed, /AWS demo workspace/);
+  assert.doesNotMatch(refreshed, /Selected demo dry-run plan/);
+  assert.doesNotMatch(refreshed, /Review 18 unassociated Azure public IP addresses/);
 });
 
 test("CloudPrune demo ignores stale plan parameters and derives a valid plan provider", () => {

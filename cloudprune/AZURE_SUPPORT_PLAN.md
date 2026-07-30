@@ -26,7 +26,7 @@ scanning is a separate implementation phase.
 | NAT gateway review | Azure NAT Gateway, Private Link, endpoints, and cross-zone review | `azure-network-egress-review` |
 | Kubernetes capacity | AKS node-pool consolidation | `azure-aks-consolidation` |
 
-Every demo recommendation includes impact, effort, risk, ownership, supporting
+Every Azure demo recommendation includes impact, effort, risk, ownership, supporting
 statistics, a lower-impact path, rollback guidance, and a selectable dry-run
 workflow for operator review. Azure workflows remain review-only regardless of
 their modeled effort because no live Azure execution path exists.

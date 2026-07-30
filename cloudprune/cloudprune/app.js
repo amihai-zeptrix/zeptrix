@@ -1413,6 +1413,15 @@ function renderProviderFilter() {
   `).join("");
 }
 
+function replaceDemoProviderUrl(provider) {
+  if (appRoute() !== "demo") return;
+  const url = new URL(location.href);
+  url.searchParams.delete("plan");
+  if (provider === "all") url.searchParams.delete("cloud");
+  else url.searchParams.set("cloud", provider);
+  history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 function renderDemoDataNotice() {
   const provider = state.cloud === "all" ? "Multi-cloud" : providerLabel(state.cloud);
   const recommendations = providerFilteredRecommendations().length;
@@ -2651,9 +2660,12 @@ document.addEventListener("click", async (event) => {
   }
   const cloudButton = event.target.closest("[data-cloud]");
   if (cloudButton) {
-    state.cloud = cloudButton.dataset.cloud;
+    const nextCloud = cloudButton.dataset.cloud;
+    if (nextCloud === state.cloud) return;
+    state.cloud = nextCloud;
     state.demoAutomationRecommendationId = "";
     state.activeRecommendationActionId = "";
+    replaceDemoProviderUrl(nextCloud);
     render();
     return;
   }
