@@ -188,6 +188,8 @@ strings rather than a React/Vite application.
 - `cloudprune/README.md` — package-level operating notes
 - `cloudprune/AZURE_SUPPORT_PLAN.md` — Azure parity matrix and live connector
   design
+- `deploy.md` — production CloudPrune packaging, S3/SSM deployment, health
+  verification, and rollback procedure
 - `GITHUB_WORKFLOW.md` — GitHub identity and deployment rule
 - `DEPLOYMENT_LESSONS.md` — shared web-root deployment risks
 - `SEO_ROLLOUT.md` — CloudPrune discovery and indexing plan
@@ -397,6 +399,9 @@ repository.
 
 CloudPrune deploys to the existing `zeptrix-web-1` EC2 instance through AWS SSM.
 Do not create new AWS infrastructure without explicit approval.
+
+Follow `deploy.md` for the current commit-pinned, rollback-protected deployment
+procedure.
 
 The monorepo serves multiple public products from one web root. Never run
 `rsync --delete` from a partial source tree. Assemble and verify the complete
