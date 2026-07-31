@@ -130,7 +130,8 @@ if ((${#task_auth[@]})); then
   assert_contains "$tmp_dir/tt.html" '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
 
   fetch_task "/ticktick/api/tasks" "$tmp_dir/tasks.json"
-  assert_contains "$tmp_dir/tasks.json" '"title":"פסיכומטרי של יובל"'
+  assert_contains "$tmp_dir/tasks.json" '"id":'
+  assert_contains "$tmp_dir/tasks.json" '"revision":'
 fi
 
 fetch "/cloudprune/" "$tmp_dir/cloudprune.html"

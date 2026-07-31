@@ -27,6 +27,10 @@ let composerSelectedTags = new Set();
 let editingTaskId = null;
 let undoAction = null;
 let toastTimer;
+let loadRequestId = 0;
+let loadController = null;
+let mutationsInFlight = 0;
+let refreshAfterMutations = false;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -44,6 +48,7 @@ function normalizeTask(task) {
     completed: task.completed === true,
     created: Number.isFinite(task.created) ? task.created : task.id,
     updated: Number.isFinite(task.updated) ? task.updated : task.created,
+    revision: Number.isInteger(task.revision) && task.revision > 0 ? task.revision : 1,
   };
 }
 
@@ -54,24 +59,55 @@ async function apiRequest(path = "", options = {}) {
     cache: "no-store",
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || `API request failed (${response.status})`);
+  if (!response.ok) {
+    const error = new Error(payload.error || `API request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
 async function loadTasks(silent = false) {
+  if (mutationsInFlight) return;
+  const requestId = ++loadRequestId;
+  loadController?.abort();
+  const controller = new AbortController();
+  loadController = controller;
   if (!silent) {
     isLoading = true;
     renderTaskList();
   }
   try {
-    const response = await apiRequest();
+    const response = await apiRequest("", { signal: controller.signal });
+    if (requestId !== loadRequestId || mutationsInFlight) return;
     tasks = response.map(normalizeTask).filter(Boolean);
   } catch (error) {
-    if (!silent) showToast("לא הצלחנו לטעון משימות", "בדקו את החיבור ונסו שוב.");
+    if (error.name !== "AbortError" && !silent) showToast("לא הצלחנו לטעון משימות", "בדקו את החיבור ונסו שוב.");
   } finally {
+    if (requestId !== loadRequestId) return;
+    loadController = null;
     isLoading = false;
     render();
   }
+}
+
+function beginMutation() {
+  mutationsInFlight++;
+  loadRequestId++;
+  loadController?.abort();
+  loadController = null;
+}
+
+function endMutation() {
+  mutationsInFlight = Math.max(0, mutationsInFlight - 1);
+  if (!mutationsInFlight && refreshAfterMutations) {
+    refreshAfterMutations = false;
+    queueMicrotask(() => loadTasks(true));
+  }
+}
+
+function requestRefreshAfterMutations() {
+  refreshAfterMutations = true;
 }
 
 function escapeHtml(value) {
@@ -190,16 +226,20 @@ async function toggleComplete(id) {
   const task = tasks.find(t => t.id === id);
   if (!task) return false;
   const completed = !task.completed;
+  beginMutation();
   try {
-    const updated = normalizeTask(await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify({ completed }) }));
+    const updated = normalizeTask(await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify({ completed, revision: task.revision }) }));
     tasks = tasks.map(item => item.id === id ? updated : item);
     render();
     if (completed) showToast("המשימה הושלמה", "כל הכבוד, ממשיכים כך.", () => toggleComplete(id));
     return true;
-  } catch {
-    showToast("לא הצלחנו לעדכן", "בדקו את החיבור ונסו שוב.");
-    return false;
+  } catch (error) {
+    if (error.status === 409) { requestRefreshAfterMutations(); showToast("המשימה השתנתה", "טענו את הגרסה העדכנית מהמכשיר האחר."); }
+    else showToast("לא הצלחנו לעדכן", "בדקו את החיבור ונסו שוב.");
+  } finally {
+    endMutation();
   }
+  return false;
 }
 
 function showToast(title, message, onUndo = null) {
@@ -214,6 +254,7 @@ function showToast(title, message, onUndo = null) {
 
 async function addTask(title, extras = {}) {
   const values = { title: title.trim().slice(0, 120), description: (extras.description || "").slice(0, 1000), tags: extras.tags || [], assignee: extras.assignee || "you", due: extras.due || "", priority: extras.priority || "medium", completed: false };
+  beginMutation();
   try {
     const created = normalizeTask(await apiRequest("", { method: "POST", body: JSON.stringify(values) }));
     tasks = [created, ...tasks];
@@ -224,22 +265,28 @@ async function addTask(title, extras = {}) {
   } catch {
     showToast("לא הצלחנו ליצור משימה", "בדקו את החיבור ונסו שוב.");
     return false;
+  } finally {
+    endMutation();
   }
 }
 
 async function updateTask(id, updates) {
   const existing = tasks.find(task => task.id === id);
   if (!existing) return false;
+  beginMutation();
   try {
-    const updated = normalizeTask(await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify(updates) }));
+    const updated = normalizeTask(await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify({ ...updates, revision: existing.revision }) }));
     tasks = tasks.map(task => task.id === id ? updated : task);
     render();
     showToast("המשימה עודכנה", "השינויים נשמרו בהצלחה.");
     return true;
-  } catch {
-    showToast("לא הצלחנו לשמור", "בדקו את החיבור ונסו שוב.");
-    return false;
+  } catch (error) {
+    if (error.status === 409) { requestRefreshAfterMutations(); showToast("המשימה השתנתה", "טענו את הגרסה העדכנית מהמכשיר האחר."); }
+    else showToast("לא הצלחנו לשמור", "בדקו את החיבור ונסו שוב.");
+  } finally {
+    endMutation();
   }
+  return false;
 }
 
 function openDialog(task = null) {

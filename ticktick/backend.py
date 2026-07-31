@@ -45,7 +45,7 @@ def initialize_database() -> None:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
                 tags TEXT NOT NULL DEFAULT '[]',
@@ -54,12 +54,22 @@ def initialize_database() -> None:
                 priority TEXT NOT NULL CHECK (priority IN ('high', 'medium', 'low')),
                 completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
                 created INTEGER NOT NULL,
-                updated INTEGER NOT NULL
+                updated INTEGER NOT NULL,
+                revision INTEGER NOT NULL DEFAULT 1
             )
             """
         )
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
+        if "revision" not in columns:
+            connection.execute("ALTER TABLE tasks ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        seeded = connection.execute(
+            "SELECT 1 FROM app_metadata WHERE key = 'initial_tasks_seeded'"
+        ).fetchone()
         count = connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
-        if count == 0:
+        if seeded is None and count == 0:
             now = int(time.time() * 1000)
             connection.executemany(
                 """
@@ -68,6 +78,10 @@ def initialize_database() -> None:
                 VALUES (?, ?, '', '[]', 'you', '', 'medium', 0, ?, ?)
                 """,
                 [(2026073101 + index, title, now + index, now) for index, title in enumerate(INITIAL_TASKS)],
+            )
+        if seeded is None:
+            connection.execute(
+                "INSERT INTO app_metadata (key, value) VALUES ('initial_tasks_seeded', '1')"
             )
 
 
@@ -83,6 +97,7 @@ def row_to_task(row: sqlite3.Row) -> dict:
         "completed": bool(row["completed"]),
         "created": row["created"],
         "updated": row["updated"],
+        "revision": row["revision"],
     }
 
 
@@ -184,17 +199,15 @@ class TaskHandler(BaseHTTPRequestHandler):
             return
         now = int(time.time() * 1000)
         with connect() as connection:
-            task_id = now
-            while connection.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,)).fetchone():
-                task_id += 1
-            connection.execute(
+            cursor = connection.execute(
                 """
                 INSERT INTO tasks
-                    (id, title, description, tags, assignee, due, priority, completed, created, updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (title, description, tags, assignee, due, priority, completed, created, updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (task_id, task["title"], task["description"], json.dumps(task["tags"]), task["assignee"], task["due"], task["priority"], int(task["completed"]), now, now),
+                (task["title"], task["description"], json.dumps(task["tags"]), task["assignee"], task["due"], task["priority"], int(task["completed"]), now, now),
             )
+            task_id = cursor.lastrowid
             row = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         self.send_json(HTTPStatus.CREATED, row_to_task(row))
 
@@ -203,24 +216,37 @@ class TaskHandler(BaseHTTPRequestHandler):
         if task_id is None:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
+        try:
+            payload = self.read_json()
+            expected_revision = payload.get("revision")
+            if not isinstance(expected_revision, int) or isinstance(expected_revision, bool) or expected_revision < 1:
+                raise ValueError("revision is required")
+        except ValueError as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
         with connect() as connection:
             row = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
             if row is None:
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "task not found"})
                 return
             try:
-                task = validate_task(self.read_json(), row_to_task(row))
+                task = validate_task(payload, row_to_task(row))
             except ValueError as error:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
                 return
-            now = int(time.time() * 1000)
-            connection.execute(
+            now = max(int(time.time() * 1000), row["updated"] + 1)
+            cursor = connection.execute(
                 """
                 UPDATE tasks SET title = ?, description = ?, tags = ?, assignee = ?, due = ?,
-                    priority = ?, completed = ?, updated = ? WHERE id = ?
+                    priority = ?, completed = ?, updated = ?, revision = revision + 1
+                WHERE id = ? AND revision = ?
                 """,
-                (task["title"], task["description"], json.dumps(task["tags"]), task["assignee"], task["due"], task["priority"], int(task["completed"]), now, task_id),
+                (task["title"], task["description"], json.dumps(task["tags"]), task["assignee"], task["due"], task["priority"], int(task["completed"]), now, task_id, expected_revision),
             )
+            if cursor.rowcount == 0:
+                current = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                self.send_json(HTTPStatus.CONFLICT, {"error": "task changed on another device", "task": row_to_task(current)})
+                return
             updated = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         self.send_json(HTTPStatus.OK, row_to_task(updated))
 

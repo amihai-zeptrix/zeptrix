@@ -3,6 +3,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -62,12 +63,13 @@ class TaskApiTest(unittest.TestCase):
         status, updated = self.request(
             f"/tasks/{created['id']}",
             "PUT",
-            {"priority": "high", "completed": True},
+            {"priority": "high", "completed": True, "revision": created["revision"]},
         )
         self.assertEqual(status, 200)
         self.assertEqual(updated["priority"], "high")
         self.assertTrue(updated["completed"])
         self.assertEqual(updated["title"], "משימת בדיקה")
+        self.assertEqual(updated["revision"], created["revision"] + 1)
 
         status, deleted = self.request(f"/tasks/{created['id']}", "DELETE")
         self.assertEqual(status, 200)
@@ -78,6 +80,48 @@ class TaskApiTest(unittest.TestCase):
             self.request("/tasks", "POST", {"title": "invalid", "assignee": "stranger"})
         self.assertEqual(context.exception.code, 400)
         context.exception.close()
+
+    def test_rejects_stale_concurrent_update(self):
+        _, created = self.request("/tasks", "POST", {"title": "בדיקת התנגשות"})
+        _, updated = self.request(
+            f"/tasks/{created['id']}", "PUT", {"priority": "high", "revision": created["revision"]}
+        )
+        self.assertEqual(updated["priority"], "high")
+        with self.assertRaises(HTTPError) as context:
+            self.request(
+                f"/tasks/{created['id']}", "PUT", {"completed": True, "revision": created["revision"]}
+            )
+        self.assertEqual(context.exception.code, 409)
+        context.exception.close()
+        _, tasks = self.request("/tasks")
+        current = next(task for task in tasks if task["id"] == created["id"])
+        self.assertEqual(current["priority"], "high")
+        self.assertFalse(current["completed"])
+        self.request(f"/tasks/{created['id']}", "DELETE")
+
+    def test_concurrent_creates_receive_unique_ids(self):
+        def create(index):
+            return self.request("/tasks", "POST", {"title": f"מקביל {index}"})[1]
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            created = list(pool.map(create, range(12)))
+        self.assertEqual(len({task["id"] for task in created}), len(created))
+        for task in created:
+            self.request(f"/tasks/{task['id']}", "DELETE")
+
+    def test_empty_database_does_not_reseed(self):
+        original_path = backend.DB_PATH
+        with tempfile.TemporaryDirectory() as temp_dir:
+            backend.DB_PATH = Path(temp_dir) / "durable-seed.db"
+            try:
+                backend.initialize_database()
+                with backend.connect() as connection:
+                    connection.execute("DELETE FROM tasks")
+                backend.initialize_database()
+                with backend.connect() as connection:
+                    self.assertEqual(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0)
+            finally:
+                backend.DB_PATH = original_path
 
 
 if __name__ == "__main__":
