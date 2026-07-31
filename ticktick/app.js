@@ -16,6 +16,7 @@ const PEOPLE = {
 const day = 86400000;
 const STORAGE_KEY = "zeptrix-tasks-v2";
 const LEGACY_STORAGE_KEY = "zeptrix-tasks-v1";
+const FAMILY_IMPORT_KEY = "zeptrix-family-import-2026-07-31";
 const isoAfter = (days) => {
   const date = new Date();
   date.setHours(12, 0, 0, 0);
@@ -24,6 +25,23 @@ const isoAfter = (days) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 const seedTasks = [];
+const familyTasks = [
+  "פסיכומטרי של יובל",
+  "לקחת תרופות של כולם (אתי, יובל ועמיחי) מסופר - פארם",
+  "לזמן בדיקות לב",
+  "לדבר עם רסטו ביום ראשון",
+  "לבדוק כרטיסי טיסה לחגים",
+].map((title, index) => ({
+  id: 2026073101 + index,
+  title,
+  description: "",
+  tags: [],
+  assignee: "you",
+  due: "",
+  priority: "medium",
+  completed: false,
+  created: Date.now() + index,
+}));
 
 let tasks = loadTasks();
 let state = { view: "all", status: "open", tags: new Set(), search: "", sort: "priority" };
@@ -38,9 +56,15 @@ function loadTasks() {
   try {
     localStorage.removeItem(LEGACY_STORAGE_KEY);
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!Array.isArray(stored)) return seedTasks;
-    const normalizedTasks = stored.map(normalizeTask);
-    return normalizedTasks.every(Boolean) ? normalizedTasks : seedTasks;
+    const normalizedTasks = Array.isArray(stored) ? stored.map(normalizeTask) : seedTasks;
+    const validTasks = normalizedTasks.every(Boolean) ? normalizedTasks : seedTasks;
+    if (localStorage.getItem(FAMILY_IMPORT_KEY)) return validTasks;
+    const existingTitles = new Set(validTasks.map(task => task.title));
+    const importedTasks = familyTasks.filter(task => !existingTitles.has(task.title));
+    const nextTasks = [...importedTasks, ...validTasks];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextTasks));
+    localStorage.setItem(FAMILY_IMPORT_KEY, "done");
+    return nextTasks;
   }
   catch { return seedTasks; }
 }
