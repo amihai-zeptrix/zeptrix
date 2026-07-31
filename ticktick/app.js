@@ -124,8 +124,7 @@ function taskMarkup(task, index) {
   const priorityLabel = { high: "גבוהה", medium: "בינונית", low: "נמוכה" }[task.priority];
   return `<article class="task-row ${task.completed ? "completed" : ""}" data-id="${task.id}" style="animation-delay:${Math.min(index * 35, 220)}ms">
     <button class="complete-button" data-complete="${task.id}" aria-label="${task.completed ? "סימון כפתוחה" : "סימון כהושלמה"}"><svg viewBox="0 0 24 24"><path d="m6 12 4 4 8-9" /></svg></button>
-    <div class="task-body"><div class="task-title">${escapeHtml(task.title)}</div><div class="task-meta">${task.tags.map(tagMarkup).join("")}<span class="due-date ${isOverdue(task) ? "overdue" : ""}"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>${formatDue(task.due)}</span></div></div>
-    <i class="priority-mark priority-${task.priority}" title="עדיפות ${priorityLabel}"></i>
+    <div class="task-body"><div class="task-title">${escapeHtml(task.title)}</div><div class="task-meta">${task.tags.map(tagMarkup).join("")}<span class="priority-badge priority-${task.priority}"><i></i>עדיפות ${priorityLabel}</span><span class="due-date ${isOverdue(task) ? "overdue" : ""}"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>${formatDue(task.due)}</span></div></div>
     <span class="avatar assignee ${person.className}" title="${person.name}">${person.initials}</span>
     <button class="row-menu" data-edit="${task.id}" aria-label="עריכת משימה" title="עריכת משימה">⋯</button>
   </article>`;
