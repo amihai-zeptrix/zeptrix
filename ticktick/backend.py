@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import time
 from http import HTTPStatus
@@ -20,6 +21,7 @@ MAX_BODY_BYTES = 32_768
 VALID_ASSIGNEES = {"you", "lina"}
 VALID_PRIORITIES = {"high", "medium", "low"}
 VALID_TAGS = {"design", "marketing", "development", "urgent", "research"}
+TENANT_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 INITIAL_TASKS = [
     "פסיכומטרי של יובל",
@@ -46,6 +48,7 @@ def initialize_database() -> None:
             """
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant TEXT NOT NULL,
                 title TEXT NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
                 tags TEXT NOT NULL DEFAULT '[]',
@@ -62,6 +65,8 @@ def initialize_database() -> None:
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
         if "revision" not in columns:
             connection.execute("ALTER TABLE tasks ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
+        if "tenant" not in columns:
+            connection.execute("ALTER TABLE tasks ADD COLUMN tenant TEXT NOT NULL DEFAULT 'hadar'")
         connection.execute(
             "CREATE TABLE IF NOT EXISTS app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
@@ -74,8 +79,8 @@ def initialize_database() -> None:
             connection.executemany(
                 """
                 INSERT INTO tasks
-                    (id, title, description, tags, assignee, due, priority, completed, created, updated)
-                VALUES (?, ?, '', '[]', 'you', '', 'medium', 0, ?, ?)
+                    (id, tenant, title, description, tags, assignee, due, priority, completed, created, updated)
+                VALUES (?, 'hadar', ?, '', '[]', 'you', '', 'medium', 0, ?, ?)
                 """,
                 [(2026073101 + index, title, now + index, now) for index, title in enumerate(INITIAL_TASKS)],
             )
@@ -176,6 +181,16 @@ class TaskHandler(BaseHTTPRequestHandler):
         except ValueError:
             return None
 
+    def tenant(self) -> Optional[str]:
+        tenant = self.headers.get("X-Task-Tenant", "").strip().lower()
+        return tenant if TENANT_PATTERN.fullmatch(tenant) else None
+
+    def require_tenant(self) -> Optional[str]:
+        tenant = self.tenant()
+        if tenant is None:
+            self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "authenticated tenant required"})
+        return tenant
+
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/health":
@@ -184,13 +199,21 @@ class TaskHandler(BaseHTTPRequestHandler):
         if path != "/tasks":
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
+        tenant = self.require_tenant()
+        if tenant is None:
+            return
         with connect() as connection:
-            rows = connection.execute("SELECT * FROM tasks ORDER BY created DESC").fetchall()
+            rows = connection.execute(
+                "SELECT * FROM tasks WHERE tenant = ? ORDER BY created DESC", (tenant,)
+            ).fetchall()
         self.send_json(HTTPStatus.OK, [row_to_task(row) for row in rows])
 
     def do_POST(self) -> None:
         if urlparse(self.path).path != "/tasks":
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            return
+        tenant = self.require_tenant()
+        if tenant is None:
             return
         try:
             task = validate_task(self.read_json())
@@ -202,19 +225,24 @@ class TaskHandler(BaseHTTPRequestHandler):
             cursor = connection.execute(
                 """
                 INSERT INTO tasks
-                    (title, description, tags, assignee, due, priority, completed, created, updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (tenant, title, description, tags, assignee, due, priority, completed, created, updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (task["title"], task["description"], json.dumps(task["tags"]), task["assignee"], task["due"], task["priority"], int(task["completed"]), now, now),
+                (tenant, task["title"], task["description"], json.dumps(task["tags"]), task["assignee"], task["due"], task["priority"], int(task["completed"]), now, now),
             )
             task_id = cursor.lastrowid
-            row = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = connection.execute(
+                "SELECT * FROM tasks WHERE id = ? AND tenant = ?", (task_id, tenant)
+            ).fetchone()
         self.send_json(HTTPStatus.CREATED, row_to_task(row))
 
     def do_PUT(self) -> None:
         task_id = self.task_id()
         if task_id is None:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            return
+        tenant = self.require_tenant()
+        if tenant is None:
             return
         try:
             payload = self.read_json()
@@ -225,7 +253,9 @@ class TaskHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
         with connect() as connection:
-            row = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = connection.execute(
+                "SELECT * FROM tasks WHERE id = ? AND tenant = ?", (task_id, tenant)
+            ).fetchone()
             if row is None:
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "task not found"})
                 return
@@ -239,18 +269,22 @@ class TaskHandler(BaseHTTPRequestHandler):
                 """
                 UPDATE tasks SET title = ?, description = ?, tags = ?, assignee = ?, due = ?,
                     priority = ?, completed = ?, updated = ?, revision = revision + 1
-                WHERE id = ? AND revision = ?
+                WHERE id = ? AND tenant = ? AND revision = ?
                 """,
-                (task["title"], task["description"], json.dumps(task["tags"]), task["assignee"], task["due"], task["priority"], int(task["completed"]), now, task_id, expected_revision),
+                (task["title"], task["description"], json.dumps(task["tags"]), task["assignee"], task["due"], task["priority"], int(task["completed"]), now, task_id, tenant, expected_revision),
             )
             if cursor.rowcount == 0:
-                current = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                current = connection.execute(
+                    "SELECT * FROM tasks WHERE id = ? AND tenant = ?", (task_id, tenant)
+                ).fetchone()
                 if current is None:
                     self.send_json(HTTPStatus.NOT_FOUND, {"error": "task not found"})
                     return
                 self.send_json(HTTPStatus.CONFLICT, {"error": "task changed on another device", "task": row_to_task(current)})
                 return
-            updated = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            updated = connection.execute(
+                "SELECT * FROM tasks WHERE id = ? AND tenant = ?", (task_id, tenant)
+            ).fetchone()
         self.send_json(HTTPStatus.OK, row_to_task(updated))
 
     def do_DELETE(self) -> None:
@@ -258,8 +292,13 @@ class TaskHandler(BaseHTTPRequestHandler):
         if task_id is None:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
+        tenant = self.require_tenant()
+        if tenant is None:
+            return
         with connect() as connection:
-            cursor = connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            cursor = connection.execute(
+                "DELETE FROM tasks WHERE id = ? AND tenant = ?", (task_id, tenant)
+            )
         if cursor.rowcount == 0:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "task not found"})
             return

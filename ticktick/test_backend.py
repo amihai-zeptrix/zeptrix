@@ -30,13 +30,13 @@ class TaskApiTest(unittest.TestCase):
         cls.thread.join(timeout=2)
         cls.temp_dir.cleanup()
 
-    def request(self, path, method="GET", payload=None):
+    def request(self, path, method="GET", payload=None, tenant="hadar"):
         data = json.dumps(payload).encode() if payload is not None else None
         request = Request(
             self.base_url + path,
             data=data,
             method=method,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "X-Task-Tenant": tenant},
         )
         with urlopen(request, timeout=2) as response:
             return response.status, json.load(response)
@@ -122,6 +122,31 @@ class TaskApiTest(unittest.TestCase):
                     self.assertEqual(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0)
             finally:
                 backend.DB_PATH = original_path
+
+    def test_tenants_are_fully_isolated(self):
+        _, pettesh_tasks = self.request("/tasks", tenant="pettesh")
+        self.assertEqual(pettesh_tasks, [])
+        _, created = self.request(
+            "/tasks", "POST", {"title": "משימה פרטית לפטש"}, tenant="pettesh"
+        )
+        _, hadar_tasks = self.request("/tasks", tenant="hadar")
+        self.assertNotIn(created["id"], {task["id"] for task in hadar_tasks})
+        with self.assertRaises(HTTPError) as update_context:
+            self.request(
+                f"/tasks/{created['id']}",
+                "PUT",
+                {"priority": "high", "revision": created["revision"]},
+                tenant="hadar",
+            )
+        self.assertEqual(update_context.exception.code, 404)
+        update_context.exception.close()
+        with self.assertRaises(HTTPError) as delete_context:
+            self.request(f"/tasks/{created['id']}", "DELETE", tenant="hadar")
+        self.assertEqual(delete_context.exception.code, 404)
+        delete_context.exception.close()
+        _, pettesh_tasks = self.request("/tasks", tenant="pettesh")
+        self.assertEqual([task["id"] for task in pettesh_tasks], [created["id"]])
+        self.request(f"/tasks/{created['id']}", "DELETE", tenant="pettesh")
 
 
 if __name__ == "__main__":
