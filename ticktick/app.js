@@ -25,6 +25,7 @@ let isLoading = true;
 let state = { view: "all", status: "open", tags: new Set(), search: "", sort: "priority" };
 let composerSelectedTags = new Set();
 let editingTaskId = null;
+let editingTaskRevision = null;
 let undoAction = null;
 let toastTimer;
 let loadRequestId = 0;
@@ -96,6 +97,10 @@ function beginMutation() {
   loadRequestId++;
   loadController?.abort();
   loadController = null;
+  if (isLoading) {
+    isLoading = false;
+    renderTaskList();
+  }
 }
 
 function endMutation() {
@@ -270,18 +275,24 @@ async function addTask(title, extras = {}) {
   }
 }
 
-async function updateTask(id, updates) {
+async function updateTask(id, updates, expectedRevision) {
   const existing = tasks.find(task => task.id === id);
   if (!existing) return false;
   beginMutation();
   try {
-    const updated = normalizeTask(await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify({ ...updates, revision: existing.revision }) }));
+    const updated = normalizeTask(await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify({ ...updates, revision: expectedRevision }) }));
     tasks = tasks.map(task => task.id === id ? updated : task);
     render();
     showToast("המשימה עודכנה", "השינויים נשמרו בהצלחה.");
     return true;
   } catch (error) {
-    if (error.status === 409) { requestRefreshAfterMutations(); showToast("המשימה השתנתה", "טענו את הגרסה העדכנית מהמכשיר האחר."); }
+    if (error.status === 409) {
+      requestRefreshAfterMutations();
+      editingTaskId = null;
+      editingTaskRevision = null;
+      $("#taskDialog").close();
+      showToast("המשימה השתנתה במכשיר אחר", "הגרסה העדכנית נטענה. פתחו אותה שוב כדי לערוך.");
+    }
     else showToast("לא הצלחנו לשמור", "בדקו את החיבור ונסו שוב.");
   } finally {
     endMutation();
@@ -291,6 +302,7 @@ async function updateTask(id, updates) {
 
 function openDialog(task = null) {
   editingTaskId = task?.id || null;
+  editingTaskRevision = task?.revision || null;
   composerSelectedTags = new Set(task?.tags || []);
   renderComposerTags();
   $("#taskForm").reset();
@@ -313,9 +325,9 @@ loadTasks();
 setInterval(() => {
   if (document.visibilityState === "visible" && !$("#taskDialog").open) loadTasks(true);
 }, 5000);
-window.addEventListener("focus", () => loadTasks(true));
+window.addEventListener("focus", () => { if (!$("#taskDialog").open) loadTasks(true); });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") loadTasks(true);
+  if (document.visibilityState === "visible" && !$("#taskDialog").open) loadTasks(true);
 });
 
 document.addEventListener("click", (event) => {
@@ -375,9 +387,9 @@ $("#taskForm").addEventListener("submit", async event => {
   if (!title.trim()) return;
   const values = { title: title.trim().slice(0, 120), description: $("#taskDescription").value.slice(0, 1000), tags: [...composerSelectedTags], assignee: $("#taskAssignee").value, due: $("#taskDue").value, priority: $("#taskPriority").value };
   $("#submitTask").disabled = true;
-  const saved = editingTaskId ? await updateTask(editingTaskId, values) : await addTask(title, values);
+  const saved = editingTaskId ? await updateTask(editingTaskId, values, editingTaskRevision) : await addTask(title, values);
   $("#submitTask").disabled = false;
-  if (saved) { editingTaskId = null; $("#taskDialog").close(); }
+  if (saved) { editingTaskId = null; editingTaskRevision = null; $("#taskDialog").close(); }
 });
 $("#taskForm").addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") $("#taskForm").requestSubmit(); });
 

@@ -245,6 +245,9 @@ class TaskHandler(BaseHTTPRequestHandler):
             )
             if cursor.rowcount == 0:
                 current = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                if current is None:
+                    self.send_json(HTTPStatus.NOT_FOUND, {"error": "task not found"})
+                    return
                 self.send_json(HTTPStatus.CONFLICT, {"error": "task changed on another device", "task": row_to_task(current)})
                 return
             updated = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
