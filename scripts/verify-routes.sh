@@ -96,6 +96,14 @@ fetch "/your-new-crm.html" "$tmp_dir/your-new-crm-promo.html"
 assert_contains "$tmp_dir/your-new-crm-promo.html" "<title>Zeptrix CRM | A Sales Workspace That Drives Action</title>"
 assert_contains "$tmp_dir/your-new-crm-promo.html" 'href="/your-new-crm/"'
 
+fetch "/ticktick/" "$tmp_dir/ticktick.html"
+assert_contains "$tmp_dir/ticktick.html" "<title>Zeptrix Tasks</title>"
+assert_contains "$tmp_dir/ticktick.html" '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
+
+fetch "/tt/" "$tmp_dir/tt.html"
+assert_contains "$tmp_dir/tt.html" "<title>Zeptrix Tasks</title>"
+assert_contains "$tmp_dir/tt.html" '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
+
 fetch "/cloudprune/" "$tmp_dir/cloudprune.html"
 assert_contains "$tmp_dir/cloudprune.html" "<title>Zeptrix CloudPrune | Read-Only AWS Cost Optimization</title>"
 assert_contains "$tmp_dir/cloudprune.html" '<link rel="canonical" href="https://zeptrix.io/cloudprune/" />'
@@ -132,6 +140,10 @@ assert_content_type "/mbh/styles.css" "text/css"
 assert_content_type "/mbh/script.js" "application/javascript" "text/javascript"
 assert_content_type "/your-new-crm/styles.css" "text/css"
 assert_content_type "/your-new-crm/app.js" "application/javascript" "text/javascript"
+assert_content_type "/ticktick/styles.css" "text/css"
+assert_content_type "/ticktick/app.js" "application/javascript" "text/javascript"
+assert_content_type "/tt/styles.css" "text/css"
+assert_content_type "/tt/app.js" "application/javascript" "text/javascript"
 assert_content_type "/cloudprune/styles.css" "text/css"
 assert_content_type "/cloudprune/app.js" "application/javascript" "text/javascript"
 assert_content_type "/cp/app.js" "application/javascript" "text/javascript"

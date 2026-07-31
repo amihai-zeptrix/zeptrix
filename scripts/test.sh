@@ -58,7 +58,18 @@ assert_file saas-crm/cloudprune/styles.css
 assert_file saas-crm/cloudprune/app.js
 assert_file saas-crm/cloudprune/favicon.svg
 
+assert_file ticktick/index.html
+assert_file ticktick/styles.css
+assert_file ticktick/app.js
+[[ -L tt ]] || fail "tt must be a symlink so both task-manager routes share one implementation"
+[[ "$(readlink tt)" == "ticktick" ]] || fail "tt must link to ticktick"
+
 assert_not_exists wordpress-to-modern-websites.html
+
+assert_contains ticktick/index.html "<title>Zeptrix Tasks</title>"
+assert_contains ticktick/index.html '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
+assert_contains ticktick/index.html 'href="styles.css"'
+assert_contains ticktick/index.html 'src="app.js"'
 
 assert_contains index.html "<title>Zeptrix CloudPrune | AI AWS Cost Reduction</title>"
 assert_contains index.html 'href="/styles.css"'
@@ -130,7 +141,7 @@ while IFS= read -r resource_index; do
 done < <(find cloudprune/cloudprune/resources -mindepth 2 -maxdepth 2 -name index.html | sort)
 
 if rg -n 'href="styles\.css"|src="app\.js"|url\("assets/' --glob '*.html' --glob '*.css' . \
-  | rg -v '^./(mbh|michal-site|web-site|your-new-crm|saas-crm|cloudprune)/'; then
+  | rg -v '^./(mbh|michal-site|web-site|your-new-crm|saas-crm|cloudprune|ticktick)/'; then
   fail "root Zeptrix pages must use absolute /styles.css, /app.js, and /assets/... paths"
 fi
 

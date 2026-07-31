@@ -1,0 +1,240 @@
+const TAGS = {
+  design: { label: "Design", color: "#df7a59" },
+  marketing: { label: "Marketing", color: "#7289ce" },
+  development: { label: "Development", color: "#4e9478" },
+  urgent: { label: "Urgent", color: "#dc665d" },
+  research: { label: "Research", color: "#9473b8" },
+};
+
+const PEOPLE = {
+  you: { name: "Alex Young", initials: "AY", className: "avatar-you" },
+  lina: { name: "Lina Stone", initials: "LS", className: "avatar-lina" },
+  marcus: { name: "Marcus Kim", initials: "MK", className: "avatar-marcus" },
+  nora: { name: "Nora Reed", initials: "NR", className: "avatar-nora" },
+};
+
+const day = 86400000;
+const isoAfter = (days) => new Date(Date.now() + days * day).toISOString().slice(0, 10);
+const seedTasks = [
+  { id: 1, title: "Finalize the mobile onboarding flow", description: "Review the final screens with product.", tags: ["design", "urgent"], assignee: "lina", due: isoAfter(0), priority: "high", completed: false, created: Date.now() - 50000 },
+  { id: 2, title: "Prepare Q3 campaign performance report", description: "Pull results from the paid and organic channels.", tags: ["marketing"], assignee: "marcus", due: isoAfter(1), priority: "medium", completed: false, created: Date.now() - 40000 },
+  { id: 3, title: "Fix authentication edge case on Safari", description: "Session expires after returning from the payment flow.", tags: ["development", "urgent"], assignee: "you", due: isoAfter(0), priority: "high", completed: false, created: Date.now() - 30000 },
+  { id: 4, title: "Interview five beta customers", description: "Focus on the new collaboration experience.", tags: ["research"], assignee: "nora", due: isoAfter(3), priority: "medium", completed: false, created: Date.now() - 20000 },
+  { id: 5, title: "Update empty states and illustrations", description: "Bring all empty states into the new visual system.", tags: ["design"], assignee: "you", due: isoAfter(5), priority: "low", completed: false, created: Date.now() - 10000 },
+  { id: 6, title: "Publish weekly product changelog", description: "", tags: ["marketing", "development"], assignee: "marcus", due: isoAfter(-1), priority: "low", completed: true, created: Date.now() - 60000 },
+];
+
+let tasks = loadTasks();
+let state = { view: "all", status: "open", tags: new Set(), search: "", sort: "priority" };
+let composerSelectedTags = new Set();
+let lastCompletedId = null;
+let toastTimer;
+
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+function loadTasks() {
+  try { return JSON.parse(localStorage.getItem("zeptrix-tasks")) || seedTasks; }
+  catch { return seedTasks; }
+}
+
+function saveTasks() {
+  localStorage.setItem("zeptrix-tasks", JSON.stringify(tasks));
+}
+
+function escapeHtml(value) {
+  const el = document.createElement("div");
+  el.textContent = value;
+  return el.innerHTML;
+}
+
+function formatDue(dateValue) {
+  if (!dateValue) return "No date";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(`${dateValue}T00:00:00`);
+  const diff = Math.round((due - today) / day);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff === -1) return "Yesterday";
+  return due.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function isOverdue(task) {
+  return task.due && !task.completed && new Date(`${task.due}T23:59:59`) < new Date();
+}
+
+function tagMarkup(tag) {
+  return `<span class="task-tag tag-${tag}"><i></i>${TAGS[tag].label}</span>`;
+}
+
+function taskMarkup(task, index) {
+  const person = PEOPLE[task.assignee] || PEOPLE.you;
+  return `<article class="task-row ${task.completed ? "completed" : ""}" data-id="${task.id}" style="animation-delay:${Math.min(index * 35, 220)}ms">
+    <button class="complete-button" data-complete="${task.id}" aria-label="${task.completed ? "Mark open" : "Mark done"}"><svg viewBox="0 0 24 24"><path d="m6 12 4 4 8-9" /></svg></button>
+    <div class="task-body"><div class="task-title">${escapeHtml(task.title)}</div><div class="task-meta">${task.tags.map(tagMarkup).join("")}<span class="due-date ${isOverdue(task) ? "overdue" : ""}"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>${formatDue(task.due)}</span></div></div>
+    <i class="priority-mark priority-${task.priority}" title="${task.priority} priority"></i>
+    <span class="avatar assignee ${person.className}" title="${person.name}">${person.initials}</span>
+    <button class="row-menu" data-delete="${task.id}" aria-label="Delete task" title="Delete task">⋯</button>
+  </article>`;
+}
+
+function filteredTasks() {
+  let result = [...tasks];
+  if (state.view === "today") result = result.filter(t => t.due === isoAfter(0));
+  if (state.view === "assigned") result = result.filter(t => t.assignee === "you");
+  if (state.view === "completed") result = result.filter(t => t.completed);
+  if (state.status === "open") result = result.filter(t => !t.completed);
+  if (state.status === "completed") result = result.filter(t => t.completed);
+  if (state.tags.size) result = result.filter(t => [...state.tags].every(tag => t.tags.includes(tag)));
+  if (state.search) result = result.filter(t => `${t.title} ${t.description || ""}`.toLowerCase().includes(state.search));
+  const priority = { high: 0, medium: 1, low: 2 };
+  result.sort((a, b) => state.sort === "newest" ? b.created - a.created : state.sort === "due" ? (a.due || "9999").localeCompare(b.due || "9999") : priority[a.priority] - priority[b.priority]);
+  return result;
+}
+
+function render() {
+  const visible = filteredTasks();
+  $("#taskList").innerHTML = visible.map(taskMarkup).join("");
+  $("#emptyState").hidden = visible.length > 0;
+  renderCounts();
+  renderTagFilters();
+  renderProgress();
+}
+
+function renderCounts() {
+  const open = tasks.filter(t => !t.completed).length;
+  const done = tasks.filter(t => t.completed).length;
+  $("#allCount").textContent = tasks.length;
+  $("#todayCount").textContent = tasks.filter(t => t.due === isoAfter(0) && !t.completed).length;
+  $("#mineCount").textContent = tasks.filter(t => t.assignee === "you" && !t.completed).length;
+  $("#completedCount").textContent = done;
+  $("#openTabCount").textContent = open;
+  $("#doneTabCount").textContent = done;
+  $("#allTabCount").textContent = tasks.length;
+}
+
+function renderProgress() {
+  const todayTasks = tasks.filter(t => t.due === isoAfter(0));
+  const completed = todayTasks.filter(t => t.completed).length;
+  const total = todayTasks.length;
+  const percent = total ? Math.round(completed / total * 100) : 0;
+  $("#progressFraction").textContent = `${completed} / ${total} complete`;
+  $("#progressPercent").textContent = `${percent}%`;
+  $("#progressBar").style.width = `${percent}%`;
+  $("#progressHeadline").textContent = percent === 100 && total ? "Today is wrapped—beautiful work" : percent >= 50 ? "You’re building real momentum" : "A clear day starts here";
+  $("#progressText").textContent = total ? `${Math.max(0, total - completed)} task${total - completed === 1 ? "" : "s"} left for today.` : "Add a task for today to start your momentum.";
+}
+
+function renderTagFilters() {
+  const counts = Object.fromEntries(Object.keys(TAGS).map(tag => [tag, tasks.filter(t => t.tags.includes(tag)).length]));
+  $("#sidebarTags").innerHTML = Object.entries(TAGS).map(([key, tag]) => `<button class="sidebar-tag ${state.tags.has(key) ? "active" : ""}" data-tag="${key}"><i class="tag-dot" style="background:${tag.color}"></i>${tag.label}<b>${counts[key]}</b></button>`).join("");
+  $("#filterTags").innerHTML = Object.entries(TAGS).map(([key, tag]) => `<button class="filter-pill ${state.tags.has(key) ? "active" : ""}" data-tag="${key}"><i style="background:${tag.color}"></i>${tag.label}</button>`).join("");
+  $("#filterBadge").hidden = state.tags.size === 0;
+  $("#filterBadge").textContent = state.tags.size;
+  $("#clearTags").classList.toggle("visible", state.tags.size > 0);
+}
+
+function renderComposerTags() {
+  $("#composerTags").innerHTML = Object.entries(TAGS).map(([key, tag]) => `<button type="button" class="composer-tag ${composerSelectedTags.has(key) ? "active" : ""}" data-compose-tag="${key}"><i style="background:${tag.color}"></i>${tag.label}</button>`).join("");
+}
+
+function toggleComplete(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  task.completed = !task.completed;
+  lastCompletedId = task.completed ? id : null;
+  saveTasks(); render();
+  if (task.completed) showToast();
+}
+
+function showToast() {
+  clearTimeout(toastTimer);
+  $("#toast").classList.add("show");
+  toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 4000);
+}
+
+function addTask(title, extras = {}) {
+  tasks.unshift({ id: Date.now(), title: title.trim(), description: extras.description || "", tags: extras.tags || [], assignee: extras.assignee || "you", due: extras.due || "", priority: extras.priority || "medium", completed: false, created: Date.now() });
+  saveTasks();
+  state.status = "open";
+  $$(".view-tabs button").forEach(button => button.classList.toggle("active", button.dataset.status === "open"));
+  render();
+}
+
+function openDialog() {
+  composerSelectedTags.clear();
+  renderComposerTags();
+  $("#taskForm").reset();
+  $("#taskDue").value = isoAfter(0);
+  $("#taskDialog").showModal();
+  setTimeout(() => $("#taskTitle").focus(), 80);
+}
+
+$("#dateLabel").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+renderComposerTags();
+render();
+
+document.addEventListener("click", (event) => {
+  const complete = event.target.closest("[data-complete]");
+  const deleteButton = event.target.closest("[data-delete]");
+  const tagButton = event.target.closest("[data-tag]");
+  const composeTag = event.target.closest("[data-compose-tag]");
+  if (complete) toggleComplete(Number(complete.dataset.complete));
+  if (deleteButton) { tasks = tasks.filter(t => t.id !== Number(deleteButton.dataset.delete)); saveTasks(); render(); }
+  if (tagButton) { const tag = tagButton.dataset.tag; state.tags.has(tag) ? state.tags.delete(tag) : state.tags.add(tag); render(); }
+  if (composeTag) { const tag = composeTag.dataset.composeTag; composerSelectedTags.has(tag) ? composerSelectedTags.delete(tag) : composerSelectedTags.add(tag); renderComposerTags(); }
+});
+
+$$(".nav-item").forEach(button => button.addEventListener("click", () => {
+  state.view = button.dataset.view;
+  if (state.view === "completed") state.status = "completed";
+  $$(".nav-item").forEach(item => item.classList.toggle("active", item === button));
+  $$(".view-tabs button").forEach(item => item.classList.toggle("active", item.dataset.status === state.status));
+  const labels = { all: ["Your team’s work, <em>in flow.</em>", "Capture what matters, move together, and make progress visible."], today: ["Today’s focus, <em>made clear.</em>", "A focused view of everything that needs attention today."], assigned: ["Your work, <em>all together.</em>", "Every task assigned to you, in one calm and focused place."], completed: ["Progress worth <em>celebrating.</em>", "A record of everything your team has moved forward."] };
+  $("#viewTitle").innerHTML = labels[state.view][0]; $("#viewSubtitle").textContent = labels[state.view][1];
+  $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); render();
+}));
+
+$$(".view-tabs button").forEach(button => button.addEventListener("click", () => {
+  state.status = button.dataset.status;
+  $$(".view-tabs button").forEach(item => item.classList.toggle("active", item === button)); render();
+}));
+
+$("#searchInput").addEventListener("input", event => { state.search = event.target.value.toLowerCase().trim(); render(); });
+$("#sortSelect").addEventListener("change", event => { state.sort = event.target.value; render(); });
+$("#filterToggle").addEventListener("click", () => $("#filterDrawer").classList.toggle("open"));
+$("#clearTags").addEventListener("click", () => { state.tags.clear(); render(); });
+
+function submitQuick() {
+  const input = $("#quickTaskInput");
+  if (!input.value.trim()) return;
+  addTask(input.value, { due: isoAfter(0) });
+  input.value = ""; $("#quickAdd").classList.remove("has-value");
+}
+$("#quickTaskInput").addEventListener("input", event => $("#quickAdd").classList.toggle("has-value", !!event.target.value.trim()));
+$("#quickTaskInput").addEventListener("keydown", event => { if (event.key === "Enter") submitQuick(); });
+$("#quickSubmit").addEventListener("click", submitQuick);
+$("#quickAddIcon").addEventListener("click", () => $("#quickTaskInput").focus());
+
+$("#openComposer").addEventListener("click", openDialog);
+$("#emptyAdd").addEventListener("click", openDialog);
+$("#closeDialog").addEventListener("click", () => $("#taskDialog").close());
+$("#cancelDialog").addEventListener("click", () => $("#taskDialog").close());
+$("#taskForm").addEventListener("submit", event => {
+  event.preventDefault();
+  const title = $("#taskTitle").value;
+  if (!title.trim()) return;
+  addTask(title, { description: $("#taskDescription").value, tags: [...composerSelectedTags], assignee: $("#taskAssignee").value, due: $("#taskDue").value, priority: $("#taskPriority").value });
+  $("#taskDialog").close();
+});
+$("#taskForm").addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") $("#taskForm").requestSubmit(); });
+
+$("#undoButton").addEventListener("click", () => { if (lastCompletedId) toggleComplete(lastCompletedId); $("#toast").classList.remove("show"); });
+$("#menuButton").addEventListener("click", () => { $("#sidebar").classList.add("open"); $("#sidebarScrim").classList.add("open"); });
+$("#sidebarClose").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); });
+$("#sidebarScrim").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); });
+
+document.addEventListener("keydown", event => {
+  if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) { event.preventDefault(); $("#searchInput").focus(); }
+  if (event.key.toLowerCase() === "n" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) && !$("#taskDialog").open) { event.preventDefault(); openDialog(); }
+});

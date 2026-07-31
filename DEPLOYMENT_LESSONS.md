@@ -34,6 +34,8 @@ The deployed static bundle must include:
 - `/your-new-crm/styles.css`
 - `/your-new-crm/app.js`
 - `/your-new-crm/favicon.svg`
+- `/ticktick/index.html`, `/ticktick/styles.css`, and `/ticktick/app.js` for the task manager
+- `/tt` as a symlink to `/ticktick`, keeping both public routes on one shared implementation
 - `/privacy.html` for `https://zeptrix.io/privacy`
 - `/terms.html` for `https://zeptrix.io/terms`
 - shared Zeptrix files such as `/styles.css`, `/app.js`, `/assets/`, `/sitemap.xml`, and `/robots.txt`
