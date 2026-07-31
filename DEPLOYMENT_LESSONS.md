@@ -46,8 +46,11 @@ The family task manager is not browser-local. Its shared runtime consists of:
 
 - `/opt/zeptrix-tasks/backend.py` served by `zeptrix-tasks-api.service` on `127.0.0.1:8082`
 - `/var/lib/zeptrix-tasks/tasks.db` for the SQLite task database
-- `/etc/nginx/.htpasswd-zeptrix-tasks` for family HTTP Basic authentication
-- authenticated nginx proxies at `/ticktick/api/` and `/tt/api/`
+- `/etc/nginx/.htpasswd-zeptrix-tasks` for validating credentials submitted by the in-app login
+- `/etc/zeptrix-tasks/session.env` for the private session-signing secret
+- signed `HttpOnly` session cookies enforced by the backend at `/ticktick/api/` and `/tt/api/`
+
+The static app and login page are public. Only the exact `/api/login` routes use nginx Basic authentication internally; browsers submit that header through `fetch`, so users never see the native browser prompt. Never expose or rotate the session secret during a routine static deploy, because rotation signs every user out.
 
 Never replace the database during a static deploy. Back it up before changing the backend schema.
 

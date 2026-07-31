@@ -63,8 +63,12 @@ async function apiRequest(path = "", options = {}) {
     ...options,
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     cache: "no-store",
+    credentials: "same-origin",
   });
   const payload = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    showLogin();
+  }
   if (!response.ok) {
     const error = new Error(payload.error || `API request failed (${response.status})`);
     error.status = response.status;
@@ -75,7 +79,8 @@ async function apiRequest(path = "", options = {}) {
 
 async function loadWorkspace() {
   try {
-    const response = await fetch("api/workspace", { cache: "no-store" });
+    const response = await fetch("api/workspace", { cache: "no-store", credentials: "same-origin" });
+    if (response.status === 401) { showLogin(); return false; }
     if (!response.ok) throw new Error(`Workspace request failed (${response.status})`);
     const value = await response.json();
     if (!value || typeof value.title !== "string" || typeof value.workspaceName !== "string" || !value.members) return;
@@ -93,9 +98,47 @@ async function loadWorkspace() {
     $("#userAvatar").textContent = PEOPLE.you.initials;
     $("#taskAssignee").innerHTML = Object.entries(PEOPLE).map(([key, person]) => `<option value="${key}">${escapeHtml(person.name)}</option>`).join("");
     $("#viewTitle").textContent = value.title;
+    showApp();
+    return true;
   } catch {
-    showToast("לא הצלחנו לטעון את המרחב", "בדקו את החיבור ונסו שוב.");
+    showLogin("לא הצלחנו להתחבר. בדקו את החיבור ונסו שוב.");
+    return false;
   }
+}
+
+function showApp() {
+  $("#loginScreen").hidden = true;
+  $("#appShell").hidden = false;
+  $("#loginError").hidden = true;
+}
+
+function showLogin(message = "") {
+  loadRequestId++;
+  loadController?.abort();
+  loadController = null;
+  tasks = [];
+  isLoading = false;
+  $("#appShell").hidden = true;
+  $("#loginScreen").hidden = false;
+  $("#loginError").textContent = message || "שם המשתמש או הסיסמה אינם נכונים.";
+  $("#loginError").hidden = !message;
+  document.title = "כניסה למרחב המשימות | Zeptrix";
+  setTimeout(() => $("#loginUsername").focus(), 80);
+}
+
+async function login(username, password) {
+  const response = await fetch("api/login", {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${btoa(`${username}:${password}`)}`,
+      "Content-Type": "application/json",
+    },
+    body: "{}",
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new Error(response.status === 401 ? "invalid credentials" : "login failed");
+  return true;
 }
 
 async function loadTasks(silent = false) {
@@ -351,13 +394,46 @@ function openDialog(task = null) {
 $("#dateLabel").textContent = new Date().toLocaleDateString("he-IL", { weekday: "long", month: "long", day: "numeric" });
 renderComposerTags();
 render();
-(async () => { await loadWorkspace(); await loadTasks(); })();
+(async () => { if (await loadWorkspace()) await loadTasks(); })();
 setInterval(() => {
-  if (document.visibilityState === "visible" && !$("#taskDialog").open) loadTasks(true);
+  if (document.visibilityState === "visible" && !$("#appShell").hidden && !$("#taskDialog").open) loadTasks(true);
 }, 5000);
-window.addEventListener("focus", () => { if (!$("#taskDialog").open) loadTasks(true); });
+window.addEventListener("focus", () => { if (!$("#appShell").hidden && !$("#taskDialog").open) loadTasks(true); });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && !$("#taskDialog").open) loadTasks(true);
+  if (document.visibilityState === "visible" && !$("#appShell").hidden && !$("#taskDialog").open) loadTasks(true);
+});
+
+$("#loginForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  const username = $("#loginUsername").value.trim();
+  const password = $("#loginPassword").value;
+  if (!username || !password) return;
+  $("#loginSubmit").disabled = true;
+  $("#loginError").hidden = true;
+  try {
+    await login(username, password);
+    $("#loginPassword").value = "";
+    if (await loadWorkspace()) await loadTasks();
+  } catch (error) {
+    showLogin(error.message === "invalid credentials" ? "שם המשתמש או הסיסמה אינם נכונים." : "לא הצלחנו להתחבר. נסו שוב.");
+    $("#loginPassword").value = "";
+    $("#loginPassword").focus();
+  } finally {
+    $("#loginSubmit").disabled = false;
+  }
+});
+
+$("#togglePassword").addEventListener("click", () => {
+  const input = $("#loginPassword");
+  const visible = input.type === "text";
+  input.type = visible ? "password" : "text";
+  $("#togglePassword").setAttribute("aria-label", visible ? "הצגת הסיסמה" : "הסתרת הסיסמה");
+  input.focus();
+});
+
+$("#logoutButton").addEventListener("click", async () => {
+  try { await fetch("api/logout", { method: "POST", credentials: "same-origin", cache: "no-store" }); } catch {}
+  showLogin();
 });
 
 document.addEventListener("click", (event) => {

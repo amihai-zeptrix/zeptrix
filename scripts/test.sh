@@ -74,6 +74,7 @@ assert_contains ticktick/index.html '<html lang="he" dir="rtl">'
 assert_contains ticktick/index.html '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
 assert_contains ticktick/index.html 'href="styles.css"'
 assert_contains ticktick/index.html 'src="app.js"'
+assert_contains ticktick/index.html 'id="loginScreen"'
 if rg -n 'localStorage|sessionStorage' ticktick/app.js; then
   fail "task data must use the backend API, not browser storage"
 fi
@@ -136,6 +137,8 @@ assert_contains nginx-zeptrix.conf "location = /cloudprune"
 assert_contains nginx-zeptrix.conf "location ^~ /cloudprune/"
 assert_contains nginx-zeptrix.conf "location ^~ /ticktick/api/"
 assert_contains nginx-zeptrix.conf "location ^~ /tt/api/"
+assert_contains nginx-zeptrix.conf "location = /ticktick/api/login"
+assert_contains nginx-zeptrix.conf "location = /tt/api/login"
 assert_contains nginx-zeptrix.conf 'auth_basic_user_file /etc/nginx/.htpasswd-zeptrix-tasks;'
 assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8082/;"
 assert_contains nginx-zeptrix.conf "location = /aws-cost-optimization.html"
@@ -143,6 +146,7 @@ assert_contains nginx-zeptrix.conf "location = /reduce-aws-spend.html"
 assert_contains nginx-zeptrix.conf "return 301 /aws-cost-reduction;"
 assert_contains nginx-zeptrix.conf 'return 301 https://zeptrix.io$request_uri;'
 assert_contains nginx-zeptrix.conf 'try_files $uri $uri/ $uri.html =404;'
+assert_contains ticktick/zeptrix-tasks-api.service 'EnvironmentFile=/etc/zeptrix-tasks/session.env'
 
 assert_contains sitemap.xml "https://zeptrix.io/cloudprune/"
 assert_contains sitemap.xml "https://zeptrix.io/cloudprune/resources/"

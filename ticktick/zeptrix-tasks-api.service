@@ -9,6 +9,7 @@ Group=zeptrix_tasks
 Environment=TASKS_API_HOST=127.0.0.1
 Environment=TASKS_API_PORT=8082
 Environment=TASKS_DB_PATH=/var/lib/zeptrix-tasks/tasks.db
+EnvironmentFile=/etc/zeptrix-tasks/session.env
 ExecStart=/usr/bin/python3 /opt/zeptrix-tasks/backend.py
 Restart=always
 RestartSec=3

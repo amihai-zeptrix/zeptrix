@@ -17,6 +17,7 @@ class TaskApiTest(unittest.TestCase):
     def setUpClass(cls):
         cls.temp_dir = tempfile.TemporaryDirectory()
         backend.DB_PATH = Path(cls.temp_dir.name) / "tasks.db"
+        backend.SESSION_SECRET = "test-session-secret-with-at-least-32-characters"
         backend.initialize_database()
         cls.server = backend.ThreadingHTTPServer(("127.0.0.1", 0), backend.TaskHandler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
@@ -30,13 +31,16 @@ class TaskApiTest(unittest.TestCase):
         cls.thread.join(timeout=2)
         cls.temp_dir.cleanup()
 
-    def request(self, path, method="GET", payload=None, tenant="hadar"):
+    def request(self, path, method="GET", payload=None, tenant="hadar", authenticated=True):
         data = json.dumps(payload).encode() if payload is not None else None
         request = Request(
             self.base_url + path,
             data=data,
             method=method,
-            headers={"Content-Type": "application/json", "X-Task-Tenant": tenant},
+            headers={
+                "Content-Type": "application/json",
+                **({"Cookie": f"{backend.SESSION_COOKIE}={backend.create_session_token(tenant)}"} if authenticated else {}),
+            },
         )
         with urlopen(request, timeout=2) as response:
             return response.status, json.load(response)
@@ -54,6 +58,30 @@ class TaskApiTest(unittest.TestCase):
         self.assertEqual(hadar_workspace["members"]["you"]["name"], "עמיחי")
         self.assertEqual(pettesh_workspace["title"], "אפליקציית המשימות של משפחת פטש")
         self.assertNotEqual(hadar_workspace["workspaceName"], pettesh_workspace["workspaceName"])
+
+    def test_login_session_and_unauthenticated_access(self):
+        login = Request(
+            self.base_url + "/login",
+            data=b"{}",
+            method="POST",
+            headers={"Content-Type": "application/json", "X-Task-Tenant": "pettesh"},
+        )
+        with urlopen(login, timeout=2) as response:
+            self.assertEqual(response.status, 200)
+            self.assertIn(f"{backend.SESSION_COOKIE}=", response.headers["Set-Cookie"])
+        with self.assertRaises(HTTPError) as missing_context:
+            self.request("/tasks", authenticated=False)
+        self.assertEqual(missing_context.exception.code, 401)
+        missing_context.exception.close()
+        expired = backend.create_session_token("hadar", now=0)
+        request = Request(
+            self.base_url + "/tasks",
+            headers={"Cookie": f"{backend.SESSION_COOKIE}={expired}"},
+        )
+        with self.assertRaises(HTTPError) as expired_context:
+            urlopen(request, timeout=2)
+        self.assertEqual(expired_context.exception.code, 401)
+        expired_context.exception.close()
 
     def test_create_update_and_delete(self):
         status, created = self.request(

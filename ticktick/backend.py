@@ -8,7 +8,12 @@ import os
 import re
 import sqlite3
 import time
+import base64
+import binascii
+import hashlib
+import hmac
 from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
@@ -18,6 +23,9 @@ DB_PATH = Path(os.environ.get("TASKS_DB_PATH", "/var/lib/zeptrix-tasks/tasks.db"
 HOST = os.environ.get("TASKS_API_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TASKS_API_PORT", "8082"))
 MAX_BODY_BYTES = 32_768
+SESSION_COOKIE = "zeptrix_tasks_session"
+SESSION_MAX_AGE = 30 * 24 * 60 * 60
+SESSION_SECRET = os.environ.get("TASKS_SESSION_SECRET", "")
 VALID_ASSIGNEES = {"you", "lina"}
 VALID_PRIORITIES = {"high", "medium", "low"}
 VALID_TAGS = {"design", "marketing", "development", "urgent", "research"}
@@ -58,6 +66,51 @@ def connect() -> sqlite3.Connection:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 5000")
     return connection
+
+
+def encode_urlsafe(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def decode_urlsafe(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def create_session_token(tenant: str, now: Optional[int] = None) -> str:
+    issued = int(time.time() if now is None else now)
+    payload = encode_urlsafe(
+        json.dumps(
+            {"tenant": tenant, "exp": issued + SESSION_MAX_AGE},
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    signature = encode_urlsafe(
+        hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).digest()
+    )
+    return f"{payload}.{signature}"
+
+
+def verify_session_token(token: str, now: Optional[int] = None) -> Optional[str]:
+    if not SESSION_SECRET or "." not in token:
+        return None
+    payload, supplied_signature = token.rsplit(".", 1)
+    expected_signature = encode_urlsafe(
+        hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).digest()
+    )
+    if not hmac.compare_digest(supplied_signature, expected_signature):
+        return None
+    try:
+        data = json.loads(decode_urlsafe(payload))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error):
+        return None
+    tenant = data.get("tenant")
+    expires = data.get("exp")
+    current = int(time.time() if now is None else now)
+    if not isinstance(tenant, str) or not TENANT_PATTERN.fullmatch(tenant):
+        return None
+    if not isinstance(expires, int) or isinstance(expires, bool) or expires <= current:
+        return None
+    return tenant
 
 
 def initialize_database() -> None:
@@ -173,13 +226,15 @@ class TaskHandler(BaseHTTPRequestHandler):
     def log_message(self, message: str, *args) -> None:
         print(f"{self.address_string()} - {message % args}", flush=True)
 
-    def send_json(self, status: int, payload: object) -> None:
+    def send_json(self, status: int, payload: object, headers: Optional[dict] = None) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -205,6 +260,14 @@ class TaskHandler(BaseHTTPRequestHandler):
             return None
 
     def tenant(self) -> Optional[str]:
+        try:
+            cookies = SimpleCookie(self.headers.get("Cookie", ""))
+        except CookieError:
+            return None
+        session = cookies.get(SESSION_COOKIE)
+        return verify_session_token(session.value) if session else None
+
+    def login_tenant(self) -> Optional[str]:
         tenant = self.headers.get("X-Task-Tenant", "").strip().lower()
         return tenant if TENANT_PATTERN.fullmatch(tenant) else None
 
@@ -247,7 +310,27 @@ class TaskHandler(BaseHTTPRequestHandler):
         self.send_json(HTTPStatus.OK, [row_to_task(row) for row in rows])
 
     def do_POST(self) -> None:
-        if urlparse(self.path).path != "/tasks":
+        path = urlparse(self.path).path
+        if path == "/login":
+            tenant = self.login_tenant()
+            if tenant is None:
+                self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "invalid credentials"})
+                return
+            token = create_session_token(tenant)
+            self.send_json(
+                HTTPStatus.OK,
+                {"ok": True},
+                {"Set-Cookie": f"{SESSION_COOKIE}={token}; Path=/; Max-Age={SESSION_MAX_AGE}; HttpOnly; Secure; SameSite=Lax"},
+            )
+            return
+        if path == "/logout":
+            self.send_json(
+                HTTPStatus.OK,
+                {"ok": True},
+                {"Set-Cookie": f"{SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"},
+            )
+            return
+        if path != "/tasks":
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
         tenant = self.require_tenant()
@@ -344,6 +427,8 @@ class TaskHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    if len(SESSION_SECRET) < 32:
+        raise RuntimeError("TASKS_SESSION_SECRET must contain at least 32 characters")
     initialize_database()
     server = ThreadingHTTPServer((HOST, PORT), TaskHandler)
     print(f"Zeptrix task API listening on http://{HOST}:{PORT}", flush=True)

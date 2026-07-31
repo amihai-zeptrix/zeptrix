@@ -16,7 +16,53 @@
     <div class="ambient ambient-one"></div>
     <div class="ambient ambient-two"></div>
 
-    <div class="app-shell">
+    <section class="login-screen" id="loginScreen" aria-labelledby="loginTitle">
+      <div class="login-card">
+        <div class="login-story">
+          <a class="login-brand" href="#" aria-label="Zeptrix Tasks">
+            <span class="brand-mark"><i></i><i></i><i></i></span>
+            <span>Zeptrix</span>
+          </a>
+          <div class="login-art" aria-hidden="true">
+            <span class="orbit orbit-one"></span><span class="orbit orbit-two"></span>
+            <div class="login-check"><svg viewBox="0 0 24 24"><path d="m6 12 4 4 8-9" /></svg></div>
+            <div class="floating-task task-one"><i></i><span></span><b></b></div>
+            <div class="floating-task task-two"><i></i><span></span><b></b></div>
+            <div class="floating-task task-three"><i></i><span></span><b></b></div>
+          </div>
+          <div class="login-story-copy">
+            <span>המשפחה מתקדמת יחד</span>
+            <h2>פחות לזכור.<br />יותר להספיק.</h2>
+            <p>כל המשימות, העדיפויות והסידורים המשפחתיים מסתנכרנים בבטחה בין כל המכשירים.</p>
+          </div>
+        </div>
+        <div class="login-panel">
+          <div class="login-heading">
+            <span class="login-kicker">ברוכים הבאים</span>
+            <h1 id="loginTitle">נכנסים למרחב המשפחתי</h1>
+            <p>הזינו את פרטי המשפחה שלכם כדי להמשיך.</p>
+          </div>
+          <form id="loginForm" class="login-form">
+            <label for="loginUsername">שם משתמש</label>
+            <div class="login-input-wrap">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+              <input id="loginUsername" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="שם המשפחה" />
+            </div>
+            <label for="loginPassword">סיסמה</label>
+            <div class="login-input-wrap password-wrap">
+              <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+              <input id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="הסיסמה שלכם" />
+              <button type="button" id="togglePassword" aria-label="הצגת הסיסמה"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>
+            </div>
+            <p class="login-error" id="loginError" role="alert" hidden>שם המשתמש או הסיסמה אינם נכונים.</p>
+            <button class="login-submit" id="loginSubmit" type="submit"><span>כניסה למשימות</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg></button>
+          </form>
+          <div class="login-security"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg><span>החיבור מאובטח והמשימות פרטיות למשפחה שלכם</span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="app-shell" id="appShell" hidden>
       <aside class="sidebar" id="sidebar">
         <div class="brand-row">
           <a class="brand" href="#" aria-label="דף הבית של משימות Zeptrix">
@@ -82,8 +128,8 @@
             <kbd>/</kbd>
           </div>
           <div class="top-actions">
-            <button class="icon-button notification-button" aria-label="התראות">
-              <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg><i></i>
+            <button class="icon-button logout-button" id="logoutButton" aria-label="יציאה" title="יציאה">
+              <svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" /></svg>
             </button>
             <span class="avatar avatar-you user-avatar" id="userAvatar">אני</span>
           </div>
