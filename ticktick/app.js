@@ -7,8 +7,8 @@ const TAGS = {
 };
 
 let PEOPLE = {
-  you: { name: "עמיחי", initials: "עמ", className: "avatar-you" },
-  lina: { name: "אתי", initials: "את", className: "avatar-lina" },
+  you: { name: "אני", initials: "אני", className: "avatar-you" },
+  lina: { name: "משפחה", initials: "מש", className: "avatar-lina" },
 };
 let workspace = {
   title: "מרחב המשימות המשפחתי",
