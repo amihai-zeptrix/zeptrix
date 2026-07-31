@@ -44,6 +44,7 @@ const familyTasks = [
 let tasks = loadTasks();
 let state = { view: "all", status: "open", tags: new Set(), search: "", sort: "priority" };
 let composerSelectedTags = new Set();
+let editingTaskId = null;
 let undoAction = null;
 let toastTimer;
 
@@ -126,7 +127,7 @@ function taskMarkup(task, index) {
     <div class="task-body"><div class="task-title">${escapeHtml(task.title)}</div><div class="task-meta">${task.tags.map(tagMarkup).join("")}<span class="due-date ${isOverdue(task) ? "overdue" : ""}"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>${formatDue(task.due)}</span></div></div>
     <i class="priority-mark priority-${task.priority}" title="עדיפות ${priorityLabel}"></i>
     <span class="avatar assignee ${person.className}" title="${person.name}">${person.initials}</span>
-    <button class="row-menu" data-delete="${task.id}" aria-label="מחיקת משימה" title="מחיקת משימה">⋯</button>
+    <button class="row-menu" data-edit="${task.id}" aria-label="עריכת משימה" title="עריכת משימה">⋯</button>
   </article>`;
 }
 
@@ -225,22 +226,6 @@ function showToast(title, message, onUndo = null) {
   toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 4000);
 }
 
-function deleteTask(id) {
-  const index = tasks.findIndex(task => task.id === id);
-  if (index < 0) return false;
-  const deleted = tasks[index];
-  if (!saveTasks(tasks.filter(task => task.id !== id))) return false;
-  render();
-  showToast("המשימה נמחקה", "המשימה הוסרה מהמכשיר הזה.", () => {
-    const restored = [...tasks];
-    restored.splice(Math.min(index, restored.length), 0, deleted);
-    if (!saveTasks(restored)) return false;
-    render();
-    return true;
-  });
-  return true;
-}
-
 function addTask(title, extras = {}) {
   const newTask = { id: Date.now(), title: title.trim().slice(0, 120), description: (extras.description || "").slice(0, 1000), tags: extras.tags || [], assignee: extras.assignee || "you", due: extras.due || "", priority: extras.priority || "medium", completed: false, created: Date.now() };
   if (!saveTasks([newTask, ...tasks])) return false;
@@ -250,11 +235,29 @@ function addTask(title, extras = {}) {
   return true;
 }
 
-function openDialog() {
-  composerSelectedTags.clear();
+function updateTask(id, updates) {
+  const existing = tasks.find(task => task.id === id);
+  if (!existing) return false;
+  const nextTasks = tasks.map(task => task.id === id ? { ...task, ...updates } : task);
+  if (!saveTasks(nextTasks)) return false;
+  render();
+  showToast("המשימה עודכנה", "השינויים נשמרו בהצלחה.");
+  return true;
+}
+
+function openDialog(task = null) {
+  editingTaskId = task?.id || null;
+  composerSelectedTags = new Set(task?.tags || []);
   renderComposerTags();
   $("#taskForm").reset();
-  $("#taskDue").value = isoAfter(0);
+  $("#dialogEyebrow").textContent = task ? "עריכת משימה" : "משימה חדשה";
+  $("#dialogTitle").textContent = task ? "מה תרצו לשנות?" : "מה צריך לעשות?";
+  $("#submitTask").textContent = task ? "שמירת שינויים" : "יצירת משימה";
+  $("#taskTitle").value = task?.title || "";
+  $("#taskDescription").value = task?.description || "";
+  $("#taskAssignee").value = task?.assignee || "you";
+  $("#taskDue").value = task?.due || (task ? "" : isoAfter(0));
+  $("#taskPriority").value = task?.priority || "medium";
   $("#taskDialog").showModal();
   setTimeout(() => $("#taskTitle").focus(), 80);
 }
@@ -265,11 +268,11 @@ render();
 
 document.addEventListener("click", (event) => {
   const complete = event.target.closest("[data-complete]");
-  const deleteButton = event.target.closest("[data-delete]");
+  const editButton = event.target.closest("[data-edit]");
   const tagButton = event.target.closest("[data-tag]");
   const composeTag = event.target.closest("[data-compose-tag]");
   if (complete) toggleComplete(Number(complete.dataset.complete));
-  if (deleteButton) deleteTask(Number(deleteButton.dataset.delete));
+  if (editButton) openDialog(tasks.find(task => task.id === Number(editButton.dataset.edit)));
   if (tagButton) { const tag = tagButton.dataset.tag; state.tags.has(tag) ? state.tags.delete(tag) : state.tags.add(tag); render(); }
   if (composeTag) { const tag = composeTag.dataset.composeTag; composerSelectedTags.has(tag) ? composerSelectedTags.delete(tag) : composerSelectedTags.add(tag); renderComposerTags(); }
 });
@@ -310,15 +313,17 @@ $("#quickTaskInput").addEventListener("keydown", event => { if (event.key === "E
 $("#quickSubmit").addEventListener("click", submitQuick);
 $("#quickAddIcon").addEventListener("click", () => $("#quickTaskInput").focus());
 
-$("#openComposer").addEventListener("click", openDialog);
-$("#emptyAdd").addEventListener("click", openDialog);
+$("#openComposer").addEventListener("click", () => openDialog());
+$("#emptyAdd").addEventListener("click", () => openDialog());
 $("#closeDialog").addEventListener("click", () => $("#taskDialog").close());
 $("#cancelDialog").addEventListener("click", () => $("#taskDialog").close());
 $("#taskForm").addEventListener("submit", event => {
   event.preventDefault();
   const title = $("#taskTitle").value;
   if (!title.trim()) return;
-  if (addTask(title, { description: $("#taskDescription").value, tags: [...composerSelectedTags], assignee: $("#taskAssignee").value, due: $("#taskDue").value, priority: $("#taskPriority").value })) $("#taskDialog").close();
+  const values = { title: title.trim().slice(0, 120), description: $("#taskDescription").value.slice(0, 1000), tags: [...composerSelectedTags], assignee: $("#taskAssignee").value, due: $("#taskDue").value, priority: $("#taskPriority").value };
+  const saved = editingTaskId ? updateTask(editingTaskId, values) : addTask(title, values);
+  if (saved) { editingTaskId = null; $("#taskDialog").close(); }
 });
 $("#taskForm").addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") $("#taskForm").requestSubmit(); });
 
