@@ -13,6 +13,28 @@ fetch() {
   curl -fsSL --max-time 20 "$base_url$path" -o "$out"
 }
 
+has_task_auth=0
+task_cookie="$tmp_dir/task-cookie"
+if [[ -n "${TASKS_AUTH_USER:-}" && -n "${TASKS_AUTH_PASSWORD:-}" ]]; then
+  curl -fsSL --max-time 20 -u "$TASKS_AUTH_USER:$TASKS_AUTH_PASSWORD" \
+    -c "$task_cookie" -H 'Content-Type: application/json' -d '{}' \
+    "$base_url/ticktick/api/login" -o "$tmp_dir/login.json"
+  has_task_auth=1
+fi
+
+fetch_task() {
+  local path="$1"
+  local out="$2"
+  curl -fsSL --max-time 20 -b "$task_cookie" "$base_url$path" -o "$out"
+}
+
+assert_requires_auth() {
+  local path="$1"
+  local status
+  status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$base_url$path")"
+  [[ "$status" == "401" ]] || { echo "Expected $path to require authentication, got: $status" >&2; exit 1; }
+}
+
 assert_contains() {
   local file="$1"
   local text="$2"
@@ -96,6 +118,26 @@ fetch "/your-new-crm.html" "$tmp_dir/your-new-crm-promo.html"
 assert_contains "$tmp_dir/your-new-crm-promo.html" "<title>Zeptrix CRM | A Sales Workspace That Drives Action</title>"
 assert_contains "$tmp_dir/your-new-crm-promo.html" 'href="/your-new-crm/"'
 
+fetch "/ticktick/" "$tmp_dir/ticktick.html"
+assert_contains "$tmp_dir/ticktick.html" "<title>מרחב משימות | Zeptrix</title>"
+assert_contains "$tmp_dir/ticktick.html" 'id="loginScreen"'
+fetch "/tt/" "$tmp_dir/tt.html"
+assert_contains "$tmp_dir/tt.html" "<title>מרחב משימות | Zeptrix</title>"
+assert_requires_auth "/ticktick/api/tasks"
+
+if ((has_task_auth)); then
+  assert_contains "$tmp_dir/ticktick.html" '<html lang="he" dir="rtl">'
+  assert_contains "$tmp_dir/ticktick.html" '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
+
+  assert_contains "$tmp_dir/tt.html" '<html lang="he" dir="rtl">'
+  assert_contains "$tmp_dir/tt.html" '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
+
+  fetch_task "/ticktick/api/tasks" "$tmp_dir/tasks.json"
+  python3 -c 'import json,sys; data=json.load(open(sys.argv[1])); assert isinstance(data, list)' "$tmp_dir/tasks.json"
+  fetch_task "/ticktick/api/health" "$tmp_dir/tasks-health.json"
+  assert_contains "$tmp_dir/tasks-health.json" '"ok":true'
+fi
+
 fetch "/cloudprune/" "$tmp_dir/cloudprune.html"
 assert_contains "$tmp_dir/cloudprune.html" "<title>Zeptrix CloudPrune | Read-Only AWS Cost Optimization</title>"
 assert_contains "$tmp_dir/cloudprune.html" '<link rel="canonical" href="https://zeptrix.io/cloudprune/" />'
@@ -132,6 +174,12 @@ assert_content_type "/mbh/styles.css" "text/css"
 assert_content_type "/mbh/script.js" "application/javascript" "text/javascript"
 assert_content_type "/your-new-crm/styles.css" "text/css"
 assert_content_type "/your-new-crm/app.js" "application/javascript" "text/javascript"
+if ((has_task_auth)); then
+  ticktick_css_type="$(curl -fsSI --max-time 20 "$base_url/ticktick/styles.css" | awk 'tolower($1) == "content-type:" {print tolower($2)}' | tr -d '\r' | cut -d ';' -f 1)"
+  ticktick_js_type="$(curl -fsSI --max-time 20 "$base_url/ticktick/app.js" | awk 'tolower($1) == "content-type:" {print tolower($2)}' | tr -d '\r' | cut -d ';' -f 1)"
+  [[ "$ticktick_css_type" == "text/css" ]] || { echo "Unexpected task CSS content type: $ticktick_css_type" >&2; exit 1; }
+  [[ "$ticktick_js_type" == "application/javascript" || "$ticktick_js_type" == "text/javascript" ]] || { echo "Unexpected task JS content type: $ticktick_js_type" >&2; exit 1; }
+fi
 assert_content_type "/cloudprune/styles.css" "text/css"
 assert_content_type "/cloudprune/app.js" "application/javascript" "text/javascript"
 assert_content_type "/cp/app.js" "application/javascript" "text/javascript"

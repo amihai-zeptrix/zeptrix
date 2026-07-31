@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f7f2" />
+    <meta name="description" content="מרחב משימות משפחתי מסונכרן, מבית Zeptrix." />
+    <link rel="canonical" href="https://zeptrix.io/ticktick/" />
+    <title>מרחב משימות | Zeptrix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Heebo:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <section class="login-screen" id="loginScreen" aria-labelledby="loginTitle">
+      <div class="login-card">
+        <div class="login-story">
+          <a class="login-brand" href="#" aria-label="Zeptrix Tasks">
+            <span class="brand-mark"><i></i><i></i><i></i></span>
+            <span>Zeptrix</span>
+          </a>
+          <div class="login-art" aria-hidden="true">
+            <span class="orbit orbit-one"></span><span class="orbit orbit-two"></span>
+            <div class="login-check"><svg viewBox="0 0 24 24"><path d="m6 12 4 4 8-9" /></svg></div>
+            <div class="floating-task task-one"><i></i><span></span><b></b></div>
+            <div class="floating-task task-two"><i></i><span></span><b></b></div>
+            <div class="floating-task task-three"><i></i><span></span><b></b></div>
+          </div>
+          <div class="login-story-copy">
+            <span>המשפחה מתקדמת יחד</span>
+            <h2>פחות לזכור.<br />יותר להספיק.</h2>
+            <p>כל המשימות, העדיפויות והסידורים המשפחתיים מסתנכרנים בבטחה בין כל המכשירים.</p>
+          </div>
+        </div>
+        <div class="login-panel">
+          <div class="login-heading">
+            <span class="login-kicker">ברוכים הבאים</span>
+            <h1 id="loginTitle">נכנסים למרחב המשפחתי</h1>
+            <p>הזינו את פרטי המשפחה שלכם כדי להמשיך.</p>
+          </div>
+          <form id="loginForm" class="login-form">
+            <label for="loginUsername">שם משתמש</label>
+            <div class="login-input-wrap">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+              <input id="loginUsername" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="שם המשפחה" />
+            </div>
+            <label for="loginPassword">סיסמה</label>
+            <div class="login-input-wrap password-wrap">
+              <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+              <input id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="הסיסמה שלכם" />
+              <button type="button" id="togglePassword" aria-label="הצגת הסיסמה"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>
+            </div>
+            <p class="login-error" id="loginError" role="alert" hidden>שם המשתמש או הסיסמה אינם נכונים.</p>
+            <button class="login-submit" id="loginSubmit" type="submit"><span>כניסה למשימות</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg></button>
+          </form>
+          <div class="login-security"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg><span>החיבור מאובטח והמשימות פרטיות למשפחה שלכם</span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="app-shell" id="appShell" hidden>
+      <aside class="sidebar" id="sidebar">
+        <div class="brand-row">
+          <a class="brand" href="#" aria-label="דף הבית של משימות Zeptrix">
+            <span class="brand-mark"><i></i><i></i><i></i></span>
+            <span>Zeptrix</span>
+          </a>
+          <button class="icon-button sidebar-close" id="sidebarClose" aria-label="סגירת התפריט">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+
+        <div class="workspace-switcher">
+          <span class="workspace-avatar" id="workspaceAvatar">מ</span>
+          <span><small>המרחב המשפחתי</small><strong id="workspaceName">מרחב המשימות</strong></span>
+          <svg viewBox="0 0 24 24"><path d="m8 10 4 4 4-4" /></svg>
+        </div>
+
+        <nav class="nav-section" aria-label="ניווט ראשי">
+          <p class="nav-label">סקירה</p>
+          <button class="nav-item active" data-view="all">
+            <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10" /></svg>
+            <span>כל המשימות</span><b id="allCount">0</b>
+          </button>
+          <button class="nav-item" data-view="today">
+            <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+            <span>היום</span><b id="todayCount">0</b>
+          </button>
+          <button class="nav-item" data-view="assigned">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            <span>המשימות שלי</span><b id="mineCount">0</b>
+          </button>
+          <button class="nav-item" data-view="completed">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>
+            <span>הושלמו</span><b id="completedCount">0</b>
+          </button>
+        </nav>
+
+        <div class="nav-section tags-section">
+          <div class="section-heading"><p class="nav-label">תגיות</p><button id="clearTags">ניקוי</button></div>
+          <div id="sidebarTags" class="sidebar-tags"></div>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="team-stack" aria-label="בני המשפחה">
+            <span class="avatar avatar-lina" id="footerLina">מש</span>
+            <span class="avatar avatar-you" id="footerYou">אני</span>
+          </div>
+          <div><strong>2 בני משפחה</strong><small>מסונכרן בין כל המכשירים</small></div>
+          <button class="invite-button" title="הוספת בן משפחה">+</button>
+        </div>
+      </aside>
+
+      <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+      <main class="main-content">
+        <header class="topbar">
+          <button class="icon-button menu-button" id="menuButton" aria-label="פתיחת התפריט">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+          </button>
+          <div class="search-wrap">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <input id="searchInput" type="search" placeholder="חיפוש משימות..." aria-label="חיפוש משימות" />
+            <kbd>/</kbd>
+          </div>
+          <div class="top-actions">
+            <button class="logout-button" id="logoutButton" aria-label="יציאה">
+              <svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" /></svg>
+              <span>יציאה</span>
+            </button>
+            <span class="avatar avatar-you user-avatar" id="userAvatar">אני</span>
+          </div>
+        </header>
+
+        <section class="content-wrap">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow" id="dateLabel"></p>
+              <h1 id="viewTitle">מרחב המשימות המשפחתי</h1>
+              <p id="viewSubtitle">כל המשימות במקום אחד, ברור ונוח.</p>
+            </div>
+            <button class="add-task-button" id="openComposer">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+              הוספת משימה <kbd>N</kbd>
+            </button>
+          </div>
+
+          <div class="progress-card">
+            <div class="progress-copy">
+              <div class="progress-icon"><svg viewBox="0 0 24 24"><path d="m5 15 4-4 3 3 6-7M15 7h3v3" /></svg></div>
+              <div><strong id="progressHeadline">יום מסודר מתחיל כאן</strong><span id="progressText">מסיימים משימות ומתקדמים יחד.</span></div>
+            </div>
+            <div class="progress-visual">
+              <span id="progressFraction">0 מתוך 0 הושלמו</span>
+              <div class="progress-track"><i id="progressBar"></i></div>
+              <strong id="progressPercent">0%</strong>
+            </div>
+          </div>
+
+          <section class="task-panel">
+            <div class="task-toolbar">
+              <div class="view-tabs" role="tablist">
+                <button class="active" data-status="open">פתוחות <span id="openTabCount">0</span></button>
+                <button data-status="completed">הושלמו <span id="doneTabCount">0</span></button>
+                <button data-status="all">הכול <span id="allTabCount">0</span></button>
+              </div>
+              <div class="toolbar-actions">
+                <button class="filter-toggle" id="filterToggle">
+                  <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+                  סינון <span id="filterBadge" hidden>0</span>
+                </button>
+                <select id="sortSelect" aria-label="מיון משימות">
+                  <option value="priority">מיון: עדיפות</option>
+                  <option value="newest">מיון: החדשות ביותר</option>
+                  <option value="due">מיון: תאריך יעד</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="filter-drawer" id="filterDrawer">
+              <span>סינון לפי תגית</span>
+              <div id="filterTags" class="filter-tags"></div>
+            </div>
+
+            <div class="quick-add" id="quickAdd">
+              <button id="quickAddIcon" aria-label="הוספת משימה"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button>
+              <input id="quickTaskInput" placeholder="כתבו משימה ולחצו על אנטר..." autocomplete="off" />
+              <button class="quick-submit" id="quickSubmit">הוספה</button>
+            </div>
+
+            <div id="taskList" class="task-list"></div>
+
+            <div class="loading-state" id="loadingState" hidden>
+              <span></span><p>טוען את המשימות המשפחתיות...</p>
+            </div>
+
+            <div class="empty-state" id="emptyState" hidden>
+              <div class="empty-check"><svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7" /></svg></div>
+              <h3>אין כאן משימות. איזה כיף.</h3>
+              <p>שנו את הסינון או הוסיפו משימה חדשה.</p>
+              <button id="emptyAdd">הוספת משימה</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="taskDialog" class="task-dialog">
+      <form id="taskForm" method="dialog">
+        <div class="dialog-heading">
+          <div><span id="dialogEyebrow">משימה חדשה</span><h2 id="dialogTitle">מה צריך לעשות?</h2></div>
+          <button type="button" class="icon-button" id="closeDialog" aria-label="סגירה"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+        </div>
+        <label class="field-label" for="taskTitle">שם המשימה</label>
+        <input class="title-input" id="taskTitle" required maxlength="120" placeholder="לדוגמה: לקנות מצרכים לארוחת ערב" />
+        <label class="field-label" for="taskDescription">תיאור <small>לא חובה</small></label>
+        <textarea id="taskDescription" rows="3" maxlength="1000" placeholder="אפשר להוסיף פרטים שיעזרו למשפחה..."></textarea>
+        <div class="form-grid">
+          <label><span class="field-label">אחראי/ת</span><select id="taskAssignee"><option value="you">אני</option><option value="lina">משפחה</option></select></label>
+          <label><span class="field-label">תאריך יעד</span><input id="taskDue" type="date" /></label>
+          <label><span class="field-label">עדיפות</span><select id="taskPriority"><option value="medium">בינונית</option><option value="high">גבוהה</option><option value="low">נמוכה</option></select></label>
+        </div>
+        <span class="field-label">תגיות</span>
+        <div id="composerTags" class="composer-tags"></div>
+        <div class="dialog-footer">
+          <span><kbd>⌘</kbd> + <kbd>Enter</kbd> ליצירה</span>
+          <div><button type="button" class="cancel-button" id="cancelDialog">ביטול</button><button type="submit" class="create-button" id="submitTask">יצירת משימה</button></div>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite">
+      <span><svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7" /></svg></span>
+      <div><strong id="toastTitle">המשימה הושלמה</strong><small id="toastMessage">כל הכבוד, ממשיכים כך.</small></div>
+      <button id="undoButton">ביטול פעולה</button>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

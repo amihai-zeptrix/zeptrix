@@ -58,7 +58,27 @@ assert_file saas-crm/cloudprune/styles.css
 assert_file saas-crm/cloudprune/app.js
 assert_file saas-crm/cloudprune/favicon.svg
 
+assert_file ticktick/index.html
+assert_file ticktick/styles.css
+assert_file ticktick/app.js
+assert_file ticktick/backend.py
+assert_file ticktick/test_backend.py
+assert_file ticktick/zeptrix-tasks-api.service
+[[ -L tt ]] || fail "tt must be a symlink so both task-manager routes share one implementation"
+[[ "$(readlink tt)" == "ticktick" ]] || fail "tt must link to ticktick"
+
 assert_not_exists wordpress-to-modern-websites.html
+
+assert_contains ticktick/index.html "<title>מרחב משימות | Zeptrix</title>"
+assert_contains ticktick/index.html '<html lang="he" dir="rtl">'
+assert_contains ticktick/index.html '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
+assert_contains ticktick/index.html 'href="styles.css"'
+assert_contains ticktick/index.html 'src="app.js"'
+assert_contains ticktick/index.html 'id="loginScreen"'
+if rg -n 'localStorage|sessionStorage' ticktick/app.js; then
+  fail "task data must use the backend API, not browser storage"
+fi
+assert_contains ticktick/app.js 'const API_URL = "api/tasks";'
 
 assert_contains index.html "<title>Zeptrix CloudPrune | AI AWS Cost Reduction</title>"
 assert_contains index.html 'href="/styles.css"'
@@ -115,11 +135,18 @@ assert_contains nginx-zeptrix.conf "location ^~ /internal-crm/"
 assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8008;"
 assert_contains nginx-zeptrix.conf "location = /cloudprune"
 assert_contains nginx-zeptrix.conf "location ^~ /cloudprune/"
+assert_contains nginx-zeptrix.conf "location ^~ /ticktick/api/"
+assert_contains nginx-zeptrix.conf "location = /ticktick/api/login"
+assert_contains nginx-zeptrix.conf 'auth_basic_user_file /etc/nginx/.htpasswd-zeptrix-tasks;'
+assert_contains nginx-zeptrix.conf 'auth_delay 1s;'
+assert_contains nginx-zeptrix.conf 'return 302 /ticktick/;'
+assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8082/;"
 assert_contains nginx-zeptrix.conf "location = /aws-cost-optimization.html"
 assert_contains nginx-zeptrix.conf "location = /reduce-aws-spend.html"
 assert_contains nginx-zeptrix.conf "return 301 /aws-cost-reduction;"
 assert_contains nginx-zeptrix.conf 'return 301 https://zeptrix.io$request_uri;'
 assert_contains nginx-zeptrix.conf 'try_files $uri $uri/ $uri.html =404;'
+assert_contains ticktick/zeptrix-tasks-api.service 'EnvironmentFile=/etc/zeptrix-tasks/session.env'
 
 assert_contains sitemap.xml "https://zeptrix.io/cloudprune/"
 assert_contains sitemap.xml "https://zeptrix.io/cloudprune/resources/"
@@ -130,12 +157,15 @@ while IFS= read -r resource_index; do
 done < <(find cloudprune/cloudprune/resources -mindepth 2 -maxdepth 2 -name index.html | sort)
 
 if rg -n 'href="styles\.css"|src="app\.js"|url\("assets/' --glob '*.html' --glob '*.css' . \
-  | rg -v '^./(mbh|michal-site|web-site|your-new-crm|saas-crm|cloudprune)/'; then
+  | rg -v '^./(mbh|michal-site|web-site|your-new-crm|saas-crm|cloudprune|ticktick)/'; then
   fail "root Zeptrix pages must use absolute /styles.css, /app.js, and /assets/... paths"
 fi
 
 if git ls-files | grep -E '(^|/)__pycache__/|\.pyc$' >/dev/null; then
   fail "generated Python cache files must not be tracked or deployed"
 fi
+
+node --check ticktick/app.js
+python3 -m unittest ticktick/test_backend.py
 
 echo "Local deploy invariant tests passed"

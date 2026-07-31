@@ -34,11 +34,36 @@ The deployed static bundle must include:
 - `/your-new-crm/styles.css`
 - `/your-new-crm/app.js`
 - `/your-new-crm/favicon.svg`
+- `/ticktick/index.html`, `/ticktick/styles.css`, and `/ticktick/app.js` for the task manager
+- `/tt` as a symlink to `/ticktick`, keeping both public routes on one shared implementation
 - `/privacy.html` for `https://zeptrix.io/privacy`
 - `/terms.html` for `https://zeptrix.io/terms`
 - shared Zeptrix files such as `/styles.css`, `/app.js`, `/assets/`, `/sitemap.xml`, and `/robots.txt`
 
 Do not deploy only the root Zeptrix files unless `/mbh/` is intentionally excluded and nginx is changed accordingly.
+
+The family task manager is not browser-local. Its shared runtime consists of:
+
+- `/opt/zeptrix-tasks/backend.py` served by `zeptrix-tasks-api.service` on `127.0.0.1:8082`
+- `/var/lib/zeptrix-tasks/tasks.db` for the SQLite task database
+- `/etc/nginx/.htpasswd-zeptrix-tasks` for validating credentials submitted by the in-app login
+- `/etc/zeptrix-tasks/session.env` for the private session-signing secret
+- signed `HttpOnly` session cookies enforced by the backend at `/ticktick/api/`
+
+The static app and login page are public. Only the exact `/ticktick/api/login` route uses nginx Basic authentication internally; browsers submit that header through `fetch`, so users never see the native browser prompt. Never expose or rotate the session secret during a routine static deploy, because rotation signs every user out. Rotate it deliberately whenever tenant passwords are changed and immediate revocation of old sessions is required.
+
+Provision the signing secret once before starting the service:
+
+```bash
+sudo install -d -o root -g root -m 0755 /etc/zeptrix-tasks
+printf 'TASKS_SESSION_SECRET=%s\n' "$(openssl rand -hex 32)" | sudo tee /etc/zeptrix-tasks/session.env >/dev/null
+sudo chown root:root /etc/zeptrix-tasks/session.env
+sudo chmod 0600 /etc/zeptrix-tasks/session.env
+```
+
+The canonical task route is `/ticktick/`; `/tt` redirects there so the signed cookie can remain narrowly scoped to `Path=/ticktick` and never reaches unrelated Zeptrix applications.
+
+Never replace the database during a static deploy. Back it up before changing the backend schema.
 
 ## nginx Expectations
 
