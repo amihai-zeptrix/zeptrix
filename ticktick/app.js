@@ -12,9 +12,7 @@ const PEOPLE = {
 };
 
 const day = 86400000;
-const STORAGE_KEY = "zeptrix-tasks-v2";
-const LEGACY_STORAGE_KEY = "zeptrix-tasks-v1";
-const FAMILY_IMPORT_KEY = "zeptrix-family-import-2026-07-31";
+const API_URL = "api/tasks";
 const isoAfter = (days) => {
   const date = new Date();
   date.setHours(12, 0, 0, 0);
@@ -22,26 +20,8 @@ const isoAfter = (days) => {
   const pad = (value) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
-const seedTasks = [];
-const familyTasks = [
-  "פסיכומטרי של יובל",
-  "לקחת תרופות של כולם (אתי, יובל ועמיחי) מסופר - פארם",
-  "לזמן בדיקות לב",
-  "לדבר עם רסטו ביום ראשון",
-  "לבדוק כרטיסי טיסה לחגים",
-].map((title, index) => ({
-  id: 2026073101 + index,
-  title,
-  description: "",
-  tags: [],
-  assignee: "you",
-  due: "",
-  priority: "medium",
-  completed: false,
-  created: Date.now() + index,
-}));
-
-let tasks = loadTasks();
+let tasks = [];
+let isLoading = true;
 let state = { view: "all", status: "open", tags: new Set(), search: "", sort: "priority" };
 let composerSelectedTags = new Set();
 let editingTaskId = null;
@@ -50,23 +30,6 @@ let toastTimer;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-
-function loadTasks() {
-  try {
-    localStorage.removeItem(LEGACY_STORAGE_KEY);
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    const normalizedTasks = Array.isArray(stored) ? stored.map(normalizeTask) : seedTasks;
-    const validTasks = normalizedTasks.every(Boolean) ? normalizedTasks : seedTasks;
-    if (localStorage.getItem(FAMILY_IMPORT_KEY)) return validTasks;
-    const existingTitles = new Set(validTasks.map(task => task.title));
-    const importedTasks = familyTasks.filter(task => !existingTitles.has(task.title));
-    const nextTasks = [...importedTasks, ...validTasks];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextTasks));
-    localStorage.setItem(FAMILY_IMPORT_KEY, "done");
-    return nextTasks;
-  }
-  catch { return seedTasks; }
-}
 
 function normalizeTask(task) {
   if (!task || !Number.isFinite(task.id) || typeof task.title !== "string" || !Array.isArray(task.tags)) return null;
@@ -80,17 +43,34 @@ function normalizeTask(task) {
     priority: ["high", "medium", "low"].includes(task.priority) ? task.priority : "medium",
     completed: task.completed === true,
     created: Number.isFinite(task.created) ? task.created : task.id,
+    updated: Number.isFinite(task.updated) ? task.updated : task.created,
   };
 }
 
-function saveTasks(nextTasks) {
+async function apiRequest(path = "", options = {}) {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `API request failed (${response.status})`);
+  return payload;
+}
+
+async function loadTasks(silent = false) {
+  if (!silent) {
+    isLoading = true;
+    renderTaskList();
+  }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextTasks));
-    tasks = nextTasks;
-    return true;
-  } catch {
-    showToast("לא הצלחנו לשמור", "אחסון הדפדפן מלא או לא זמין.");
-    return false;
+    const response = await apiRequest();
+    tasks = response.map(normalizeTask).filter(Boolean);
+  } catch (error) {
+    if (!silent) showToast("לא הצלחנו לטעון משימות", "בדקו את החיבור ונסו שוב.");
+  } finally {
+    isLoading = false;
+    render();
   }
 }
 
@@ -159,7 +139,9 @@ function getStats() {
 function renderTaskList() {
   const visible = filteredTasks();
   $("#taskList").innerHTML = visible.map(taskMarkup).join("");
-  $("#emptyState").hidden = visible.length > 0;
+  $("#taskList").hidden = isLoading;
+  $("#loadingState").hidden = !isLoading;
+  $("#emptyState").hidden = isLoading || visible.length > 0;
 }
 
 function render() {
@@ -204,15 +186,20 @@ function renderComposerTags() {
   $("#composerTags").innerHTML = Object.entries(TAGS).map(([key, tag]) => `<button type="button" class="composer-tag ${composerSelectedTags.has(key) ? "active" : ""}" data-compose-tag="${key}"><i style="background:${tag.color}"></i>${tag.label}</button>`).join("");
 }
 
-function toggleComplete(id) {
+async function toggleComplete(id) {
   const task = tasks.find(t => t.id === id);
   if (!task) return false;
   const completed = !task.completed;
-  const nextTasks = tasks.map(item => item.id === id ? { ...item, completed } : item);
-  if (!saveTasks(nextTasks)) return false;
-  render();
-  if (completed) showToast("המשימה הושלמה", "כל הכבוד, ממשיכים כך.", () => toggleComplete(id));
-  return true;
+  try {
+    const updated = normalizeTask(await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify({ completed }) }));
+    tasks = tasks.map(item => item.id === id ? updated : item);
+    render();
+    if (completed) showToast("המשימה הושלמה", "כל הכבוד, ממשיכים כך.", () => toggleComplete(id));
+    return true;
+  } catch {
+    showToast("לא הצלחנו לעדכן", "בדקו את החיבור ונסו שוב.");
+    return false;
+  }
 }
 
 function showToast(title, message, onUndo = null) {
@@ -225,23 +212,34 @@ function showToast(title, message, onUndo = null) {
   toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 4000);
 }
 
-function addTask(title, extras = {}) {
-  const newTask = { id: Date.now(), title: title.trim().slice(0, 120), description: (extras.description || "").slice(0, 1000), tags: extras.tags || [], assignee: extras.assignee || "you", due: extras.due || "", priority: extras.priority || "medium", completed: false, created: Date.now() };
-  if (!saveTasks([newTask, ...tasks])) return false;
-  state.status = "open";
-  $$(".view-tabs button").forEach(button => button.classList.toggle("active", button.dataset.status === "open"));
-  render();
-  return true;
+async function addTask(title, extras = {}) {
+  const values = { title: title.trim().slice(0, 120), description: (extras.description || "").slice(0, 1000), tags: extras.tags || [], assignee: extras.assignee || "you", due: extras.due || "", priority: extras.priority || "medium", completed: false };
+  try {
+    const created = normalizeTask(await apiRequest("", { method: "POST", body: JSON.stringify(values) }));
+    tasks = [created, ...tasks];
+    state.status = "open";
+    $$(".view-tabs button").forEach(button => button.classList.toggle("active", button.dataset.status === "open"));
+    render();
+    return true;
+  } catch {
+    showToast("לא הצלחנו ליצור משימה", "בדקו את החיבור ונסו שוב.");
+    return false;
+  }
 }
 
-function updateTask(id, updates) {
+async function updateTask(id, updates) {
   const existing = tasks.find(task => task.id === id);
   if (!existing) return false;
-  const nextTasks = tasks.map(task => task.id === id ? { ...task, ...updates } : task);
-  if (!saveTasks(nextTasks)) return false;
-  render();
-  showToast("המשימה עודכנה", "השינויים נשמרו בהצלחה.");
-  return true;
+  try {
+    const updated = normalizeTask(await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify(updates) }));
+    tasks = tasks.map(task => task.id === id ? updated : task);
+    render();
+    showToast("המשימה עודכנה", "השינויים נשמרו בהצלחה.");
+    return true;
+  } catch {
+    showToast("לא הצלחנו לשמור", "בדקו את החיבור ונסו שוב.");
+    return false;
+  }
 }
 
 function openDialog(task = null) {
@@ -264,6 +262,14 @@ function openDialog(task = null) {
 $("#dateLabel").textContent = new Date().toLocaleDateString("he-IL", { weekday: "long", month: "long", day: "numeric" });
 renderComposerTags();
 render();
+loadTasks();
+setInterval(() => {
+  if (document.visibilityState === "visible" && !$("#taskDialog").open) loadTasks(true);
+}, 5000);
+window.addEventListener("focus", () => loadTasks(true));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") loadTasks(true);
+});
 
 document.addEventListener("click", (event) => {
   const complete = event.target.closest("[data-complete]");
@@ -301,10 +307,10 @@ $("#sortSelect").addEventListener("change", event => { state.sort = event.target
 $("#filterToggle").addEventListener("click", () => $("#filterDrawer").classList.toggle("open"));
 $("#clearTags").addEventListener("click", () => { state.tags.clear(); render(); });
 
-function submitQuick() {
+async function submitQuick() {
   const input = $("#quickTaskInput");
   if (!input.value.trim()) return;
-  if (!addTask(input.value, { due: isoAfter(0) })) return;
+  if (!await addTask(input.value, { due: isoAfter(0) })) return;
   input.value = ""; $("#quickAdd").classList.remove("has-value");
 }
 $("#quickTaskInput").addEventListener("input", event => $("#quickAdd").classList.toggle("has-value", !!event.target.value.trim()));
@@ -316,17 +322,19 @@ $("#openComposer").addEventListener("click", () => openDialog());
 $("#emptyAdd").addEventListener("click", () => openDialog());
 $("#closeDialog").addEventListener("click", () => $("#taskDialog").close());
 $("#cancelDialog").addEventListener("click", () => $("#taskDialog").close());
-$("#taskForm").addEventListener("submit", event => {
+$("#taskForm").addEventListener("submit", async event => {
   event.preventDefault();
   const title = $("#taskTitle").value;
   if (!title.trim()) return;
   const values = { title: title.trim().slice(0, 120), description: $("#taskDescription").value.slice(0, 1000), tags: [...composerSelectedTags], assignee: $("#taskAssignee").value, due: $("#taskDue").value, priority: $("#taskPriority").value };
-  const saved = editingTaskId ? updateTask(editingTaskId, values) : addTask(title, values);
+  $("#submitTask").disabled = true;
+  const saved = editingTaskId ? await updateTask(editingTaskId, values) : await addTask(title, values);
+  $("#submitTask").disabled = false;
   if (saved) { editingTaskId = null; $("#taskDialog").close(); }
 });
 $("#taskForm").addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") $("#taskForm").requestSubmit(); });
 
-$("#undoButton").addEventListener("click", () => { if (undoAction && undoAction()) { undoAction = null; $("#toast").classList.remove("show"); } });
+$("#undoButton").addEventListener("click", async () => { if (undoAction && await undoAction()) { undoAction = null; $("#toast").classList.remove("show"); } });
 $("#menuButton").addEventListener("click", () => { $("#sidebar").classList.add("open"); $("#sidebarScrim").classList.add("open"); });
 $("#sidebarClose").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); });
 $("#sidebarScrim").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); });

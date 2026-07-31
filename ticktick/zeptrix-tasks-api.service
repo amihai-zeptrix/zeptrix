@@ -1,0 +1,22 @@
+[Unit]
+Description=Zeptrix family tasks API
+After=network.target
+
+[Service]
+Type=simple
+User=zeptrix_tasks
+Group=zeptrix_tasks
+Environment=TASKS_API_HOST=127.0.0.1
+Environment=TASKS_API_PORT=8082
+Environment=TASKS_DB_PATH=/var/lib/zeptrix-tasks/tasks.db
+ExecStart=/usr/bin/python3 /opt/zeptrix-tasks/backend.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/zeptrix-tasks
+
+[Install]
+WantedBy=multi-user.target

@@ -61,6 +61,9 @@ assert_file saas-crm/cloudprune/favicon.svg
 assert_file ticktick/index.html
 assert_file ticktick/styles.css
 assert_file ticktick/app.js
+assert_file ticktick/backend.py
+assert_file ticktick/test_backend.py
+assert_file ticktick/zeptrix-tasks-api.service
 [[ -L tt ]] || fail "tt must be a symlink so both task-manager routes share one implementation"
 [[ "$(readlink tt)" == "ticktick" ]] || fail "tt must link to ticktick"
 
@@ -71,6 +74,10 @@ assert_contains ticktick/index.html '<html lang="he" dir="rtl">'
 assert_contains ticktick/index.html '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
 assert_contains ticktick/index.html 'href="styles.css"'
 assert_contains ticktick/index.html 'src="app.js"'
+if rg -n 'localStorage|sessionStorage' ticktick/app.js; then
+  fail "task data must use the backend API, not browser storage"
+fi
+assert_contains ticktick/app.js 'const API_URL = "api/tasks";'
 
 assert_contains index.html "<title>Zeptrix CloudPrune | AI AWS Cost Reduction</title>"
 assert_contains index.html 'href="/styles.css"'
@@ -127,6 +134,10 @@ assert_contains nginx-zeptrix.conf "location ^~ /internal-crm/"
 assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8008;"
 assert_contains nginx-zeptrix.conf "location = /cloudprune"
 assert_contains nginx-zeptrix.conf "location ^~ /cloudprune/"
+assert_contains nginx-zeptrix.conf "location ^~ /ticktick/api/"
+assert_contains nginx-zeptrix.conf "location ^~ /tt/api/"
+assert_contains nginx-zeptrix.conf 'auth_basic_user_file /etc/nginx/.htpasswd-zeptrix-tasks;'
+assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8082/;"
 assert_contains nginx-zeptrix.conf "location = /aws-cost-optimization.html"
 assert_contains nginx-zeptrix.conf "location = /reduce-aws-spend.html"
 assert_contains nginx-zeptrix.conf "return 301 /aws-cost-reduction;"
@@ -149,5 +160,8 @@ fi
 if git ls-files | grep -E '(^|/)__pycache__/|\.pyc$' >/dev/null; then
   fail "generated Python cache files must not be tracked or deployed"
 fi
+
+node --check ticktick/app.js
+python3 -m unittest ticktick/test_backend.py
 
 echo "Local deploy invariant tests passed"

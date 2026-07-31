@@ -42,6 +42,15 @@ The deployed static bundle must include:
 
 Do not deploy only the root Zeptrix files unless `/mbh/` is intentionally excluded and nginx is changed accordingly.
 
+The family task manager is not browser-local. Its shared runtime consists of:
+
+- `/opt/zeptrix-tasks/backend.py` served by `zeptrix-tasks-api.service` on `127.0.0.1:8082`
+- `/var/lib/zeptrix-tasks/tasks.db` for the SQLite task database
+- `/etc/nginx/.htpasswd-zeptrix-tasks` for family HTTP Basic authentication
+- authenticated nginx proxies at `/ticktick/api/` and `/tt/api/`
+
+Never replace the database during a static deploy. Back it up before changing the backend schema.
+
 ## nginx Expectations
 
 The nginx config must keep explicit handling for Michal's site:
