@@ -33,7 +33,7 @@ WORKSPACES = {
         },
     },
     "pettesh": {
-        "title": "אפליקציית המשימות של פטש",
+        "title": "אפליקציית המשימות של משפחת פטש",
         "workspaceName": "המרחב של פטש",
         "workspaceInitial": "פ",
         "members": {
