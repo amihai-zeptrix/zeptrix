@@ -97,11 +97,13 @@ assert_contains "$tmp_dir/your-new-crm-promo.html" "<title>Zeptrix CRM | A Sales
 assert_contains "$tmp_dir/your-new-crm-promo.html" 'href="/your-new-crm/"'
 
 fetch "/ticktick/" "$tmp_dir/ticktick.html"
-assert_contains "$tmp_dir/ticktick.html" "<title>Zeptrix Tasks</title>"
+assert_contains "$tmp_dir/ticktick.html" "<title>משימות משפחת הדר | Zeptrix</title>"
+assert_contains "$tmp_dir/ticktick.html" '<html lang="he" dir="rtl">'
 assert_contains "$tmp_dir/ticktick.html" '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
 
 fetch "/tt/" "$tmp_dir/tt.html"
-assert_contains "$tmp_dir/tt.html" "<title>Zeptrix Tasks</title>"
+assert_contains "$tmp_dir/tt.html" "<title>משימות משפחת הדר | Zeptrix</title>"
+assert_contains "$tmp_dir/tt.html" '<html lang="he" dir="rtl">'
 assert_contains "$tmp_dir/tt.html" '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
 
 fetch "/cloudprune/" "$tmp_dir/cloudprune.html"

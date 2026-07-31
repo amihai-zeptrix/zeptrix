@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="en">
+<html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f7f2" />
-    <meta name="description" content="Pettesh Hadars family task place, powered by Zeptrix." />
+    <meta name="description" content="אפליקציית המשימות של משפחת הדר, מבית Zeptrix." />
     <link rel="canonical" href="https://zeptrix.io/ticktick/" />
-    <title>Zeptrix Tasks</title>
+    <title>משימות משפחת הדר | Zeptrix</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Heebo:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -19,55 +19,55 @@
     <div class="app-shell">
       <aside class="sidebar" id="sidebar">
         <div class="brand-row">
-          <a class="brand" href="#" aria-label="Zeptrix Tasks home">
+          <a class="brand" href="#" aria-label="דף הבית של משימות Zeptrix">
             <span class="brand-mark"><i></i><i></i><i></i></span>
             <span>Zeptrix</span>
           </a>
-          <button class="icon-button sidebar-close" id="sidebarClose" aria-label="Close menu">
+          <button class="icon-button sidebar-close" id="sidebarClose" aria-label="סגירת התפריט">
             <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
         </div>
 
         <div class="workspace-switcher">
-          <span class="workspace-avatar">A</span>
-          <span><small>Family workspace</small><strong>Pettesh Hadar Home</strong></span>
+          <span class="workspace-avatar">ה</span>
+          <span><small>המרחב המשפחתי</small><strong>בית משפחת הדר</strong></span>
           <svg viewBox="0 0 24 24"><path d="m8 10 4 4 4-4" /></svg>
         </div>
 
-        <nav class="nav-section" aria-label="Main navigation">
-          <p class="nav-label">Overview</p>
+        <nav class="nav-section" aria-label="ניווט ראשי">
+          <p class="nav-label">סקירה</p>
           <button class="nav-item active" data-view="all">
             <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10" /></svg>
-            <span>All tasks</span><b id="allCount">0</b>
+            <span>כל המשימות</span><b id="allCount">0</b>
           </button>
           <button class="nav-item" data-view="today">
             <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
-            <span>Today</span><b id="todayCount">0</b>
+            <span>היום</span><b id="todayCount">0</b>
           </button>
           <button class="nav-item" data-view="assigned">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-            <span>Assigned to me</span><b id="mineCount">0</b>
+            <span>המשימות שלי</span><b id="mineCount">0</b>
           </button>
           <button class="nav-item" data-view="completed">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>
-            <span>Completed</span><b id="completedCount">0</b>
+            <span>הושלמו</span><b id="completedCount">0</b>
           </button>
         </nav>
 
         <div class="nav-section tags-section">
-          <div class="section-heading"><p class="nav-label">Tags</p><button id="clearTags">Clear</button></div>
+          <div class="section-heading"><p class="nav-label">תגיות</p><button id="clearTags">ניקוי</button></div>
           <div id="sidebarTags" class="sidebar-tags"></div>
         </div>
 
         <div class="sidebar-footer">
-          <div class="team-stack" aria-label="Family members">
-            <span class="avatar avatar-lina">LS</span>
-            <span class="avatar avatar-marcus">MK</span>
-            <span class="avatar avatar-nora">NR</span>
-            <span class="avatar avatar-you">AY</span>
+          <div class="team-stack" aria-label="בני המשפחה">
+            <span class="avatar avatar-lina">אמ</span>
+            <span class="avatar avatar-marcus">אב</span>
+            <span class="avatar avatar-nora">יל</span>
+            <span class="avatar avatar-you">אני</span>
           </div>
-          <div><strong>4 family members</strong><small>Saved on this device</small></div>
-          <button class="invite-button" title="Invite teammate">+</button>
+          <div><strong>4 בני משפחה</strong><small>נשמר במכשיר הזה</small></div>
+          <button class="invite-button" title="הוספת בן משפחה">+</button>
         </div>
       </aside>
 
@@ -75,19 +75,19 @@
 
       <main class="main-content">
         <header class="topbar">
-          <button class="icon-button menu-button" id="menuButton" aria-label="Open menu">
+          <button class="icon-button menu-button" id="menuButton" aria-label="פתיחת התפריט">
             <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
           </button>
           <div class="search-wrap">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-            <input id="searchInput" type="search" placeholder="Search tasks..." aria-label="Search tasks" />
+            <input id="searchInput" type="search" placeholder="חיפוש משימות..." aria-label="חיפוש משימות" />
             <kbd>/</kbd>
           </div>
           <div class="top-actions">
-            <button class="icon-button notification-button" aria-label="Notifications">
+            <button class="icon-button notification-button" aria-label="התראות">
               <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg><i></i>
             </button>
-            <span class="avatar avatar-you user-avatar">AY</span>
+            <span class="avatar avatar-you user-avatar">אני</span>
           </div>
         </header>
 
@@ -95,22 +95,22 @@
           <div class="page-heading">
             <div>
               <p class="eyebrow" id="dateLabel"></p>
-              <h1 id="viewTitle">Welcome to Pettesh Hadars <em>tasks place</em></h1>
-              <p id="viewSubtitle">Keep family tasks clear, shared, and easy to finish.</p>
+              <h1 id="viewTitle">אפליקצת המשימות של משפחת <em>הדר</em></h1>
+              <p id="viewSubtitle">כל המשימות המשפחתיות במקום אחד, ברור ונוח.</p>
             </div>
             <button class="add-task-button" id="openComposer">
               <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-              Add task <kbd>N</kbd>
+              הוספת משימה <kbd>N</kbd>
             </button>
           </div>
 
           <div class="progress-card">
             <div class="progress-copy">
               <div class="progress-icon"><svg viewBox="0 0 24 24"><path d="m5 15 4-4 3 3 6-7M15 7h3v3" /></svg></div>
-              <div><strong id="progressHeadline">A clear day starts here</strong><span id="progressText">Complete tasks to build momentum.</span></div>
+              <div><strong id="progressHeadline">יום מסודר מתחיל כאן</strong><span id="progressText">מסיימים משימות ומתקדמים יחד.</span></div>
             </div>
             <div class="progress-visual">
-              <span id="progressFraction">0 / 0 complete</span>
+              <span id="progressFraction">0 מתוך 0 הושלמו</span>
               <div class="progress-track"><i id="progressBar"></i></div>
               <strong id="progressPercent">0%</strong>
             </div>
@@ -119,41 +119,41 @@
           <section class="task-panel">
             <div class="task-toolbar">
               <div class="view-tabs" role="tablist">
-                <button class="active" data-status="open">Open <span id="openTabCount">0</span></button>
-                <button data-status="completed">Done <span id="doneTabCount">0</span></button>
-                <button data-status="all">All <span id="allTabCount">0</span></button>
+                <button class="active" data-status="open">פתוחות <span id="openTabCount">0</span></button>
+                <button data-status="completed">הושלמו <span id="doneTabCount">0</span></button>
+                <button data-status="all">הכול <span id="allTabCount">0</span></button>
               </div>
               <div class="toolbar-actions">
                 <button class="filter-toggle" id="filterToggle">
                   <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
-                  Filter <span id="filterBadge" hidden>0</span>
+                  סינון <span id="filterBadge" hidden>0</span>
                 </button>
-                <select id="sortSelect" aria-label="Sort tasks">
-                  <option value="priority">Sort: Priority</option>
-                  <option value="newest">Sort: Newest</option>
-                  <option value="due">Sort: Due date</option>
+                <select id="sortSelect" aria-label="מיון משימות">
+                  <option value="priority">מיון: עדיפות</option>
+                  <option value="newest">מיון: החדשות ביותר</option>
+                  <option value="due">מיון: תאריך יעד</option>
                 </select>
               </div>
             </div>
 
             <div class="filter-drawer" id="filterDrawer">
-              <span>Filter by tag</span>
+              <span>סינון לפי תגית</span>
               <div id="filterTags" class="filter-tags"></div>
             </div>
 
             <div class="quick-add" id="quickAdd">
-              <button id="quickAddIcon" aria-label="Add task"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button>
-              <input id="quickTaskInput" placeholder="Add a task and press Enter..." autocomplete="off" />
-              <button class="quick-submit" id="quickSubmit">Add</button>
+              <button id="quickAddIcon" aria-label="הוספת משימה"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button>
+              <input id="quickTaskInput" placeholder="כתבו משימה ולחצו על אנטר..." autocomplete="off" />
+              <button class="quick-submit" id="quickSubmit">הוספה</button>
             </div>
 
             <div id="taskList" class="task-list"></div>
 
             <div class="empty-state" id="emptyState" hidden>
               <div class="empty-check"><svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7" /></svg></div>
-              <h3>Nothing here. Beautiful.</h3>
-              <p>Adjust your filters or add a new task to get moving.</p>
-              <button id="emptyAdd">Add a task</button>
+              <h3>אין כאן משימות. איזה כיף.</h3>
+              <p>שנו את הסינון או הוסיפו משימה חדשה.</p>
+              <button id="emptyAdd">הוספת משימה</button>
             </div>
           </section>
         </section>
@@ -163,31 +163,31 @@
     <dialog id="taskDialog" class="task-dialog">
       <form id="taskForm" method="dialog">
         <div class="dialog-heading">
-          <div><span>NEW TASK</span><h2>What needs to happen?</h2></div>
-          <button type="button" class="icon-button" id="closeDialog" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+          <div><span>משימה חדשה</span><h2>מה צריך לעשות?</h2></div>
+          <button type="button" class="icon-button" id="closeDialog" aria-label="סגירה"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
         </div>
-        <label class="field-label" for="taskTitle">Task name</label>
-        <input class="title-input" id="taskTitle" required maxlength="120" placeholder="e.g. Review launch copy" />
-        <label class="field-label" for="taskDescription">Description <small>Optional</small></label>
-        <textarea id="taskDescription" rows="3" maxlength="1000" placeholder="Add a little context for your team..."></textarea>
+        <label class="field-label" for="taskTitle">שם המשימה</label>
+        <input class="title-input" id="taskTitle" required maxlength="120" placeholder="לדוגמה: לקנות מצרכים לארוחת ערב" />
+        <label class="field-label" for="taskDescription">תיאור <small>לא חובה</small></label>
+        <textarea id="taskDescription" rows="3" maxlength="1000" placeholder="אפשר להוסיף פרטים שיעזרו למשפחה..."></textarea>
         <div class="form-grid">
-          <label><span class="field-label">Assignee</span><select id="taskAssignee"><option value="you">Alex Young (You)</option><option value="lina">Lina Stone</option><option value="marcus">Marcus Kim</option><option value="nora">Nora Reed</option></select></label>
-          <label><span class="field-label">Due date</span><input id="taskDue" type="date" /></label>
-          <label><span class="field-label">Priority</span><select id="taskPriority"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select></label>
+          <label><span class="field-label">אחראי/ת</span><select id="taskAssignee"><option value="you">אני</option><option value="lina">אמא</option><option value="marcus">אבא</option><option value="nora">הילדים</option></select></label>
+          <label><span class="field-label">תאריך יעד</span><input id="taskDue" type="date" /></label>
+          <label><span class="field-label">עדיפות</span><select id="taskPriority"><option value="medium">בינונית</option><option value="high">גבוהה</option><option value="low">נמוכה</option></select></label>
         </div>
-        <span class="field-label">Tags</span>
+        <span class="field-label">תגיות</span>
         <div id="composerTags" class="composer-tags"></div>
         <div class="dialog-footer">
-          <span><kbd>⌘</kbd> + <kbd>Enter</kbd> to create</span>
-          <div><button type="button" class="cancel-button" id="cancelDialog">Cancel</button><button type="submit" class="create-button">Create task</button></div>
+          <span><kbd>⌘</kbd> + <kbd>Enter</kbd> ליצירה</span>
+          <div><button type="button" class="cancel-button" id="cancelDialog">ביטול</button><button type="submit" class="create-button">יצירת משימה</button></div>
         </div>
       </form>
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite">
       <span><svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7" /></svg></span>
-      <div><strong id="toastTitle">Task completed</strong><small id="toastMessage">Nice work—keep the momentum going.</small></div>
-      <button id="undoButton">Undo</button>
+      <div><strong id="toastTitle">המשימה הושלמה</strong><small id="toastMessage">כל הכבוד, ממשיכים כך.</small></div>
+      <button id="undoButton">ביטול פעולה</button>
     </div>
 
     <script src="app.js"></script>

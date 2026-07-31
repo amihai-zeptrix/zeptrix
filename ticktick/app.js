@@ -1,16 +1,16 @@
 const TAGS = {
-  design: { label: "Design", color: "#df7a59" },
-  marketing: { label: "Marketing", color: "#7289ce" },
-  development: { label: "Development", color: "#4e9478" },
-  urgent: { label: "Urgent", color: "#dc665d" },
-  research: { label: "Research", color: "#9473b8" },
+  design: { label: "בית", color: "#df7a59" },
+  marketing: { label: "קניות", color: "#7289ce" },
+  development: { label: "ילדים", color: "#4e9478" },
+  urgent: { label: "דחוף", color: "#dc665d" },
+  research: { label: "סידורים", color: "#9473b8" },
 };
 
 const PEOPLE = {
-  you: { name: "Alex Young", initials: "AY", className: "avatar-you" },
-  lina: { name: "Lina Stone", initials: "LS", className: "avatar-lina" },
-  marcus: { name: "Marcus Kim", initials: "MK", className: "avatar-marcus" },
-  nora: { name: "Nora Reed", initials: "NR", className: "avatar-nora" },
+  you: { name: "אני", initials: "אני", className: "avatar-you" },
+  lina: { name: "אמא", initials: "אמ", className: "avatar-lina" },
+  marcus: { name: "אבא", initials: "אב", className: "avatar-marcus" },
+  nora: { name: "הילדים", initials: "יל", className: "avatar-nora" },
 };
 
 const day = 86400000;
@@ -23,13 +23,27 @@ const isoAfter = (days) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 const seedTasks = [
-  { id: 1, title: "Finalize the mobile onboarding flow", description: "Review the final screens with product.", tags: ["design", "urgent"], assignee: "lina", due: isoAfter(0), priority: "high", completed: false, created: Date.now() - 50000 },
-  { id: 2, title: "Prepare Q3 campaign performance report", description: "Pull results from the paid and organic channels.", tags: ["marketing"], assignee: "marcus", due: isoAfter(1), priority: "medium", completed: false, created: Date.now() - 40000 },
-  { id: 3, title: "Fix authentication edge case on Safari", description: "Session expires after returning from the payment flow.", tags: ["development", "urgent"], assignee: "you", due: isoAfter(0), priority: "high", completed: false, created: Date.now() - 30000 },
-  { id: 4, title: "Interview five beta customers", description: "Focus on the new collaboration experience.", tags: ["research"], assignee: "nora", due: isoAfter(3), priority: "medium", completed: false, created: Date.now() - 20000 },
-  { id: 5, title: "Update empty states and illustrations", description: "Bring all empty states into the new visual system.", tags: ["design"], assignee: "you", due: isoAfter(5), priority: "low", completed: false, created: Date.now() - 10000 },
-  { id: 6, title: "Publish weekly product changelog", description: "", tags: ["marketing", "development"], assignee: "marcus", due: isoAfter(-1), priority: "low", completed: true, created: Date.now() - 60000 },
+  { id: 1, title: "לקנות מצרכים לארוחת שישי", description: "לבדוק מה חסר במקרר לפני שיוצאים.", tags: ["marketing", "urgent"], assignee: "lina", due: isoAfter(0), priority: "high", completed: false, created: Date.now() - 50000 },
+  { id: 2, title: "לקבוע תור לרופא השיניים", description: "לתאם שעה שמתאימה אחרי בית הספר.", tags: ["research"], assignee: "marcus", due: isoAfter(1), priority: "medium", completed: false, created: Date.now() - 40000 },
+  { id: 3, title: "להחזיר ספרים לספרייה", description: "הספרים נמצאים ליד דלת הכניסה.", tags: ["development", "urgent"], assignee: "you", due: isoAfter(0), priority: "high", completed: false, created: Date.now() - 30000 },
+  { id: 4, title: "לתכנן את הטיול המשפחתי", description: "לבחור מסלול ולבדוק את מזג האוויר.", tags: ["research"], assignee: "nora", due: isoAfter(3), priority: "medium", completed: false, created: Date.now() - 20000 },
+  { id: 5, title: "לסדר את ארון הכניסה", description: "למיין נעליים ומעילים שכבר לא בשימוש.", tags: ["design"], assignee: "you", due: isoAfter(5), priority: "low", completed: false, created: Date.now() - 10000 },
+  { id: 6, title: "לשלם את חשבון החשמל", description: "", tags: ["design"], assignee: "marcus", due: isoAfter(-1), priority: "low", completed: true, created: Date.now() - 60000 },
 ];
+
+const LEGACY_TEXT = {
+  "Finalize the mobile onboarding flow": "לקנות מצרכים לארוחת שישי",
+  "Prepare Q3 campaign performance report": "לקבוע תור לרופא השיניים",
+  "Fix authentication edge case on Safari": "להחזיר ספרים לספרייה",
+  "Interview five beta customers": "לתכנן את הטיול המשפחתי",
+  "Update empty states and illustrations": "לסדר את ארון הכניסה",
+  "Publish weekly product changelog": "לשלם את חשבון החשמל",
+  "Review the final screens with product.": "לבדוק מה חסר במקרר לפני שיוצאים.",
+  "Pull results from the paid and organic channels.": "לתאם שעה שמתאימה אחרי בית הספר.",
+  "Session expires after returning from the payment flow.": "הספרים נמצאים ליד דלת הכניסה.",
+  "Focus on the new collaboration experience.": "לבחור מסלול ולבדוק את מזג האוויר.",
+  "Bring all empty states into the new visual system.": "למיין נעליים ומעילים שכבר לא בשימוש.",
+};
 
 let tasks = loadTasks();
 let state = { view: "all", status: "open", tags: new Set(), search: "", sort: "priority" };
@@ -54,8 +68,8 @@ function normalizeTask(task) {
   if (!task || !Number.isFinite(task.id) || typeof task.title !== "string" || !Array.isArray(task.tags)) return null;
   return {
     id: task.id,
-    title: task.title.slice(0, 120),
-    description: typeof task.description === "string" ? task.description.slice(0, 1000) : "",
+    title: (LEGACY_TEXT[task.title] || task.title).slice(0, 120),
+    description: typeof task.description === "string" ? (LEGACY_TEXT[task.description] || task.description).slice(0, 1000) : "",
     tags: [...new Set(task.tags.filter(tag => tag in TAGS))],
     assignee: task.assignee in PEOPLE ? task.assignee : "you",
     due: typeof task.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : "",
@@ -71,7 +85,7 @@ function saveTasks(nextTasks) {
     tasks = nextTasks;
     return true;
   } catch {
-    showToast("Couldn’t save changes", "Browser storage is full or unavailable.");
+    showToast("לא הצלחנו לשמור", "אחסון הדפדפן מלא או לא זמין.");
     return false;
   }
 }
@@ -83,14 +97,14 @@ function escapeHtml(value) {
 }
 
 function formatDue(dateValue) {
-  if (!dateValue) return "No date";
+  if (!dateValue) return "ללא תאריך";
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due = new Date(`${dateValue}T00:00:00`);
   const diff = Math.round((due - today) / day);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
-  return due.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (diff === 0) return "היום";
+  if (diff === 1) return "מחר";
+  if (diff === -1) return "אתמול";
+  return due.toLocaleDateString("he-IL", { month: "short", day: "numeric" });
 }
 
 function isOverdue(task) {
@@ -103,12 +117,13 @@ function tagMarkup(tag) {
 
 function taskMarkup(task, index) {
   const person = PEOPLE[task.assignee] || PEOPLE.you;
+  const priorityLabel = { high: "גבוהה", medium: "בינונית", low: "נמוכה" }[task.priority];
   return `<article class="task-row ${task.completed ? "completed" : ""}" data-id="${task.id}" style="animation-delay:${Math.min(index * 35, 220)}ms">
-    <button class="complete-button" data-complete="${task.id}" aria-label="${task.completed ? "Mark open" : "Mark done"}"><svg viewBox="0 0 24 24"><path d="m6 12 4 4 8-9" /></svg></button>
+    <button class="complete-button" data-complete="${task.id}" aria-label="${task.completed ? "סימון כפתוחה" : "סימון כהושלמה"}"><svg viewBox="0 0 24 24"><path d="m6 12 4 4 8-9" /></svg></button>
     <div class="task-body"><div class="task-title">${escapeHtml(task.title)}</div><div class="task-meta">${task.tags.map(tagMarkup).join("")}<span class="due-date ${isOverdue(task) ? "overdue" : ""}"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>${formatDue(task.due)}</span></div></div>
-    <i class="priority-mark priority-${task.priority}" title="${task.priority} priority"></i>
+    <i class="priority-mark priority-${task.priority}" title="עדיפות ${priorityLabel}"></i>
     <span class="avatar assignee ${person.className}" title="${person.name}">${person.initials}</span>
-    <button class="row-menu" data-delete="${task.id}" aria-label="Delete task" title="Delete task">⋯</button>
+    <button class="row-menu" data-delete="${task.id}" aria-label="מחיקת משימה" title="מחיקת משימה">⋯</button>
   </article>`;
 }
 
@@ -166,11 +181,12 @@ function renderProgress(stats) {
   const completed = stats.todayDone;
   const total = stats.todayTotal;
   const percent = total ? Math.round(completed / total * 100) : 0;
-  $("#progressFraction").textContent = `${completed} / ${total} complete`;
+  $("#progressFraction").textContent = `${completed} מתוך ${total} הושלמו`;
   $("#progressPercent").textContent = `${percent}%`;
   $("#progressBar").style.width = `${percent}%`;
-  $("#progressHeadline").textContent = percent === 100 && total ? "Today is wrapped—beautiful work" : percent >= 50 ? "You’re building real momentum" : "A clear day starts here";
-  $("#progressText").textContent = total ? `${Math.max(0, total - completed)} task${total - completed === 1 ? "" : "s"} left for today.` : "Add a task for today to start your momentum.";
+  $("#progressHeadline").textContent = percent === 100 && total ? "סיימתם הכול להיום — כל הכבוד" : percent >= 50 ? "אתם מתקדמים מצוין" : "יום מסודר מתחיל כאן";
+  const remaining = Math.max(0, total - completed);
+  $("#progressText").textContent = total ? (remaining === 1 ? "נותרה משימה אחת להיום." : `נותרו ${remaining} משימות להיום.`) : "הוסיפו משימה להיום כדי להתחיל.";
 }
 
 function renderTagFilters(counts = getStats().tags) {
@@ -192,7 +208,7 @@ function toggleComplete(id) {
   const nextTasks = tasks.map(item => item.id === id ? { ...item, completed } : item);
   if (!saveTasks(nextTasks)) return false;
   render();
-  if (completed) showToast("Task completed", "Nice work—keep the momentum going.", () => toggleComplete(id));
+  if (completed) showToast("המשימה הושלמה", "כל הכבוד, ממשיכים כך.", () => toggleComplete(id));
   return true;
 }
 
@@ -212,7 +228,7 @@ function deleteTask(id) {
   const deleted = tasks[index];
   if (!saveTasks(tasks.filter(task => task.id !== id))) return false;
   render();
-  showToast("Task deleted", "The task was removed from this device.", () => {
+  showToast("המשימה נמחקה", "המשימה הוסרה מהמכשיר הזה.", () => {
     const restored = [...tasks];
     restored.splice(Math.min(index, restored.length), 0, deleted);
     if (!saveTasks(restored)) return false;
@@ -240,7 +256,7 @@ function openDialog() {
   setTimeout(() => $("#taskTitle").focus(), 80);
 }
 
-$("#dateLabel").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+$("#dateLabel").textContent = new Date().toLocaleDateString("he-IL", { weekday: "long", month: "long", day: "numeric" });
 renderComposerTags();
 render();
 
@@ -260,7 +276,7 @@ $$(".nav-item").forEach(button => button.addEventListener("click", () => {
   if (state.view === "completed") state.status = "completed";
   $$(".nav-item").forEach(item => item.classList.toggle("active", item === button));
   $$(".view-tabs button").forEach(item => item.classList.toggle("active", item.dataset.status === state.status));
-  const labels = { all: ["Welcome to Pettesh Hadars <em>tasks place</em>", "Keep family tasks clear, shared, and easy to finish."], today: ["Today’s focus, <em>made clear.</em>", "A focused view of everything that needs attention today."], assigned: ["Your tasks, <em>all together.</em>", "Every family task assigned to you, in one calm and focused place."], completed: ["Progress worth <em>celebrating.</em>", "A record of everything your family has moved forward."] };
+  const labels = { all: ["אפליקצת המשימות של משפחת <em>הדר</em>", "כל המשימות המשפחתיות במקום אחד, ברור ונוח."], today: ["המשימות של <em>היום</em>", "כל מה שצריך לקבל תשומת לב היום."], assigned: ["המשימות <em>שלי</em>", "כל המשימות המשפחתיות שבאחריותי."], completed: ["התקדמות שכיף <em>לחגוג</em>", "כל מה שהמשפחה כבר הספיקה לעשות."] };
   $("#viewTitle").innerHTML = labels[state.view][0]; $("#viewSubtitle").textContent = labels[state.view][1];
   $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); render();
 }));
