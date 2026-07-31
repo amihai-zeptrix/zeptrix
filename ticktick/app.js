@@ -7,10 +7,8 @@ const TAGS = {
 };
 
 const PEOPLE = {
-  you: { name: "אני", initials: "אני", className: "avatar-you" },
-  lina: { name: "אמא", initials: "אמ", className: "avatar-lina" },
-  marcus: { name: "אבא", initials: "אב", className: "avatar-marcus" },
-  nora: { name: "הילדים", initials: "יל", className: "avatar-nora" },
+  you: { name: "עמיחי", initials: "עמ", className: "avatar-you" },
+  lina: { name: "אתי", initials: "את", className: "avatar-lina" },
 };
 
 const day = 86400000;
