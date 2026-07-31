@@ -14,7 +14,8 @@ const PEOPLE = {
 };
 
 const day = 86400000;
-const STORAGE_KEY = "zeptrix-tasks-v1";
+const STORAGE_KEY = "zeptrix-tasks-v2";
+const LEGACY_STORAGE_KEY = "zeptrix-tasks-v1";
 const isoAfter = (days) => {
   const date = new Date();
   date.setHours(12, 0, 0, 0);
@@ -22,28 +23,7 @@ const isoAfter = (days) => {
   const pad = (value) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
-const seedTasks = [
-  { id: 1, title: "לקנות מצרכים לארוחת שישי", description: "לבדוק מה חסר במקרר לפני שיוצאים.", tags: ["marketing", "urgent"], assignee: "lina", due: isoAfter(0), priority: "high", completed: false, created: Date.now() - 50000 },
-  { id: 2, title: "לקבוע תור לרופא השיניים", description: "לתאם שעה שמתאימה אחרי בית הספר.", tags: ["research"], assignee: "marcus", due: isoAfter(1), priority: "medium", completed: false, created: Date.now() - 40000 },
-  { id: 3, title: "להחזיר ספרים לספרייה", description: "הספרים נמצאים ליד דלת הכניסה.", tags: ["development", "urgent"], assignee: "you", due: isoAfter(0), priority: "high", completed: false, created: Date.now() - 30000 },
-  { id: 4, title: "לתכנן את הטיול המשפחתי", description: "לבחור מסלול ולבדוק את מזג האוויר.", tags: ["research"], assignee: "nora", due: isoAfter(3), priority: "medium", completed: false, created: Date.now() - 20000 },
-  { id: 5, title: "לסדר את ארון הכניסה", description: "למיין נעליים ומעילים שכבר לא בשימוש.", tags: ["design"], assignee: "you", due: isoAfter(5), priority: "low", completed: false, created: Date.now() - 10000 },
-  { id: 6, title: "לשלם את חשבון החשמל", description: "", tags: ["design"], assignee: "marcus", due: isoAfter(-1), priority: "low", completed: true, created: Date.now() - 60000 },
-];
-
-const LEGACY_TEXT = {
-  "Finalize the mobile onboarding flow": "לקנות מצרכים לארוחת שישי",
-  "Prepare Q3 campaign performance report": "לקבוע תור לרופא השיניים",
-  "Fix authentication edge case on Safari": "להחזיר ספרים לספרייה",
-  "Interview five beta customers": "לתכנן את הטיול המשפחתי",
-  "Update empty states and illustrations": "לסדר את ארון הכניסה",
-  "Publish weekly product changelog": "לשלם את חשבון החשמל",
-  "Review the final screens with product.": "לבדוק מה חסר במקרר לפני שיוצאים.",
-  "Pull results from the paid and organic channels.": "לתאם שעה שמתאימה אחרי בית הספר.",
-  "Session expires after returning from the payment flow.": "הספרים נמצאים ליד דלת הכניסה.",
-  "Focus on the new collaboration experience.": "לבחור מסלול ולבדוק את מזג האוויר.",
-  "Bring all empty states into the new visual system.": "למיין נעליים ומעילים שכבר לא בשימוש.",
-};
+const seedTasks = [];
 
 let tasks = loadTasks();
 let state = { view: "all", status: "open", tags: new Set(), search: "", sort: "priority" };
@@ -56,6 +36,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 function loadTasks() {
   try {
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!Array.isArray(stored)) return seedTasks;
     const normalizedTasks = stored.map(normalizeTask);
@@ -68,8 +49,8 @@ function normalizeTask(task) {
   if (!task || !Number.isFinite(task.id) || typeof task.title !== "string" || !Array.isArray(task.tags)) return null;
   return {
     id: task.id,
-    title: (LEGACY_TEXT[task.title] || task.title).slice(0, 120),
-    description: typeof task.description === "string" ? (LEGACY_TEXT[task.description] || task.description).slice(0, 1000) : "",
+    title: task.title.slice(0, 120),
+    description: typeof task.description === "string" ? task.description.slice(0, 1000) : "",
     tags: [...new Set(task.tags.filter(tag => tag in TAGS))],
     assignee: task.assignee in PEOPLE ? task.assignee : "you",
     due: typeof task.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : "",
