@@ -34,7 +34,7 @@ const seedTasks = [
 let tasks = loadTasks();
 let state = { view: "all", status: "open", tags: new Set(), search: "", sort: "priority" };
 let composerSelectedTags = new Set();
-let lastCompletedId = null;
+let undoAction = null;
 let toastTimer;
 
 const $ = (selector) => document.querySelector(selector);
@@ -71,7 +71,7 @@ function saveTasks(nextTasks) {
     tasks = nextTasks;
     return true;
   } catch {
-    showToast("Couldn’t save changes", "Browser storage is full or unavailable.", false);
+    showToast("Couldn’t save changes", "Browser storage is full or unavailable.");
     return false;
   }
 }
@@ -191,19 +191,35 @@ function toggleComplete(id) {
   const completed = !task.completed;
   const nextTasks = tasks.map(item => item.id === id ? { ...item, completed } : item);
   if (!saveTasks(nextTasks)) return false;
-  lastCompletedId = completed ? id : null;
   render();
-  if (completed) showToast("Task completed", "Nice work—keep the momentum going.", true);
+  if (completed) showToast("Task completed", "Nice work—keep the momentum going.", () => toggleComplete(id));
   return true;
 }
 
-function showToast(title, message, canUndo = false) {
+function showToast(title, message, onUndo = null) {
   clearTimeout(toastTimer);
+  undoAction = onUndo;
   $("#toastTitle").textContent = title;
   $("#toastMessage").textContent = message;
-  $("#undoButton").hidden = !canUndo;
+  $("#undoButton").hidden = !onUndo;
   $("#toast").classList.add("show");
   toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 4000);
+}
+
+function deleteTask(id) {
+  const index = tasks.findIndex(task => task.id === id);
+  if (index < 0) return false;
+  const deleted = tasks[index];
+  if (!saveTasks(tasks.filter(task => task.id !== id))) return false;
+  render();
+  showToast("Task deleted", "The task was removed from this device.", () => {
+    const restored = [...tasks];
+    restored.splice(Math.min(index, restored.length), 0, deleted);
+    if (!saveTasks(restored)) return false;
+    render();
+    return true;
+  });
+  return true;
 }
 
 function addTask(title, extras = {}) {
@@ -234,7 +250,7 @@ document.addEventListener("click", (event) => {
   const tagButton = event.target.closest("[data-tag]");
   const composeTag = event.target.closest("[data-compose-tag]");
   if (complete) toggleComplete(Number(complete.dataset.complete));
-  if (deleteButton) { const nextTasks = tasks.filter(t => t.id !== Number(deleteButton.dataset.delete)); if (saveTasks(nextTasks)) render(); }
+  if (deleteButton) deleteTask(Number(deleteButton.dataset.delete));
   if (tagButton) { const tag = tagButton.dataset.tag; state.tags.has(tag) ? state.tags.delete(tag) : state.tags.add(tag); render(); }
   if (composeTag) { const tag = composeTag.dataset.composeTag; composerSelectedTags.has(tag) ? composerSelectedTags.delete(tag) : composerSelectedTags.add(tag); renderComposerTags(); }
 });
@@ -244,7 +260,7 @@ $$(".nav-item").forEach(button => button.addEventListener("click", () => {
   if (state.view === "completed") state.status = "completed";
   $$(".nav-item").forEach(item => item.classList.toggle("active", item === button));
   $$(".view-tabs button").forEach(item => item.classList.toggle("active", item.dataset.status === state.status));
-  const labels = { all: ["Your team’s work, <em>in flow.</em>", "Capture what matters, move together, and make progress visible."], today: ["Today’s focus, <em>made clear.</em>", "A focused view of everything that needs attention today."], assigned: ["Your work, <em>all together.</em>", "Every task assigned to you, in one calm and focused place."], completed: ["Progress worth <em>celebrating.</em>", "A record of everything your team has moved forward."] };
+  const labels = { all: ["Welcome to Pettesh Hadars <em>tasks place</em>", "Keep family tasks clear, shared, and easy to finish."], today: ["Today’s focus, <em>made clear.</em>", "A focused view of everything that needs attention today."], assigned: ["Your tasks, <em>all together.</em>", "Every family task assigned to you, in one calm and focused place."], completed: ["Progress worth <em>celebrating.</em>", "A record of everything your family has moved forward."] };
   $("#viewTitle").innerHTML = labels[state.view][0]; $("#viewSubtitle").textContent = labels[state.view][1];
   $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); render();
 }));
@@ -287,7 +303,7 @@ $("#taskForm").addEventListener("submit", event => {
 });
 $("#taskForm").addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") $("#taskForm").requestSubmit(); });
 
-$("#undoButton").addEventListener("click", () => { if (lastCompletedId && toggleComplete(lastCompletedId)) $("#toast").classList.remove("show"); });
+$("#undoButton").addEventListener("click", () => { if (undoAction && undoAction()) { undoAction = null; $("#toast").classList.remove("show"); } });
 $("#menuButton").addEventListener("click", () => { $("#sidebar").classList.add("open"); $("#sidebarScrim").classList.add("open"); });
 $("#sidebarClose").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); });
 $("#sidebarScrim").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); });
