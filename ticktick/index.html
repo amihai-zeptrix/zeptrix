@@ -66,7 +66,7 @@
             <span class="avatar avatar-nora">NR</span>
             <span class="avatar avatar-you">AY</span>
           </div>
-          <div><strong>4 teammates</strong><small>Working together</small></div>
+          <div><strong>4 teammates</strong><small>Saved on this device</small></div>
           <button class="invite-button" title="Invite teammate">+</button>
         </div>
       </aside>
@@ -169,7 +169,7 @@
         <label class="field-label" for="taskTitle">Task name</label>
         <input class="title-input" id="taskTitle" required maxlength="120" placeholder="e.g. Review launch copy" />
         <label class="field-label" for="taskDescription">Description <small>Optional</small></label>
-        <textarea id="taskDescription" rows="3" placeholder="Add a little context for your team..."></textarea>
+        <textarea id="taskDescription" rows="3" maxlength="1000" placeholder="Add a little context for your team..."></textarea>
         <div class="form-grid">
           <label><span class="field-label">Assignee</span><select id="taskAssignee"><option value="you">Alex Young (You)</option><option value="lina">Lina Stone</option><option value="marcus">Marcus Kim</option><option value="nora">Nora Reed</option></select></label>
           <label><span class="field-label">Due date</span><input id="taskDue" type="date" /></label>
@@ -186,7 +186,7 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite">
       <span><svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7" /></svg></span>
-      <div><strong>Task completed</strong><small>Nice work—keep the momentum going.</small></div>
+      <div><strong id="toastTitle">Task completed</strong><small id="toastMessage">Nice work—keep the momentum going.</small></div>
       <button id="undoButton">Undo</button>
     </div>
 

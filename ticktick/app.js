@@ -14,7 +14,14 @@ const PEOPLE = {
 };
 
 const day = 86400000;
-const isoAfter = (days) => new Date(Date.now() + days * day).toISOString().slice(0, 10);
+const STORAGE_KEY = "zeptrix-tasks-v1";
+const isoAfter = (days) => {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
 const seedTasks = [
   { id: 1, title: "Finalize the mobile onboarding flow", description: "Review the final screens with product.", tags: ["design", "urgent"], assignee: "lina", due: isoAfter(0), priority: "high", completed: false, created: Date.now() - 50000 },
   { id: 2, title: "Prepare Q3 campaign performance report", description: "Pull results from the paid and organic channels.", tags: ["marketing"], assignee: "marcus", due: isoAfter(1), priority: "medium", completed: false, created: Date.now() - 40000 },
@@ -34,12 +41,24 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 function loadTasks() {
-  try { return JSON.parse(localStorage.getItem("zeptrix-tasks")) || seedTasks; }
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!Array.isArray(stored)) return seedTasks;
+    const validTasks = stored.filter(task => task && typeof task.id === "number" && typeof task.title === "string" && Array.isArray(task.tags));
+    return validTasks.length === stored.length ? validTasks : seedTasks;
+  }
   catch { return seedTasks; }
 }
 
-function saveTasks() {
-  localStorage.setItem("zeptrix-tasks", JSON.stringify(tasks));
+function saveTasks(nextTasks) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextTasks));
+    tasks = nextTasks;
+    return true;
+  } catch {
+    showToast("Couldn’t save changes", "Browser storage is full or unavailable.", false);
+    return false;
+  }
 }
 
 function escapeHtml(value) {
@@ -92,31 +111,45 @@ function filteredTasks() {
   return result;
 }
 
-function render() {
+function getStats() {
+  const stats = { open: 0, done: 0, todayOpen: 0, todayTotal: 0, todayDone: 0, mine: 0, tags: Object.fromEntries(Object.keys(TAGS).map(tag => [tag, 0])) };
+  const today = isoAfter(0);
+  tasks.forEach(task => {
+    task.completed ? stats.done++ : stats.open++;
+    if (!task.completed && task.assignee === "you") stats.mine++;
+    if (task.due === today) { stats.todayTotal++; task.completed ? stats.todayDone++ : stats.todayOpen++; }
+    task.tags.forEach(tag => { if (tag in stats.tags) stats.tags[tag]++; });
+  });
+  return stats;
+}
+
+function renderTaskList() {
   const visible = filteredTasks();
   $("#taskList").innerHTML = visible.map(taskMarkup).join("");
   $("#emptyState").hidden = visible.length > 0;
-  renderCounts();
-  renderTagFilters();
-  renderProgress();
 }
 
-function renderCounts() {
-  const open = tasks.filter(t => !t.completed).length;
-  const done = tasks.filter(t => t.completed).length;
+function render() {
+  const stats = getStats();
+  renderTaskList();
+  renderCounts(stats);
+  renderTagFilters(stats.tags);
+  renderProgress(stats);
+}
+
+function renderCounts(stats) {
   $("#allCount").textContent = tasks.length;
-  $("#todayCount").textContent = tasks.filter(t => t.due === isoAfter(0) && !t.completed).length;
-  $("#mineCount").textContent = tasks.filter(t => t.assignee === "you" && !t.completed).length;
-  $("#completedCount").textContent = done;
-  $("#openTabCount").textContent = open;
-  $("#doneTabCount").textContent = done;
+  $("#todayCount").textContent = stats.todayOpen;
+  $("#mineCount").textContent = stats.mine;
+  $("#completedCount").textContent = stats.done;
+  $("#openTabCount").textContent = stats.open;
+  $("#doneTabCount").textContent = stats.done;
   $("#allTabCount").textContent = tasks.length;
 }
 
-function renderProgress() {
-  const todayTasks = tasks.filter(t => t.due === isoAfter(0));
-  const completed = todayTasks.filter(t => t.completed).length;
-  const total = todayTasks.length;
+function renderProgress(stats) {
+  const completed = stats.todayDone;
+  const total = stats.todayTotal;
   const percent = total ? Math.round(completed / total * 100) : 0;
   $("#progressFraction").textContent = `${completed} / ${total} complete`;
   $("#progressPercent").textContent = `${percent}%`;
@@ -125,8 +158,7 @@ function renderProgress() {
   $("#progressText").textContent = total ? `${Math.max(0, total - completed)} task${total - completed === 1 ? "" : "s"} left for today.` : "Add a task for today to start your momentum.";
 }
 
-function renderTagFilters() {
-  const counts = Object.fromEntries(Object.keys(TAGS).map(tag => [tag, tasks.filter(t => t.tags.includes(tag)).length]));
+function renderTagFilters(counts = getStats().tags) {
   $("#sidebarTags").innerHTML = Object.entries(TAGS).map(([key, tag]) => `<button class="sidebar-tag ${state.tags.has(key) ? "active" : ""}" data-tag="${key}"><i class="tag-dot" style="background:${tag.color}"></i>${tag.label}<b>${counts[key]}</b></button>`).join("");
   $("#filterTags").innerHTML = Object.entries(TAGS).map(([key, tag]) => `<button class="filter-pill ${state.tags.has(key) ? "active" : ""}" data-tag="${key}"><i style="background:${tag.color}"></i>${tag.label}</button>`).join("");
   $("#filterBadge").hidden = state.tags.size === 0;
@@ -141,24 +173,30 @@ function renderComposerTags() {
 function toggleComplete(id) {
   const task = tasks.find(t => t.id === id);
   if (!task) return;
-  task.completed = !task.completed;
-  lastCompletedId = task.completed ? id : null;
-  saveTasks(); render();
-  if (task.completed) showToast();
+  const completed = !task.completed;
+  const nextTasks = tasks.map(item => item.id === id ? { ...item, completed } : item);
+  if (!saveTasks(nextTasks)) return;
+  lastCompletedId = completed ? id : null;
+  render();
+  if (completed) showToast("Task completed", "Nice work—keep the momentum going.", true);
 }
 
-function showToast() {
+function showToast(title, message, canUndo = false) {
   clearTimeout(toastTimer);
+  $("#toastTitle").textContent = title;
+  $("#toastMessage").textContent = message;
+  $("#undoButton").hidden = !canUndo;
   $("#toast").classList.add("show");
   toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 4000);
 }
 
 function addTask(title, extras = {}) {
-  tasks.unshift({ id: Date.now(), title: title.trim(), description: extras.description || "", tags: extras.tags || [], assignee: extras.assignee || "you", due: extras.due || "", priority: extras.priority || "medium", completed: false, created: Date.now() });
-  saveTasks();
+  const newTask = { id: Date.now(), title: title.trim().slice(0, 120), description: (extras.description || "").slice(0, 1000), tags: extras.tags || [], assignee: extras.assignee || "you", due: extras.due || "", priority: extras.priority || "medium", completed: false, created: Date.now() };
+  if (!saveTasks([newTask, ...tasks])) return false;
   state.status = "open";
   $$(".view-tabs button").forEach(button => button.classList.toggle("active", button.dataset.status === "open"));
   render();
+  return true;
 }
 
 function openDialog() {
@@ -180,7 +218,7 @@ document.addEventListener("click", (event) => {
   const tagButton = event.target.closest("[data-tag]");
   const composeTag = event.target.closest("[data-compose-tag]");
   if (complete) toggleComplete(Number(complete.dataset.complete));
-  if (deleteButton) { tasks = tasks.filter(t => t.id !== Number(deleteButton.dataset.delete)); saveTasks(); render(); }
+  if (deleteButton) { const nextTasks = tasks.filter(t => t.id !== Number(deleteButton.dataset.delete)); if (saveTasks(nextTasks)) render(); }
   if (tagButton) { const tag = tagButton.dataset.tag; state.tags.has(tag) ? state.tags.delete(tag) : state.tags.add(tag); render(); }
   if (composeTag) { const tag = composeTag.dataset.composeTag; composerSelectedTags.has(tag) ? composerSelectedTags.delete(tag) : composerSelectedTags.add(tag); renderComposerTags(); }
 });
@@ -200,7 +238,12 @@ $$(".view-tabs button").forEach(button => button.addEventListener("click", () =>
   $$(".view-tabs button").forEach(item => item.classList.toggle("active", item === button)); render();
 }));
 
-$("#searchInput").addEventListener("input", event => { state.search = event.target.value.toLowerCase().trim(); render(); });
+let searchTimer;
+$("#searchInput").addEventListener("input", event => {
+  state.search = event.target.value.toLowerCase().trim();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(renderTaskList, 100);
+});
 $("#sortSelect").addEventListener("change", event => { state.sort = event.target.value; render(); });
 $("#filterToggle").addEventListener("click", () => $("#filterDrawer").classList.toggle("open"));
 $("#clearTags").addEventListener("click", () => { state.tags.clear(); render(); });
@@ -208,7 +251,7 @@ $("#clearTags").addEventListener("click", () => { state.tags.clear(); render(); 
 function submitQuick() {
   const input = $("#quickTaskInput");
   if (!input.value.trim()) return;
-  addTask(input.value, { due: isoAfter(0) });
+  if (!addTask(input.value, { due: isoAfter(0) })) return;
   input.value = ""; $("#quickAdd").classList.remove("has-value");
 }
 $("#quickTaskInput").addEventListener("input", event => $("#quickAdd").classList.toggle("has-value", !!event.target.value.trim()));
@@ -224,8 +267,7 @@ $("#taskForm").addEventListener("submit", event => {
   event.preventDefault();
   const title = $("#taskTitle").value;
   if (!title.trim()) return;
-  addTask(title, { description: $("#taskDescription").value, tags: [...composerSelectedTags], assignee: $("#taskAssignee").value, due: $("#taskDue").value, priority: $("#taskPriority").value });
-  $("#taskDialog").close();
+  if (addTask(title, { description: $("#taskDescription").value, tags: [...composerSelectedTags], assignee: $("#taskAssignee").value, due: $("#taskDue").value, priority: $("#taskPriority").value })) $("#taskDialog").close();
 });
 $("#taskForm").addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") $("#taskForm").requestSubmit(); });
 
