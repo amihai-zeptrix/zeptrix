@@ -44,10 +44,25 @@ function loadTasks() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!Array.isArray(stored)) return seedTasks;
-    const validTasks = stored.filter(task => task && typeof task.id === "number" && typeof task.title === "string" && Array.isArray(task.tags));
-    return validTasks.length === stored.length ? validTasks : seedTasks;
+    const normalizedTasks = stored.map(normalizeTask);
+    return normalizedTasks.every(Boolean) ? normalizedTasks : seedTasks;
   }
   catch { return seedTasks; }
+}
+
+function normalizeTask(task) {
+  if (!task || !Number.isFinite(task.id) || typeof task.title !== "string" || !Array.isArray(task.tags)) return null;
+  return {
+    id: task.id,
+    title: task.title.slice(0, 120),
+    description: typeof task.description === "string" ? task.description.slice(0, 1000) : "",
+    tags: [...new Set(task.tags.filter(tag => tag in TAGS))],
+    assignee: task.assignee in PEOPLE ? task.assignee : "you",
+    due: typeof task.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : "",
+    priority: ["high", "medium", "low"].includes(task.priority) ? task.priority : "medium",
+    completed: task.completed === true,
+    created: Number.isFinite(task.created) ? task.created : task.id,
+  };
 }
 
 function saveTasks(nextTasks) {
@@ -172,13 +187,14 @@ function renderComposerTags() {
 
 function toggleComplete(id) {
   const task = tasks.find(t => t.id === id);
-  if (!task) return;
+  if (!task) return false;
   const completed = !task.completed;
   const nextTasks = tasks.map(item => item.id === id ? { ...item, completed } : item);
-  if (!saveTasks(nextTasks)) return;
+  if (!saveTasks(nextTasks)) return false;
   lastCompletedId = completed ? id : null;
   render();
   if (completed) showToast("Task completed", "Nice work—keep the momentum going.", true);
+  return true;
 }
 
 function showToast(title, message, canUndo = false) {
@@ -271,7 +287,7 @@ $("#taskForm").addEventListener("submit", event => {
 });
 $("#taskForm").addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") $("#taskForm").requestSubmit(); });
 
-$("#undoButton").addEventListener("click", () => { if (lastCompletedId) toggleComplete(lastCompletedId); $("#toast").classList.remove("show"); });
+$("#undoButton").addEventListener("click", () => { if (lastCompletedId && toggleComplete(lastCompletedId)) $("#toast").classList.remove("show"); });
 $("#menuButton").addEventListener("click", () => { $("#sidebar").classList.add("open"); $("#sidebarScrim").classList.add("open"); });
 $("#sidebarClose").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); });
 $("#sidebarScrim").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); });
