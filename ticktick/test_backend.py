@@ -49,6 +49,11 @@ class TaskApiTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(tasks), 5)
         self.assertEqual(tasks[0]["assignee"], "you")
+        _, hadar_workspace = self.request("/workspace", tenant="hadar")
+        _, pettesh_workspace = self.request("/workspace", tenant="pettesh")
+        self.assertEqual(hadar_workspace["members"]["you"]["name"], "עמיחי")
+        self.assertEqual(pettesh_workspace["title"], "אפליקציית המשימות של פטש")
+        self.assertNotEqual(hadar_workspace["workspaceName"], pettesh_workspace["workspaceName"])
 
     def test_create_update_and_delete(self):
         status, created = self.request(

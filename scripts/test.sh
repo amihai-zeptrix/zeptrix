@@ -69,7 +69,7 @@ assert_file ticktick/zeptrix-tasks-api.service
 
 assert_not_exists wordpress-to-modern-websites.html
 
-assert_contains ticktick/index.html "<title>משימות משפחת הדר | Zeptrix</title>"
+assert_contains ticktick/index.html "<title>מרחב משימות | Zeptrix</title>"
 assert_contains ticktick/index.html '<html lang="he" dir="rtl">'
 assert_contains ticktick/index.html '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
 assert_contains ticktick/index.html 'href="styles.css"'

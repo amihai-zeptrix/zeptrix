@@ -120,18 +120,19 @@ assert_requires_auth "/ticktick/api/tasks"
 
 if ((${#task_auth[@]})); then
   fetch_task "/ticktick/" "$tmp_dir/ticktick.html"
-  assert_contains "$tmp_dir/ticktick.html" "<title>משימות משפחת הדר | Zeptrix</title>"
+  assert_contains "$tmp_dir/ticktick.html" "<title>מרחב משימות | Zeptrix</title>"
   assert_contains "$tmp_dir/ticktick.html" '<html lang="he" dir="rtl">'
   assert_contains "$tmp_dir/ticktick.html" '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
 
   fetch_task "/tt/" "$tmp_dir/tt.html"
-  assert_contains "$tmp_dir/tt.html" "<title>משימות משפחת הדר | Zeptrix</title>"
+  assert_contains "$tmp_dir/tt.html" "<title>מרחב משימות | Zeptrix</title>"
   assert_contains "$tmp_dir/tt.html" '<html lang="he" dir="rtl">'
   assert_contains "$tmp_dir/tt.html" '<link rel="canonical" href="https://zeptrix.io/ticktick/" />'
 
   fetch_task "/ticktick/api/tasks" "$tmp_dir/tasks.json"
-  assert_contains "$tmp_dir/tasks.json" '"id":'
-  assert_contains "$tmp_dir/tasks.json" '"revision":'
+  python3 -c 'import json,sys; data=json.load(open(sys.argv[1])); assert isinstance(data, list)' "$tmp_dir/tasks.json"
+  fetch_task "/ticktick/api/health" "$tmp_dir/tasks-health.json"
+  assert_contains "$tmp_dir/tasks-health.json" '"ok":true'
 fi
 
 fetch "/cloudprune/" "$tmp_dir/cloudprune.html"

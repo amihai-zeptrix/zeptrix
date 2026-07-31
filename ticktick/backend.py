@@ -22,6 +22,26 @@ VALID_ASSIGNEES = {"you", "lina"}
 VALID_PRIORITIES = {"high", "medium", "low"}
 VALID_TAGS = {"design", "marketing", "development", "urgent", "research"}
 TENANT_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+WORKSPACES = {
+    "hadar": {
+        "title": "אפליקצת המשימות של משפחת הדר",
+        "workspaceName": "בית משפחת הדר",
+        "workspaceInitial": "ה",
+        "members": {
+            "you": {"name": "עמיחי", "initials": "עמ"},
+            "lina": {"name": "אתי", "initials": "את"},
+        },
+    },
+    "pettesh": {
+        "title": "אפליקציית המשימות של פטש",
+        "workspaceName": "המרחב של פטש",
+        "workspaceInitial": "פ",
+        "members": {
+            "you": {"name": "פטש", "initials": "פט"},
+            "lina": {"name": "משפחה", "initials": "מש"},
+        },
+    },
+}
 
 INITIAL_TASKS = [
     "פסיכומטרי של יובל",
@@ -67,6 +87,9 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE tasks ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
         if "tenant" not in columns:
             connection.execute("ALTER TABLE tasks ADD COLUMN tenant TEXT NOT NULL DEFAULT 'hadar'")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS tasks_tenant_created_idx ON tasks(tenant, created DESC)"
+        )
         connection.execute(
             "CREATE TABLE IF NOT EXISTS app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
@@ -196,11 +219,26 @@ class TaskHandler(BaseHTTPRequestHandler):
         if path == "/health":
             self.send_json(HTTPStatus.OK, {"ok": True})
             return
-        if path != "/tasks":
+        if path not in {"/tasks", "/workspace"}:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
         tenant = self.require_tenant()
         if tenant is None:
+            return
+        if path == "/workspace":
+            workspace = WORKSPACES.get(
+                tenant,
+                {
+                    "title": "מרחב המשימות שלי",
+                    "workspaceName": tenant,
+                    "workspaceInitial": tenant[0].upper(),
+                    "members": {
+                        "you": {"name": "אני", "initials": "אני"},
+                        "lina": {"name": "משפחה", "initials": "מש"},
+                    },
+                },
+            )
+            self.send_json(HTTPStatus.OK, workspace)
             return
         with connect() as connection:
             rows = connection.execute(

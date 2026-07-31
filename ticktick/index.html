@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f7f2" />
-    <meta name="description" content="אפליקציית המשימות של משפחת הדר, מבית Zeptrix." />
+    <meta name="description" content="מרחב משימות משפחתי מסונכרן, מבית Zeptrix." />
     <link rel="canonical" href="https://zeptrix.io/ticktick/" />
-    <title>משימות משפחת הדר | Zeptrix</title>
+    <title>מרחב משימות | Zeptrix</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Heebo:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
@@ -29,8 +29,8 @@
         </div>
 
         <div class="workspace-switcher">
-          <span class="workspace-avatar">ה</span>
-          <span><small>המרחב המשפחתי</small><strong>בית משפחת הדר</strong></span>
+          <span class="workspace-avatar" id="workspaceAvatar">מ</span>
+          <span><small>המרחב המשפחתי</small><strong id="workspaceName">מרחב המשימות</strong></span>
           <svg viewBox="0 0 24 24"><path d="m8 10 4 4 4-4" /></svg>
         </div>
 
@@ -61,8 +61,8 @@
 
         <div class="sidebar-footer">
           <div class="team-stack" aria-label="בני המשפחה">
-            <span class="avatar avatar-lina">את</span>
-            <span class="avatar avatar-you">עמ</span>
+            <span class="avatar avatar-lina" id="footerLina">מש</span>
+            <span class="avatar avatar-you" id="footerYou">אני</span>
           </div>
           <div><strong>2 בני משפחה</strong><small>מסונכרן בין כל המכשירים</small></div>
           <button class="invite-button" title="הוספת בן משפחה">+</button>
@@ -85,7 +85,7 @@
             <button class="icon-button notification-button" aria-label="התראות">
               <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg><i></i>
             </button>
-            <span class="avatar avatar-you user-avatar">עמ</span>
+            <span class="avatar avatar-you user-avatar" id="userAvatar">אני</span>
           </div>
         </header>
 
@@ -93,8 +93,8 @@
           <div class="page-heading">
             <div>
               <p class="eyebrow" id="dateLabel"></p>
-              <h1 id="viewTitle">אפליקצת המשימות של משפחת <em>הדר</em></h1>
-              <p id="viewSubtitle">כל המשימות המשפחתיות במקום אחד, ברור ונוח.</p>
+              <h1 id="viewTitle">מרחב המשימות המשפחתי</h1>
+              <p id="viewSubtitle">כל המשימות במקום אחד, ברור ונוח.</p>
             </div>
             <button class="add-task-button" id="openComposer">
               <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
@@ -173,7 +173,7 @@
         <label class="field-label" for="taskDescription">תיאור <small>לא חובה</small></label>
         <textarea id="taskDescription" rows="3" maxlength="1000" placeholder="אפשר להוסיף פרטים שיעזרו למשפחה..."></textarea>
         <div class="form-grid">
-          <label><span class="field-label">אחראי/ת</span><select id="taskAssignee"><option value="you">עמיחי</option><option value="lina">אתי</option></select></label>
+          <label><span class="field-label">אחראי/ת</span><select id="taskAssignee"><option value="you">אני</option><option value="lina">משפחה</option></select></label>
           <label><span class="field-label">תאריך יעד</span><input id="taskDue" type="date" /></label>
           <label><span class="field-label">עדיפות</span><select id="taskPriority"><option value="medium">בינונית</option><option value="high">גבוהה</option><option value="low">נמוכה</option></select></label>
         </div>

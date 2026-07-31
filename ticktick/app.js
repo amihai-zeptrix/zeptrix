@@ -6,9 +6,14 @@ const TAGS = {
   research: { label: "סידורים", color: "#9473b8" },
 };
 
-const PEOPLE = {
+let PEOPLE = {
   you: { name: "עמיחי", initials: "עמ", className: "avatar-you" },
   lina: { name: "אתי", initials: "את", className: "avatar-lina" },
+};
+let workspace = {
+  title: "מרחב המשימות המשפחתי",
+  workspaceName: "המרחב המשפחתי",
+  workspaceInitial: "מ",
 };
 
 const day = 86400000;
@@ -66,6 +71,31 @@ async function apiRequest(path = "", options = {}) {
     throw error;
   }
   return payload;
+}
+
+async function loadWorkspace() {
+  try {
+    const response = await fetch("api/workspace", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Workspace request failed (${response.status})`);
+    const value = await response.json();
+    if (!value || typeof value.title !== "string" || typeof value.workspaceName !== "string" || !value.members) return;
+    workspace = value;
+    PEOPLE = Object.fromEntries(Object.entries(value.members).map(([key, person]) => [key, {
+      name: String(person.name || key),
+      initials: String(person.initials || person.name || key).slice(0, 3),
+      className: key === "you" ? "avatar-you" : "avatar-lina",
+    }]));
+    document.title = `${value.workspaceName} | Zeptrix`;
+    $("#workspaceAvatar").textContent = value.workspaceInitial || value.workspaceName.slice(0, 1);
+    $("#workspaceName").textContent = value.workspaceName;
+    $("#footerYou").textContent = PEOPLE.you.initials;
+    $("#footerLina").textContent = PEOPLE.lina.initials;
+    $("#userAvatar").textContent = PEOPLE.you.initials;
+    $("#taskAssignee").innerHTML = Object.entries(PEOPLE).map(([key, person]) => `<option value="${key}">${escapeHtml(person.name)}</option>`).join("");
+    $("#viewTitle").textContent = value.title;
+  } catch {
+    showToast("לא הצלחנו לטעון את המרחב", "בדקו את החיבור ונסו שוב.");
+  }
 }
 
 async function loadTasks(silent = false) {
@@ -321,7 +351,7 @@ function openDialog(task = null) {
 $("#dateLabel").textContent = new Date().toLocaleDateString("he-IL", { weekday: "long", month: "long", day: "numeric" });
 renderComposerTags();
 render();
-loadTasks();
+(async () => { await loadWorkspace(); await loadTasks(); })();
 setInterval(() => {
   if (document.visibilityState === "visible" && !$("#taskDialog").open) loadTasks(true);
 }, 5000);
@@ -346,8 +376,8 @@ $$(".nav-item").forEach(button => button.addEventListener("click", () => {
   if (state.view === "completed") state.status = "completed";
   $$(".nav-item").forEach(item => item.classList.toggle("active", item === button));
   $$(".view-tabs button").forEach(item => item.classList.toggle("active", item.dataset.status === state.status));
-  const labels = { all: ["אפליקצת המשימות של משפחת <em>הדר</em>", "כל המשימות המשפחתיות במקום אחד, ברור ונוח."], today: ["המשימות של <em>היום</em>", "כל מה שצריך לקבל תשומת לב היום."], assigned: ["המשימות <em>שלי</em>", "כל המשימות המשפחתיות שבאחריותי."], completed: ["התקדמות שכיף <em>לחגוג</em>", "כל מה שהמשפחה כבר הספיקה לעשות."] };
-  $("#viewTitle").innerHTML = labels[state.view][0]; $("#viewSubtitle").textContent = labels[state.view][1];
+  const labels = { all: [workspace.title, "כל המשימות במקום אחד, ברור ונוח."], today: ["המשימות של היום", "כל מה שצריך לקבל תשומת לב היום."], assigned: ["המשימות שלי", "כל המשימות שבאחריותי."], completed: ["התקדמות שכיף לחגוג", "כל מה שכבר הספקנו לעשות."] };
+  $("#viewTitle").textContent = labels[state.view][0]; $("#viewSubtitle").textContent = labels[state.view][1];
   $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); render();
 }));
 
