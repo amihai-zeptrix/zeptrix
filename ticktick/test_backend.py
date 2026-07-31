@@ -57,6 +57,13 @@ class TaskApiTest(unittest.TestCase):
         _, pettesh_workspace = self.request("/workspace", tenant="pettesh")
         self.assertEqual(hadar_workspace["members"]["you"]["name"], "עמיחי")
         self.assertEqual(pettesh_workspace["title"], "אפליקציית המשימות של משפחת פטש")
+        self.assertEqual(
+            [pettesh_workspace["members"][key]["name"] for key in ("you", "lina")],
+            ["יעקב", "רות"],
+        )
+        _, jacob_workspace = self.request("/workspace", tenant="jacob")
+        self.assertEqual(jacob_workspace["workspaceName"], "המרחב של יעקב")
+        self.assertEqual(jacob_workspace["title"], "אפליקציית המשימות של יעקב")
         self.assertNotEqual(hadar_workspace["workspaceName"], pettesh_workspace["workspaceName"])
 
     def test_login_session_and_unauthenticated_access(self):
@@ -160,11 +167,15 @@ class TaskApiTest(unittest.TestCase):
     def test_tenants_are_fully_isolated(self):
         _, pettesh_tasks = self.request("/tasks", tenant="pettesh")
         self.assertEqual(pettesh_tasks, [])
+        _, jacob_tasks = self.request("/tasks", tenant="jacob")
+        self.assertEqual(jacob_tasks, [])
         _, created = self.request(
             "/tasks", "POST", {"title": "משימה פרטית לפטש"}, tenant="pettesh"
         )
         _, hadar_tasks = self.request("/tasks", tenant="hadar")
         self.assertNotIn(created["id"], {task["id"] for task in hadar_tasks})
+        _, jacob_tasks = self.request("/tasks", tenant="jacob")
+        self.assertNotIn(created["id"], {task["id"] for task in jacob_tasks})
         with self.assertRaises(HTTPError) as update_context:
             self.request(
                 f"/tasks/{created['id']}",

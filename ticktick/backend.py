@@ -47,7 +47,16 @@ WORKSPACES = {
         "workspaceName": "המרחב של פטש",
         "workspaceInitial": "פ",
         "members": {
-            "you": {"name": "פטש", "initials": "פט"},
+            "you": {"name": "יעקב", "initials": "יע"},
+            "lina": {"name": "רות", "initials": "רו"},
+        },
+    },
+    "jacob": {
+        "title": "אפליקציית המשימות של יעקב",
+        "workspaceName": "המרחב של יעקב",
+        "workspaceInitial": "י",
+        "members": {
+            "you": {"name": "יעקב", "initials": "יע"},
             "lina": {"name": "משפחה", "initials": "מש"},
         },
     },
