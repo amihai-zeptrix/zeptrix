@@ -48,9 +48,20 @@ The family task manager is not browser-local. Its shared runtime consists of:
 - `/var/lib/zeptrix-tasks/tasks.db` for the SQLite task database
 - `/etc/nginx/.htpasswd-zeptrix-tasks` for validating credentials submitted by the in-app login
 - `/etc/zeptrix-tasks/session.env` for the private session-signing secret
-- signed `HttpOnly` session cookies enforced by the backend at `/ticktick/api/` and `/tt/api/`
+- signed `HttpOnly` session cookies enforced by the backend at `/ticktick/api/`
 
-The static app and login page are public. Only the exact `/api/login` routes use nginx Basic authentication internally; browsers submit that header through `fetch`, so users never see the native browser prompt. Never expose or rotate the session secret during a routine static deploy, because rotation signs every user out.
+The static app and login page are public. Only the exact `/ticktick/api/login` route uses nginx Basic authentication internally; browsers submit that header through `fetch`, so users never see the native browser prompt. Never expose or rotate the session secret during a routine static deploy, because rotation signs every user out. Rotate it deliberately whenever tenant passwords are changed and immediate revocation of old sessions is required.
+
+Provision the signing secret once before starting the service:
+
+```bash
+sudo install -d -o root -g root -m 0755 /etc/zeptrix-tasks
+printf 'TASKS_SESSION_SECRET=%s\n' "$(openssl rand -hex 32)" | sudo tee /etc/zeptrix-tasks/session.env >/dev/null
+sudo chown root:root /etc/zeptrix-tasks/session.env
+sudo chmod 0600 /etc/zeptrix-tasks/session.env
+```
+
+The canonical task route is `/ticktick/`; `/tt` redirects there so the signed cookie can remain narrowly scoped to `Path=/ticktick` and never reaches unrelated Zeptrix applications.
 
 Never replace the database during a static deploy. Back it up before changing the backend schema.
 

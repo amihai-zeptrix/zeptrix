@@ -136,10 +136,10 @@ assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8008;"
 assert_contains nginx-zeptrix.conf "location = /cloudprune"
 assert_contains nginx-zeptrix.conf "location ^~ /cloudprune/"
 assert_contains nginx-zeptrix.conf "location ^~ /ticktick/api/"
-assert_contains nginx-zeptrix.conf "location ^~ /tt/api/"
 assert_contains nginx-zeptrix.conf "location = /ticktick/api/login"
-assert_contains nginx-zeptrix.conf "location = /tt/api/login"
 assert_contains nginx-zeptrix.conf 'auth_basic_user_file /etc/nginx/.htpasswd-zeptrix-tasks;'
+assert_contains nginx-zeptrix.conf 'auth_delay 1s;'
+assert_contains nginx-zeptrix.conf 'return 302 /ticktick/;'
 assert_contains nginx-zeptrix.conf "proxy_pass http://127.0.0.1:8082/;"
 assert_contains nginx-zeptrix.conf "location = /aws-cost-optimization.html"
 assert_contains nginx-zeptrix.conf "location = /reduce-aws-spend.html"

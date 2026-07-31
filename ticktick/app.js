@@ -127,10 +127,13 @@ function showLogin(message = "") {
 }
 
 async function login(username, password) {
+  const credentialBytes = new TextEncoder().encode(`${username}:${password}`);
+  let credentialBinary = "";
+  credentialBytes.forEach(byte => { credentialBinary += String.fromCharCode(byte); });
   const response = await fetch("api/login", {
     method: "POST",
     headers: {
-      "Authorization": `Basic ${btoa(`${username}:${password}`)}`,
+      "Authorization": `Basic ${btoa(credentialBinary)}`,
       "Content-Type": "application/json",
     },
     body: "{}",
@@ -432,8 +435,13 @@ $("#togglePassword").addEventListener("click", () => {
 });
 
 $("#logoutButton").addEventListener("click", async () => {
-  try { await fetch("api/logout", { method: "POST", credentials: "same-origin", cache: "no-store" }); } catch {}
-  showLogin();
+  try {
+    const response = await fetch("api/logout", { method: "POST", credentials: "same-origin", cache: "no-store" });
+    if (!response.ok) throw new Error("logout failed");
+    showLogin();
+  } catch {
+    showToast("לא הצלחנו לצאת", "בדקו את החיבור ונסו שוב.");
+  }
 });
 
 document.addEventListener("click", (event) => {

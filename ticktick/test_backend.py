@@ -69,6 +69,7 @@ class TaskApiTest(unittest.TestCase):
         with urlopen(login, timeout=2) as response:
             self.assertEqual(response.status, 200)
             self.assertIn(f"{backend.SESSION_COOKIE}=", response.headers["Set-Cookie"])
+            self.assertIn(f"Path={backend.SESSION_COOKIE_PATH}", response.headers["Set-Cookie"])
         with self.assertRaises(HTTPError) as missing_context:
             self.request("/tasks", authenticated=False)
         self.assertEqual(missing_context.exception.code, 401)

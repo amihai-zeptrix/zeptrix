@@ -12,6 +12,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+from contextlib import contextmanager
 from http import HTTPStatus
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,7 +25,8 @@ HOST = os.environ.get("TASKS_API_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TASKS_API_PORT", "8082"))
 MAX_BODY_BYTES = 32_768
 SESSION_COOKIE = "zeptrix_tasks_session"
-SESSION_MAX_AGE = 30 * 24 * 60 * 60
+SESSION_COOKIE_PATH = "/ticktick"
+SESSION_MAX_AGE = 7 * 24 * 60 * 60
 SESSION_SECRET = os.environ.get("TASKS_SESSION_SECRET", "")
 VALID_ASSIGNEES = {"you", "lina"}
 VALID_PRIORITIES = {"high", "medium", "low"}
@@ -60,12 +62,17 @@ INITIAL_TASKS = [
 ]
 
 
-def connect() -> sqlite3.Connection:
+@contextmanager
+def connect():
     connection = sqlite3.connect(DB_PATH, timeout=5)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 5000")
-    return connection
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
 
 
 def encode_urlsafe(value: bytes) -> str:
@@ -320,14 +327,14 @@ class TaskHandler(BaseHTTPRequestHandler):
             self.send_json(
                 HTTPStatus.OK,
                 {"ok": True},
-                {"Set-Cookie": f"{SESSION_COOKIE}={token}; Path=/; Max-Age={SESSION_MAX_AGE}; HttpOnly; Secure; SameSite=Lax"},
+                {"Set-Cookie": f"{SESSION_COOKIE}={token}; Path={SESSION_COOKIE_PATH}; Max-Age={SESSION_MAX_AGE}; HttpOnly; Secure; SameSite=Lax"},
             )
             return
         if path == "/logout":
             self.send_json(
                 HTTPStatus.OK,
                 {"ok": True},
-                {"Set-Cookie": f"{SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"},
+                {"Set-Cookie": f"{SESSION_COOKIE}=; Path={SESSION_COOKIE_PATH}; Max-Age=0; HttpOnly; Secure; SameSite=Lax"},
             )
             return
         if path != "/tasks":
