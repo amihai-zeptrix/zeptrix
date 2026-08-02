@@ -2382,7 +2382,7 @@ function renderAuth(app) {
       <section class="auth-visual">
         <a class="auth-brand" href="https://zeptrix.io/" aria-label="CloudPrune by Zeptrix">${ICONS.logo}<span><strong>CloudPrune</strong><small>by Zeptrix</small></span></a>
         <div class="auth-hero">
-          <span class="eyebrow">Read-only AWS cost optimization</span>
+          <span class="eyebrow">Read-only cloud cost optimization</span>
           <h1>Unlock AWS savings with confidence.</h1>
           <p>CloudPrune connects billing, inventory, usage, and architecture evidence so engineering and finance can see what may save money, what could break, and what to review first.</p>
           <div class="auth-campaign-banner">Enjoy totally free until September 2026</div>
