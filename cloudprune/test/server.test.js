@@ -255,7 +255,7 @@ test("serves app shell, assets, redirect, and SPA fallback", async () => {
     const rootBody = await root.text();
     assert.match(rootBody, /Zeptrix CloudPrune \| Read-Only AWS Cost Optimization/);
     assert.match(rootBody, /<link rel="canonical" href="https:\/\/zeptrix\.io\/cloudprune\/" \/>/);
-    assert.match(rootBody, /Find AWS waste and plan safer savings/);
+    assert.match(rootBody, /Unlock AWS savings with confidence/);
 
     const redirect = await fetch(`${baseUrl}/cloudprune`, { redirect: "manual" });
     assert.equal(redirect.status, 301);
