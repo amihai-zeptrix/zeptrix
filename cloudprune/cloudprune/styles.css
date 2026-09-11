@@ -293,6 +293,57 @@ button:hover { background: #1e4d43; }
   height: 23px;
 }
 
+.demo-data-notice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 24px;
+  margin: -6px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid #acd2e7;
+  border-radius: 8px;
+  background: linear-gradient(120deg, #fff, #eef9ff);
+  box-shadow: 0 8px 22px rgba(21, 38, 33, .05);
+}
+.demo-data-notice > div:first-child { min-width: 0; }
+.demo-data-notice > div:first-child > strong { margin-left: 9px; font-size: 14px; }
+.demo-data-notice p { margin-top: 5px; color: var(--muted); }
+.demo-data-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #17546e;
+  background: var(--sky-soft);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.demo-data-badge span { color: var(--sky); }
+.demo-data-notice dl {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 0;
+}
+.demo-data-notice dl div { min-width: 74px; }
+.demo-data-notice dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.demo-data-notice dd { margin: 2px 0 0; color: var(--ink); font-weight: 900; }
+.demo-data-notice .demo-data-boundary {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid #c9e3ef;
+  color: #3f6879;
+  font-size: 12px;
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1978,6 +2029,10 @@ td .vendor-badge { display: inline-flex; color: var(--muted); }
   main { padding: 14px; }
   .topbar { display: grid; padding: 20px; }
   .top-actions { flex-wrap: wrap; }
+  .demo-data-notice { grid-template-columns: 1fr; }
+  .demo-data-notice > div:first-child > strong { display: block; margin: 7px 0 0; }
+  .demo-data-notice dl { align-items: flex-start; flex-wrap: wrap; }
+  .demo-data-notice .demo-data-boundary { grid-column: 1; }
   .kpi-grid { grid-template-columns: 1fr; }
   .hero-mark { display: none; }
   .recommendation { grid-template-columns: 42px minmax(0, 1fr); }
